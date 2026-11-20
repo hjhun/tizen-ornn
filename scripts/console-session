@@ -70,13 +70,18 @@ if (( new )); then
     "${tm[@]}" new-session -d -s vm -n console -e "TIZEN_CONSOLE_SIZE=${TIZEN_CONSOLE_SIZE:-}" -e "TIZEN_VM_SHARE_ID=$share_id" -e "TIZEN_VM_HOST_NETWORK=$host_network" -e "TIZEN_VM_HOST_BROWSER=$host_browser" \
         -- "$self" --pane "$result" "$@" 6<&- 7<&- 8>&- || status=$?
 fi
+if (( status == 0 )); then
+    # One observer follows tmux's effective pane size across all its clients.
+    # It exits with the pane, independently of the client which started it.
+    pane=$("${tm[@]}" display-message -p -t '=vm:' '#{pane_pid} #{pane_tty}') || pane=
+    if [[ -n $pane ]]; then
+        read -r pane_pid pane_tty <<< "$pane"
+        "${self%/*}/console-size" "$disk" "$prefix" "$pane_pid" "$pane_tty" \
+            </dev/null >/dev/null 2>&1 6<&- 7<&- 8>&- &
+    fi
+fi
 exec 8>&-
 if (( status == 0 )); then
-    if (( ! new )) && [[ -n ${TIZEN_CONSOLE_SIZE:-} ]]; then
-        read -r rows cols <<< "$TIZEN_CONSOLE_SIZE"
-        # A guest that is still booting or busy installing RPMs can attach immediately.
-        timeout 1 "${self%/*}/guest-command" "$disk" resize "$rows" "$cols" >/dev/null 2>&1 || :
-    fi
     "${tm[@]}" attach-session -t '=vm' || status=$?
 fi
 if read -r failure <&6; then

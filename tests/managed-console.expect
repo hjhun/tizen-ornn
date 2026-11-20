@@ -45,6 +45,9 @@ proc command {client script marker} {
     send -i $client -- "$script\r"
     visible $marker
 }
+proc check_size {client rows cols marker} {
+    command $client [format {for i in {1..40}; do [ "$(stty size)" = "%d %d" ] && { echo %s; break; }; sleep .25; done} $rows $cols $marker] $marker
+}
 proc finished {client} {
     global timeout
     expect -i $client {
@@ -84,7 +87,12 @@ set failed [catch {
         }
     }
     command $a {stty -echo; set +H; printf 'SETUP-%s\n' READY} SETUP-READY
-    command $a {test "$(stty size)" = "34 120" && echo INITIAL-SIZE-OK} INITIAL-SIZE-OK
+    check_size $a 34 120 INITIAL-SIZE-OK
+    set tty [exec tmux -S $sock list-clients -F "#{client_tty}"]
+    exec stty -F $tty rows 57 cols 98
+    check_size $a 57 98 LIVE-GROW-OK
+    exec stty -F $tty rows 23 cols 76
+    check_size $a 23 76 LIVE-SHRINK-OK
     command $a {cd /opt && saved=$$; sleep 180 & bg=$!; echo JOB-READY} JOB-READY
     send -i $a -- "\004"
     command $a {test "$$" = "$saved" && echo EOF-OK} EOF-OK
@@ -95,7 +103,7 @@ set failed [catch {
     command $a {PROMPT_COMMAND='case $? in 130) echo SIGINT-OK;; esac'; echo TRAP-READY} TRAP-READY
     set stty_init "rows 41 columns 105"
     set b [attach 2]
-    command $b {test "$(stty size)" = "41 105" && echo ATTACH-SIZE-OK} ATTACH-SIZE-OK
+    check_size $b 41 105 ATTACH-SIZE-OK
     command $b {dlogsend -b main -p Error -t TizenSerial probe-running && dlogutil -b main -v raw --color never -s TizenSerial:E} probe-running
     send -i $b -- "\003"
     visible SIGINT-OK

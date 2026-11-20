@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Forward the shared tmux pane's terminal size until its process exits."""
+import errno
+import os
+from pathlib import Path
+import select
+import socket
+import subprocess
+import sys
+
+disk, prefix, pid, tty = sys.argv[1:]
+try:
+    pane = os.pidfd_open(int(pid))
+except ProcessLookupError:
+    sys.exit(0)
+exited = select.poll()
+exited.register(pane, select.POLLIN)
+
+# Reattaching clients may start another observer. Keep one per pane lifetime.
+with socket.socket(socket.AF_UNIX) as owner:
+    try:
+        owner.bind("\0" + prefix + ".resize." + pid)
+    except OSError as error:
+        if error.errno == errno.EADDRINUSE:
+            sys.exit(0)
+        raise
+    terminal = os.open(tty, os.O_RDONLY | os.O_NOCTTY)
+    command = Path(__file__).with_name("guest-command")
+    applied = None
+    delay = 0.25
+    while not exited.poll(0):
+        cols, rows = os.get_terminal_size(terminal)
+        if rows and cols and (rows, cols) != applied:
+            try:
+                result = subprocess.run([command, disk, "resize", str(rows), str(cols)],
+                                        timeout=1)
+                success = result.returncode == 0
+            except subprocess.TimeoutExpired:
+                success = False
+            if success:
+                applied = rows, cols
+                delay = 0.25
+            else:
+                # Boot and package transactions can temporarily occupy the channel.
+                delay = min(delay * 2, 8)
+        if exited.poll(round(delay * 1000)):
+            break
