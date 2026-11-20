@@ -1,16 +1,23 @@
 #!/usr/bin/python3
 """Return a guest boot setup failure to the host after QEMU powers down."""
+from contextlib import ExitStack
 import signal
 import socket
 import subprocess
 import sys
+from threading import Thread
+
+from host_browser import serve
 
 
 def run(command):
     # ttyS0 belongs to the interactive console. ttyS1 carries one failure byte
     # on a private socketpair, with no serial transcript or host file.
     receiver, guest = socket.socketpair()
-    with receiver, guest:
+    browser_enabled = command[0] == '--host-browser'
+    if browser_enabled:
+        command = command[1:]
+    with receiver, guest, ExitStack() as stack:
         child = None
         pending = set()
 
@@ -25,7 +32,17 @@ def run(command):
         guest.set_inheritable(True)
         command += ['-chardev', f'socket,id=bootstatus,fd={guest.fileno()}', '-serial', 'chardev:bootstatus']
         # QEMU also needs the disk lock and any anonymous fw_cfg descriptor.
+        if browser_enabled:
+            host_browser, guest_browser = socket.socketpair()
+            stack.enter_context(host_browser)
+            stack.enter_context(guest_browser)
+            guest_browser.set_inheritable(True)
+            command += ['-chardev', f'socket,id=browser,fd={guest_browser.fileno()}',
+                        '-device', 'virtserialport,bus=guestbus.0,chardev=browser,name=org.tizen.vm.browser']
         child = subprocess.Popen(command, close_fds=False)
+        if browser_enabled:
+            guest_browser.close()
+            Thread(target=serve, args=(host_browser,), daemon=True).start()
         guest.close()
         for sig in pending:
             child.send_signal(sig)

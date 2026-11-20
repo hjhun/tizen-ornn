@@ -16,5 +16,13 @@ for dir in workspace .cargo rpmbuild .local .tizen; do
     setfattr -n security.SMACK64 -v 'User::Shell' "$path"
     setfattr -n security.SMACK64TRANSMUTE -v TRUE "$path"
 done
+# crash-manager checks the executable path as crash_worker after dropping UID.
+# Keep binaries it needs outside the private AI home and preserve them on update.
+tools=$root$home/.tizen-vm-tools
+crash_gid=$(chroot "$root" id -g crash_worker)
+[[ ! -L $tools ]]
+install -d -m 2750 -o "$uid" -g "$crash_gid" "$tools"
+setfattr -n security.SMACK64 -v 'User::Shell' "$tools"
+setfattr -n security.SMACK64TRANSMUTE -v TRUE "$tools"
 install -m 644 "$project/guest/tizen-owner-profile.sh" \
     "$root/etc/profile.d/zz-tizen-owner.sh"

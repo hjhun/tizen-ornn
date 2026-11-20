@@ -1,0 +1,54 @@
+#!/usr/bin/python3 -I
+"""Send one HTTPS URL to the browser of the user running tizen-vm."""
+import os
+from pathlib import Path
+import select
+import sys
+import time
+import uuid
+
+PORT = "/dev/tizen-vm-browser"
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("Usage: xdg-open HTTPS_URL")
+    url = sys.argv[1]
+    if not url.startswith("https://") or not Path(PORT).exists():
+        if os.access("/usr/bin/xdg-open", os.X_OK):
+            os.execv("/usr/bin/xdg-open", sys.argv)
+        if not url.startswith("https://"):
+            sys.exit("The host browser port supports HTTPS URLs only.")
+        sys.exit("Start the VM with tizen-vm run --host-browser to open HTTPS links.")
+    if not url.isascii() or not url.isprintable() or " " in url:
+        sys.exit("Invalid HTTPS URL")
+    ident = uuid.uuid4().hex.encode()
+    request = ident + b" " + url.encode("ascii") + b"\n"
+    if len(request) > 16384:
+        sys.exit("URL too long")
+    with open(PORT, "r+b", buffering=0) as port:
+        if port.write(request) != len(request):
+            sys.exit("Incomplete host browser request")
+        deadline = time.monotonic() + 15
+        pending = b""
+        while time.monotonic() < deadline:
+            if not select.select([port], [], [], max(0, deadline - time.monotonic()))[0]:
+                break
+            chunk = port.read(256)
+            if not chunk:
+                break
+            pending += chunk
+            while b"\n" in pending:
+                line, pending = pending.split(b"\n", 1)
+                if line == ident + b" ok":
+                    return
+                if line == ident + b" error":
+                    sys.exit("Host could not launch its default browser.")
+    sys.exit("Host browser did not acknowledge the request.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except OSError as exc:
+        sys.exit(f"Guest browser port unavailable: {exc.strerror}")

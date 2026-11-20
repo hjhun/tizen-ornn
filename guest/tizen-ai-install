@@ -19,7 +19,8 @@ exec 9>"$NPM_CONFIG_PREFIX/.tizen-ai-install.lock"
 flock -x 9
 if [[ $name == agy ]]; then
     # Use the same Linux AMD64 manifest and SHA-512 as Google's installer.
-    stage=$(mktemp -d "$NPM_CONFIG_PREFIX/.agy.XXXXXXXX")
+    tools=$(getent passwd owner | cut -d: -f6)/.tizen-vm-tools
+    stage=$(mktemp -d "$tools/.agy.XXXXXXXX")
     trap 'rm -rf -- "$stage"' EXIT
     curl_opts=(--fail --location --silent --show-error --retry 2 --proto '=https' --proto-redir '=https')
     release=https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json
@@ -36,9 +37,11 @@ if [[ $name == agy ]]; then
     else
         mv "$stage/payload" "$stage/agy"
     fi
-    chmod 700 "$stage/agy"
+    chmod 750 "$stage/agy"
     "$stage/agy" --version
-    mv -f "$stage/agy" "$NPM_CONFIG_PREFIX/bin/agy"
+    mv -f "$stage/agy" "$tools/agy"
+    ln -s "$tools/agy" "$stage/link"
+    mv -fT "$stage/link" "$NPM_CONFIG_PREFIX/bin/agy"
 else
     npm install "${npm_options[@]}" "$package"
     "$NPM_CONFIG_PREFIX/bin/$name" --version

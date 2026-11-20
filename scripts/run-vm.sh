@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project=$(cd "$(dirname "$0")/.." && pwd)
-usage() { echo "Usage: $0 [--gui] [--foreground] [--share HOST_DIR | --share-ro HOST_DIR] [--no-host-network]"; }
+usage() { echo "Usage: $0 [--gui] [--foreground] [--share HOST_DIR | --share-ro HOST_DIR] [--no-host-network] [--host-browser]"; }
 gui=0
 managed=1
 host_network=1
+host_browser=0
 share_mode=
 share_path=
 launch_options=()
@@ -12,6 +13,9 @@ while (( $# )); do
     case "$1" in
         --gui) gui=1; launch_options+=(--gui) ;;
         --foreground) managed=0 ;;
+        --host-browser)
+            (( EUID != 0 )) || { echo 'Start the host browser as your ordinary host user.' >&2; exit 2; }
+            host_browser=1; launch_options+=(--host-browser) ;;
         --no-host-network) host_network=0; launch_options+=(--no-host-network) ;;
         --share|--share-ro)
             if [[ -n $share_mode || -z ${2:-} ]]; then usage >&2; exit 2; fi
@@ -66,7 +70,7 @@ if (( managed )) && [[ -t 0 && -t 1 ]]; then
     # The pane owns the disk lock. A client can leave without releasing it.
     share_id=
     if [[ -n $share_mode ]]; then share_id="$share_mode:$(stat -Lc '%d-%i' -- "$share_path")"; fi
-    exec "$project/scripts/console-session" "$disk" "$share_id" "$host_network" env TIZEN_CONSOLE_MANAGED=1 \
+    exec "$project/scripts/console-session" "$disk" "$share_id" "$host_network" "$host_browser" env TIZEN_CONSOLE_MANAGED=1 \
         TIZEN_OUT="$out" TIZEN_DISK="$(realpath -- "$disk")" TIZEN_DISK_FORMAT="$format" \
         TIZEN_KERNEL="${TIZEN_KERNEL:+$(realpath -- "$kernel")}" TIZEN_SELECTION_LINK="${TIZEN_SELECTION_LINK:-}" \
         "$project/scripts/run-vm.sh" --foreground "${launch_options[@]}"
@@ -145,6 +149,10 @@ if [[ -n $share_mode || -n $network_data ]]; then
     init=/bin/sh
     # A failed export must not open a shell over an ordinary guest directory.
     init_args=' -- -c "mount -t sysfs -o nosuid,nodev,noexec sysfs /sys && /bin/sh /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/boot/raw && exec /usr/lib/systemd/systemd; echo tizen-vm: guest setup failed, powering off >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff"'
+fi
+if (( host_browser )); then
+    runner=("$project/scripts/qemu-boot-status" --host-browser "${runner[@]}")
+elif [[ $init == /bin/sh ]]; then
     runner=("$project/scripts/qemu-boot-status" "${runner[@]}")
 fi
 if [[ -n ${TIZEN_QMP:-} ]]; then

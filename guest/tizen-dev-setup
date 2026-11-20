@@ -5,6 +5,14 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 mountpoint -q /sys/fs/smackfs || mount -t smackfs smackfs /sys/fs/smackfs
 test -f /sys/fs/smackfs/load2
 smackctl apply
+# The single-disk VM does not run the stock platform-extension migration.
+(
+    # Some user-session variables in this platform file are unset at boot.
+    set +u
+    . /etc/tizen-platform.conf
+    [ -d "$TZ_SYS_CRASH" ] ||
+        exec /bin/bash -e /usr/share/platform-extension/210.crash-worker-platform-extension-migration.sh
+) || echo 'tizen-vm: could not initialize the crash report directories' >&2
 ip link set lo up
 for path in /sys/class/net/*; do
     name=${path##*/}

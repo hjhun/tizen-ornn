@@ -19,6 +19,29 @@ codex
 
 Follow the provider's own sign-in instructions when prompted. Headless sessions may require the provider's device or remote authentication flow. To run a single command at the guest console, use `tizen-ai-shell codex --version`. You can also install from inside the guest with `tizen-ai-install codex`.
 
+## Sign in to Antigravity from a VM
+
+With the updated host CLI and guest image, start the VM with browser access enabled.
+
+```sh
+tizen-vm run --host-browser
+```
+
+Install `agy` from a second host terminal with `tizen-vm install agy`, then run `tizen-ai-shell agy` at the guest console. Selecting Google sign-in sends the HTTPS URL to the Windows default browser on WSL or the desktop browser on Linux. Complete sign-in there and paste the authorization code into the guest when prompted. The browser port is available to the guest owner and root for the lifetime of that boot. To enable it on an already running VM, stop the VM and start it again with the option.
+
+On an older image or a host without a desktop browser, run `tizen-ai-shell agy acp --login`. Open the printed link on your host and paste the returned code or callback URL into the guest prompt. Then start `tizen-ai-shell agy`.
+
+## Guest crash reports
+
+The kernel invokes Tizen's `crash-manager` on a native crash. As guest root, inspect the newest local report and list its contents.
+
+```sh
+ls -lt /opt/usr/share/crash/dump
+python3 -m zipfile -l /opt/usr/share/crash/dump/REPORT.zip
+```
+
+The installer puts the Antigravity executable in the owner's `~/.tizen-vm-tools` directory and links it into the AI shell's PATH. The `crash_worker` account can traverse this executable path. Credentials and personal settings stay in the private AI home. After migrating an older image, run `tizen-vm install agy` again to move the executable to this layout.
+
 ## Files and permissions
 
 The shell runs as the Tizen `owner` user. Its private home is `/home/owner/workspace/.ai-home`, where npm, the CLIs and their sign-in flows can write settings without changing the SMACK label of the platform home. User-installed binaries live under `.ai-home/.local/bin`. The default image contains the runtime and install helpers. Each developer installs the desired clients and supplies their own account.

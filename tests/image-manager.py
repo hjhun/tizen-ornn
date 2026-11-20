@@ -154,12 +154,12 @@ class ImageSelection(unittest.TestCase):
     def test_run_and_start_forward_share_paths_as_one_argument(self):
         folder = './project with spaces,commas'
         for verb, option in [('run', '--share'), ('start', '--share-ro')]:
-            argv = ['tizen-vm', verb, '--gui', option, folder]
+            argv = ['tizen-vm', verb, '--gui', '--host-browser', option, folder]
             with self.subTest(verb=verb), patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', argv), \
                     patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
                 with self.assertRaises(SystemExit):
                     manager.main()
-                self.assertEqual(run.call_args.args[1], [str(manager.SCRIPTS / 'run-vm.sh'), '--gui', option, folder])
+                self.assertEqual(run.call_args.args[1], [str(manager.SCRIPTS / 'run-vm.sh'), '--gui', '--host-browser', option, folder])
 
     def test_user_config_persists_partial_changes_and_validates_before_replacing(self):
         directory = self.home / 'xdg'
