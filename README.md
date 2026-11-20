@@ -15,6 +15,26 @@ tizen-vm run
 
 APT installs the host CLI and its dependencies. Run `build` and `run` as your normal user. The first build requests sudo to mount the image, downloads the dated Tizen snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse development disk. The VM uses host space as its disk fills, up to the guest filesystem's capacity. Keep the default image store, `~/.local/share/tizen-vm`, on a Linux filesystem. Set `TIZEN_VM_HOME` to choose another location. [Host package](https://github.com/hjhun/tizen-vm/releases/latest/download/tizen-vm_amd64.deb) · [Tizen SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
 
+### Find the VM disk
+
+For a standard package installation, `current` points to the selected image. Run these commands in Ubuntu to see its directory and disk file. Fresh builds use `tizen-rootfs.ext4`. A compressed image uses `tizen-rootfs.qcow2`.
+
+```sh
+store=${TIZEN_VM_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/tizen-vm}
+realpath "$store/current"
+ls -lh "$store/current"/tizen-rootfs.*
+```
+
+For Windows File Explorer, resolve the Linux symlinks in WSL2 first and paste the printed path into the address bar.
+
+```sh
+wslpath -w "$(realpath "$store/current")"
+```
+
+A source checkout normally keeps images under `out/`. When the installed CLI shares that store, `realpath` follows the link to the same disk.
+
+If HTTPS fails while downloading the image or installing guest tools, check the CA store of the system making the connection. [HTTPS and private CA setup](docs/https-certificates.md)
+
 ## Daily use
 
 | From | Command | Result |
