@@ -1,0 +1,12 @@
+case $- in *i*) ;; *) return ;; esac
+if [ "${LC_ALL:-}" = POSIX ]; then unset LC_ALL; export LANG=en_US.utf8; fi
+. /etc/profile.d/zz-tizen-dev-path.sh
+. /etc/profile.d/zz-tizen-prompt.sh
+HISTCONTROL=ignoreboth
+shopt -s histappend checkwinsize
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+PS1='\u@\h:\w\[${_tizen_color-}\]${_tizen_branch-}\[${_tizen_reset-}\]\$ '

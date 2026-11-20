@@ -25,7 +25,7 @@ if os.getuid() == 0:
     argv.extend(["--", *args])
     account = args[0] if args else "root"
     if account != "root":
-        label = b"User" if account == "dev" else b"User::Shell"
+        label = b"System::Privileged" if account == "tizen" else b"User::Shell"
         attr = Path("/proc/self/attr/current")
         if attr.read_bytes().rstrip(b"\x00\n") != label:
             attr.write_bytes(label)

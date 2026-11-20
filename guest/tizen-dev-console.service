@@ -9,8 +9,10 @@ Before=shutdown.target
 [Service]
 Type=simple
 SmackProcessLabel=System::Privileged
-WorkingDirectory=/root
-Environment=HOME=/root TERM=xterm-256color
+User=tizen
+Group=tizen
+WorkingDirectory=/home/tizen
+Environment=HOME=/home/tizen USER=tizen LOGNAME=tizen TERM=xterm-256color
 ExecStart=/bin/bash --login -i
 Restart=always
 StandardInput=tty-force

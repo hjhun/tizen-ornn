@@ -80,12 +80,17 @@ merge() {
 
 old_home=$(guest_home "$stage/old")
 new_home=$(guest_home "$stage/new")
-if [[ $old_home == /opt/usr/home && $old_home != "$new_home" ]]; then
+if [[ $old_home == /opt/usr/home || $new_home == /opt/usr/home ]]; then
     merge /opt/usr /opt/usr --exclude=/home
 else
     merge /opt/usr /opt/usr
 fi
-if [[ $old_home != /opt/usr/home || $new_home != /opt/usr/home ]]; then
+if [[ -d $stage/new$new_home/tizen && -d $stage/old$old_home/dev &&
+      ! -L $stage/old$old_home/dev && ! -e $stage/old$old_home/tizen ]]; then
+    merge "$old_home" "$new_home" --exclude=/dev
+    merge "$old_home/dev" "$new_home/tizen"
+    ln -s tizen "$stage/new$new_home/dev"
+else
     merge "$old_home" "$new_home"
 fi
 # Restore user-installed tools, keeping the three image-supplied Node commands.

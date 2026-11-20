@@ -6,7 +6,7 @@ if [ "$#" -eq 0 ]; then
 fi
 export XDG_RUNTIME_DIR=/run/tizen-dev-ui WAYLAND_DISPLAY=/run/wayland-0
 if [ ! -w "$XDG_RUNTIME_DIR" ] || [ ! -S "$WAYLAND_DISPLAY" ]; then
-    echo 'Start the VM with --gui and run this command as dev.' >&2
+    echo 'Start the VM with --gui and run this command as tizen.' >&2
     exit 1
 fi
 # The Tizen client must allocate SHM in a private, writable runtime directory.

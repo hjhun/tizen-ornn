@@ -1,0 +1,28 @@
+#!/bin/bash
+# Install runtime data from the matching Tizen RPM without its csh utilities.
+set -euo pipefail
+base=$HOME/dev-setup/vim
+mkdir -p "$base/pack/development/start"
+stage=$(mktemp -d "$base/.setup-XXXXXXXX")
+trap 'rm -rf -- "$stage"' EXIT
+if [[ ! -r $base/tizen-runtime/colors/desert.vim ]]; then
+    version=$(rpm -q --qf '%{VERSION}-%{RELEASE}' vim)
+    zypper --no-refresh --pkg-cache-dir "$stage/rpms" download "vim-data=$version"
+    rpm=$(find "$stage/rpms" -name 'vim-data-*.rpm' -print -quit)
+    cd "$stage"
+    rpm2cpio "$rpm" | cpio -id --quiet './usr/share/vim/vim*/*'
+    runtime=(usr/share/vim/vim[0-9]*)
+    test -r "${runtime[0]}/colors/desert.vim"
+    mv -T "${runtime[0]}" "$base/tizen-runtime"
+fi
+plugin() {
+    local name=$1 repo=$2 revision=$3
+    if [[ ! -d $base/pack/development/start/$name ]]; then
+        git init -q "$stage/$name"
+        git -C "$stage/$name" fetch --depth=1 "$repo" "$revision"
+        git -C "$stage/$name" checkout --quiet --detach FETCH_HEAD
+        mv "$stage/$name" "$base/pack/development/start/"
+    fi
+}
+plugin nerdtree https://github.com/preservim/nerdtree.git 690d061b591525890f1471c6675bcb5bdc8cdff9
+plugin taglist https://github.com/yegappan/taglist.git a48f3b1dcab9996bd65933d2a9ab32b2e12ffd96

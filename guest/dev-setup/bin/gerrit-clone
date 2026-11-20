@@ -1,0 +1,13 @@
+#!/bin/bash
+set -eu
+if [[ $# != 1 || ! $1 =~ ^[[:alnum:]][[:alnum:]_./-]*$ || $1 == *..* || $1 == */ ]]; then
+    echo 'Usage: gerrit-clone platform/core/appfw/tizen-action' >&2
+    exit 2
+fi
+dest=$HOME/workspace/${1##*/}
+mkdir -p "$HOME/workspace"
+git clone -- "tizen-gerrit:$1" "$dest"
+hook="$dest/.git/hooks/commit-msg"
+scp -O tizen-gerrit:hooks/commit-msg "$hook.new"
+chmod 755 "$hook.new"
+mv "$hook.new" "$hook"

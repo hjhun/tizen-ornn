@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
-install -d -m 0700 -o dev -g dev /run/tizen-dev-ui
+install -d -m 0700 -o tizen -g tizen /run/tizen-dev-ui
 chsmack -a 'User::Shell' -t /run/tizen-dev-ui
 # The emulator skeleton carries the floor label on these writable user paths.
 # Apply the development user's domain to its own configuration and cache roots.
-for path in /home/dev/.cache /home/dev/.config /home/dev/share; do
-    if [ -d "$path" ] && [ "$(stat -c %u "$path")" = "$(id -u dev)" ]; then
+for path in /home/tizen/.cache /home/tizen/.config /home/tizen/share; do
+    if [ -d "$path" ] && [ "$(stat -c %u "$path")" = "$(id -u tizen)" ]; then
         chsmack -a 'User::Shell' -t "$path"
     fi
 done

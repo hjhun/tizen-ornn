@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Select native development packages from the guest's configured snapshot.
+set -eu
+
+usage() {
+    cat <<'HELP'
+tizen-dev-packages list
+tizen-dev-packages search TERM
+tizen-dev-packages {plan|download|install} GROUP_OR_PACKAGE...
+
+Groups:
+  basic     git openssh rsync curl jq tar gzip unzip patch diffutils findutils
+  build     gcc gcc-c++ make cmake ninja pkg-config rpm-build
+  debug     gdb strace binutils
+  editor    vim ctags
+
+Choose individual RPM names or combine groups. Search lists matching versions
+and repositories. Plan asks zypper to resolve dependencies without installation.
+Download caches the selected RPMs, including installed versions available in the repository. Install shows zypper's confirmation.
+HELP
+}
+action=${1:-list}
+if (( $# )); then shift; fi
+case $action in
+    list|-h|--help) usage; exit 0 ;;
+    search) [[ $# == 1 && -n $1 ]] || { usage >&2; exit 2; }
+        exec zypper --no-refresh search --details -- "$1" ;;
+    plan) options=(install --no-recommends --dry-run) ;;
+    download) options=(download) ;;
+    install) options=(install --no-recommends) ;;
+    *) usage >&2; exit 2 ;;
+esac
+(( $# )) || { usage >&2; exit 2; }
+packages=()
+for item do
+    case $item in
+        basic) packages+=(git openssh rsync curl jq tar gzip unzip patch diffutils findutils) ;;
+        build) packages+=(gcc gcc-c++ make cmake ninja pkg-config rpm-build) ;;
+        debug) packages+=(gdb strace binutils) ;;
+        editor) packages+=(vim ctags) ;;
+        *) [[ $item =~ ^[[:alnum:]][[:alnum:]_.+-]*$ ]] || {
+               echo "Invalid package name: $item" >&2; exit 2;
+           }
+           packages+=("$item") ;;
+    esac
+done
+cmd=(/usr/bin/zypper --no-refresh "${options[@]}" -- "${packages[@]}")
+if [[ $action == download || $EUID == 0 ]]; then exec "${cmd[@]}"; fi
+printf -v command '%q ' "${cmd[@]}"
+exec su - root -c "$command"

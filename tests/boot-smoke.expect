@@ -1,4 +1,5 @@
 #!/usr/bin/expect -f
+source [file join [file dirname [info script]] root-login.tcl]
 # Run against a disposable QCOW2 overlay. Each phase must return a guest status.
 set timeout 120
 set here [file dirname [file normalize [info script]]]
@@ -12,11 +13,7 @@ log_user 0
 proc boot {} {
     global here timeout spawn_id
     spawn -noecho [file join $here .. scripts run-vm.sh] --foreground
-    expect {
-        -re {root:[^\r\n]*> $} {}
-        timeout {puts stderr "Guest did not reach the console"; exit 1}
-        eof {puts stderr "Guest exited before the console"; exit 1}
-    }
+    root_login
 }
 proc run_step {name command} {
     global timeout spawn_id
@@ -84,7 +81,7 @@ set failure [catch {
         set port $env(TIZEN_SDB_TEST_PORT)
         if {![regexp {^[1-9][0-9]{0,4}$} $port] || $port > 65535} {error "Invalid SDB test port"}
         # The caller supplies a disposable Tizen sdbd peer with writable /mnt.
-        set probe {su -s /bin/bash dev -c 'set -eu; cd; p=10.0.2.2:PORT;
+        set probe {su -s /bin/bash tizen -c 'set -eu; cd; p=10.0.2.2:PORT;
             sdb connect "$p"; sdb -s "$p" shell id | grep uid=;
             dir=$(mktemp -d); cd "$dir";
             remote=/mnt/tizen-dev-${dir##*/};
@@ -99,20 +96,20 @@ set failure [catch {
         test "$(id -u)" = 0; test "$(cat /proc/self/attr/current)" = System::Privileged;
         test "$(command -v node)" = /root/.local/bin/node;
         test "$(node --version)" = v26.13.1;
-        su - dev -c 'test "$(cat /proc/self/attr/current)" = User && test -r ~/.bashrc && node --version';
+        su - tizen -c 'test "$(cat /proc/self/attr/current)" = System::Privileged && test -r ~/.bashrc && node --version';
         su - owner -c 'test "$(cat /proc/self/attr/current)" = User::Shell && test -r ~/.bashrc && node --version')}
     run_step login_accounts [string map [list "\n" " "] $accounts]
     run_step ai_runtime {tizen-ai-check}
-    run_step package {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/sample-output"'}
-    run_step rust {su -s /bin/bash dev -c 'cd && cargo new --bin --vcs none rust-smoke && cd rust-smoke && cargo run --offline'}
-    run_step rust_arm {su -s /bin/bash dev -c 'cd "$HOME/rust-smoke" && . /etc/profile.d/tizen-cargo-arm.sh && cargo run --offline --target arm-unknown-linux-gnueabi && readelf -A target/arm-unknown-linux-gnueabi/debug/rust-smoke | grep -E "Tag_CPU_arch: v7$"'}
-    run_step cross_rpm {su -s /bin/bash dev -c 'cd && tizen-cross-check "$HOME/cross-result"'}
-    run_step arm_cmake {su -s /bin/bash dev -c 'cd && cmake -S /usr/share/tizen-dev/examples/cross-rpm -B cmake-arm -G Ninja --toolchain /usr/share/tizen-dev/cmake/armv7l.cmake && cmake --build cmake-arm && ctest --test-dir cmake-arm --no-tests=error --output-on-failure'}
-    run_step ui_rpm {su -s /bin/bash dev -c 'cd /usr/share/tizen-dev/examples/efl-counter && ./build-rpm.sh x86_64 "$HOME/ui-rpms" && ./build-rpm.sh armv7l "$HOME/ui-rpms"'}
-    run_step ui_tpk {su -s /bin/bash dev -c '/usr/share/tizen-dev/examples/efl-counter/build.sh "$HOME/ui-tpk"'}
-    run_step rust_tpk {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/debug/rust-smoke"'}
-    run_step rust_arm_tpk {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/arm-unknown-linux-gnueabi/debug/rust-smoke"'}
-    run_step debugger {su -s /bin/bash dev -c 'cd "$HOME/rust-smoke" && gdb -nx -batch -ex run --args target/debug/rust-smoke && strace -e exit_group target/debug/rust-smoke'}
+    run_step package {su -s /bin/bash tizen -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/sample-output"'}
+    run_step rust {su -s /bin/bash tizen -c 'cd && cargo new --bin --vcs none rust-smoke && cd rust-smoke && cargo run --offline'}
+    run_step rust_arm {su -s /bin/bash tizen -c 'cd "$HOME/rust-smoke" && . /etc/profile.d/tizen-cargo-arm.sh && cargo run --offline --target arm-unknown-linux-gnueabi && readelf -A target/arm-unknown-linux-gnueabi/debug/rust-smoke | grep -E "Tag_CPU_arch: v7$"'}
+    run_step cross_rpm {su -s /bin/bash tizen -c 'cd && tizen-cross-check "$HOME/cross-result"'}
+    run_step arm_cmake {su -s /bin/bash tizen -c 'cd && cmake -S /usr/share/tizen-dev/examples/cross-rpm -B cmake-arm -G Ninja --toolchain /usr/share/tizen-dev/cmake/armv7l.cmake && cmake --build cmake-arm && ctest --test-dir cmake-arm --no-tests=error --output-on-failure'}
+    run_step ui_rpm {su -s /bin/bash tizen -c 'cd /usr/share/tizen-dev/examples/efl-counter && ./build-rpm.sh x86_64 "$HOME/ui-rpms" && ./build-rpm.sh armv7l "$HOME/ui-rpms"'}
+    run_step ui_tpk {su -s /bin/bash tizen -c '/usr/share/tizen-dev/examples/efl-counter/build.sh "$HOME/ui-tpk"'}
+    run_step rust_tpk {su -s /bin/bash tizen -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/debug/rust-smoke"'}
+    run_step rust_arm_tpk {su -s /bin/bash tizen -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/arm-unknown-linux-gnueabi/debug/rust-smoke"'}
+    run_step debugger {su -s /bin/bash tizen -c 'cd "$HOME/rust-smoke" && gdb -nx -batch -ex run --args target/debug/rust-smoke && strace -e exit_group target/debug/rust-smoke'}
     run_step repo {zypper -n --no-refresh install --no-recommends ed && rpm -q ed}
     run_step network {git ls-remote --exit-code https://github.com/madler/zlib.git HEAD}
 } message]
@@ -121,7 +118,7 @@ shutdown
 if {$failure} {exit 1}
 boot
 set failure [catch {
-    run_step persistence {su -s /bin/bash dev -c 'cd && ./rust-smoke/target/debug/rust-smoke && sha256sum rust-output/*.tpk'}
+    run_step persistence {su -s /bin/bash tizen -c 'cd && ./rust-smoke/target/debug/rust-smoke && sha256sum rust-output/*.tpk'}
 } message]
 shutdown
 if {$failure} {puts stderr $message; exit 1}

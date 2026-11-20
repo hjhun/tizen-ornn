@@ -1,0 +1,78 @@
+set nocompatible
+set runtimepath^=~/.vim/tizen-runtime
+set packpath^=~/.vim/tizen-runtime
+syntax enable
+set autoindent
+set cindent
+set smartindent
+set nowrap
+set nowrapscan
+set nobackup
+set visualbell
+set nu
+set hlsearch
+set incsearch
+
+if !empty(globpath(&runtimepath, 'colors/desert.vim'))
+  colorscheme desert
+endif
+
+autocmd Syntax * syn match ExtraWhitespace /\s\+$\| \+\ze\t/
+autocmd BufEnter *.cc setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.hh setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.cpp setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.ll setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.yy setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.htm setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.xml setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.txt setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.manifest setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.tidl setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.sh setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.in setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.dart setlocal sts=2 sw=2 ts=2 expandtab smarttab
+autocmd BufEnter *.rs setlocal sts=2 sw=2 ts=2 expandtab smarttab
+
+highlight ExtraWhitespace ctermbg=red guibg=red
+match ExtraWhitespace /\s\+$/
+autocmd BufWinEnter * match ExtraWhitespace /\s\+$/
+autocmd InsertEnter * match ExtraWhitespace /\s\+\%#\@<!$/
+autocmd InsertLeave * match ExtraWhitespace /\s\+$/
+autocmd BufWinLeave * call clearmatches()
+
+"set colorcolumn=80
+autocmd BufWinEnter * let w:m2=matchadd('ErrorMsg', '\%>80v.\+', -1)
+
+" Return to last edit position when opening files (You want this!)
+autocmd BufReadPost *
+	\ if line("'\"") > 0 && line("'\"") <= line("$") |
+	\   exe "normal! g`\"" |
+	\ endif
+
+hi Comment term=bold ctermfg=lightblue guifg=#80a0ff gui=bold
+
+set fileencodings=utf8,euc-kr
+
+" vim -b : edit binary using xxd-format!
+augroup Binary
+	au!
+	au BufReadPre  *.bin let &bin=1
+	au BufReadPost *.bin if &bin | %!xxd
+	au BufReadPost *.bin set ft=xxd | endif
+	au BufWritePre *.bin if &bin | %!xxd -r
+	au BufWritePre *.bin endif
+	au BufWritePost *.bin if &bin | %!xxd
+	au BufWritePost *.bin set nomod | endif
+augroup END
+
+nmap <F7> :TlistToggle<CR>
+let Tlist_Ctags_Cmd="/usr/bin/ctags"
+let Tlist_Inc_Winwidth=0
+let Tlist_Exit_OnlyWindow=0
+let Tlist_Auto_Open=0
+let Tlist_Use_Left_Window=1
+
+nmap <F9> :NERDTreeToggle<CR>
+let NERDTreeWinPos="right"
+
+filetype plugin indent on

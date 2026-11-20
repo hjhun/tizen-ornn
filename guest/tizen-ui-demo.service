@@ -5,9 +5,9 @@ After=display-manager.service tizen-headed-bus.service
 
 [Service]
 Type=simple
-User=dev
-Group=dev
+User=tizen
+Group=tizen
 SmackProcessLabel=User::Shell
-WorkingDirectory=/home/dev
-Environment=HOME=/home/dev
+WorkingDirectory=/home/tizen
+Environment=HOME=/home/tizen
 ExecStart=/usr/local/bin/tizen-ui-run /usr/local/libexec/tizen-ui-counter

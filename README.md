@@ -25,6 +25,8 @@ realpath "$store/current"
 ls -lh "$store/current"/tizen-rootfs.*
 ```
 
+To delete a stopped VM disk, list managed images with `tizen-vm delete`, then run `tizen-vm delete IMAGE_DIRECTORY_NAME`. Confirm by typing the name again, or use `--yes` in automation. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
+
 For Windows File Explorer, resolve the Linux symlinks in WSL2 first and paste the printed path into the address bar.
 
 ```sh
@@ -46,7 +48,7 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 | Host | `tizen-vm run --gui` | Start with a window for UI apps on WSLg or a Linux desktop |
 | Guest console | Ctrl+C | Interrupt the foreground command, including a running dlog viewer |
 | Top-level guest shell | `exit` | Return to the host while keeping the VM, shell and jobs running |
-| Host | `tizen-vm stop` | Shut down the selected VM and wait for its disk to be released |
+| Host | `tizen-vm shutdown` | Shut down the selected VM and wait for its disk to be released |
 | Guest root shell | `systemctl poweroff` | Shut down the VM |
 | Another host terminal | `tizen-vm install ed` | Install a Tizen RPM and its dependencies in the running VM |
 | Another host terminal | `tizen-vm install codex` | Install the optional coding client for the guest developer |
@@ -59,11 +61,10 @@ The guest uses the Ubuntu host's outbound network and DNS through QEMU NAT. At b
 
 ## Develop inside Tizen
 
-Use the ordinary Tizen account for development. The guest supplies Git, Vim, GCC/G++, glibc, libstdc++, GLib and headers, CMake, Ninja, Make, Meson, Autotools, Cargo, GDB and strace.
+The console opens as `tizen` with SMACK label `System::Privileged`. Type `su -` for a passwordless root shell. Run `~/dev-setup/install.sh` to set up the CLI tools and editor. Add `--with-ssh-key` to generate a Gerrit key interactively. Set your Gerrit username in `~/.ssh/config` and your Git author name and email before cloning with `gerrit-clone PROJECT`. The guest supplies Git, Vim, GCC/G++, glibc, libstdc++, GLib and headers, CMake, Ninja, Make, Meson, Autotools, Cargo, GDB and strace.
 
 ```sh
-su - owner
-cd /home/owner/workspace
+cd ~/workspace
 cargo new hello
 cd hello
 cargo run --offline

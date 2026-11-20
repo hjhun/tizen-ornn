@@ -5,7 +5,7 @@ After=tizen-headed-runtime.service
 Before=tizen-ui-demo.service
 
 [Service]
-User=dev
-Group=dev
+User=tizen
+Group=tizen
 SmackProcessLabel=User::Shell
 ExecStart=/usr/bin/dbus-daemon --session --nofork --nopidfile --address=unix:path=/run/tizen-dev-ui/bus

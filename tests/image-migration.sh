@@ -60,6 +60,7 @@ for disk in "$old" "$temp/old.qcow2" "$temp/unclean.ext4"; do
         ln -s /opt/usr/home "$mnt/home"
         home_path=/opt/usr/home
     fi
+    mkdir -p "$mnt$home_path/tizen"
     echo vendor > "$mnt/opt/usr/data/new-default"
     for path in opt/dbspace/.pkgmgr_parser.db var/lib/rpm/Packages usr/bin/example; do
         echo fresh > "$mnt/$path"
@@ -74,7 +75,7 @@ for disk in "$old" "$temp/old.qcow2" "$temp/unclean.ext4"; do
     [[ $(stat -c '%a %u %g' "$p/.code") == '640 5001 5001' ]]
     [[ $(getfattr --only-values -n user.migration "$p/.code" 2>/dev/null) == present ]]
     [[ $(getfattr --only-values -n security.SMACK64 "$p" 2>/dev/null) == 'User::Shell' ]]
-    [[ $(cat "$mnt$home_path/dev/file") == dev ]]
+    [[ $(cat "$mnt$home_path/dev/file") == dev && -L $mnt$home_path/dev && -f $mnt$home_path/tizen/file ]]
     [[ $(cat "$mnt/opt/usr/data/service") == userdata ]]
     [[ $(cat "$mnt/opt/usr/data/new-default") == vendor ]]
     [[ $(cat "$mnt/root/.profile-data") == root ]]

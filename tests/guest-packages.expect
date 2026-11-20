@@ -1,4 +1,5 @@
 #!/usr/bin/expect -f
+source [file join [file dirname [info script]] root-login.tcl]
 # Boot a disposable guest; test out-of-band administration during foreground input.
 set timeout 120
 set root [file dirname [file dirname [file normalize [info script]]]]
@@ -23,7 +24,7 @@ proc required {pattern} {
     }
 }
 set failed [catch {
-    required {root:[^\r\n]*> }
+    root_login
     send -- {stty -echo; printf 'CONSOLE-%s\n' READY}
     send -- "\r"
     required {CONSOLE-READY}

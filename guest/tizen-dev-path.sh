@@ -2,7 +2,7 @@
 case "$(id -un)" in
     root) _tizen_bin=/root/.local/bin ;;
     owner) _tizen_bin="$(getent passwd owner | cut -d: -f6)/workspace/.ai-home/.local/bin" ;;
-    dev) _tizen_bin="$HOME/.local/bin" ;;
+    tizen) _tizen_bin="$HOME/.local/bin" ;;
     *) _tizen_bin= ;;
 esac
 # Move each default to the front, including on a repeated login.
@@ -20,6 +20,10 @@ _tizen_prepend() {
 }
 _tizen_prepend /usr/local/bin
 [ -z "$_tizen_bin" ] || _tizen_prepend "$_tizen_bin"
+if [ "$(id -un)" = tizen ]; then
+    _tizen_prepend "$HOME/dev-setup/cli/bin"
+    _tizen_prepend "$HOME/dev-setup/bin"
+fi
 export PATH
 unset _tizen_bin _tizen_path
 unset -f _tizen_prepend

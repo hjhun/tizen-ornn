@@ -1,4 +1,5 @@
 #!/usr/bin/expect -f
+source [file join [file dirname [info script]] root-login.tcl]
 # Use one local HTTP listener for both proxy-form and direct requests.
 set timeout 90
 log_user 0
@@ -53,11 +54,7 @@ set failed [catch {
         set args {}
         if {$mode eq "off"} {lappend args --no-host-network}
         spawn -noecho $project/scripts/run-vm.sh --foreground {*}$args
-        expect {
-            -re {root:[^\r\n]*> $} {}
-            timeout {error "Guest did not reach its console"}
-            eof {error "VM exited before login"}
-        }
+        root_login
         send -- "stty -echo\r"
         guest {pid=$(systemctl show -p MainPID --value tizen-guest-control.service) && test "$pid" -gt 0}
         if {$mode eq "on"} {

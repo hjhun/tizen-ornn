@@ -1,4 +1,5 @@
 #!/usr/bin/expect -f
+source [file join [file dirname [info script]] root-login.tcl]
 # Exercise a boot-time export as Tizen's ordinary developer account.
 set timeout 90
 log_user 0
@@ -46,11 +47,7 @@ set failed [catch {
             set env(TIZEN_DISK) $overlay
         }
         spawn -noecho $root/scripts/run-vm.sh --foreground --no-host-network $option $share
-        expect {
-            -re {root:[^\r\n]*> $} {}
-            timeout {error "Guest did not boot"}
-            eof {error "Launcher exited before login"}
-        }
+        root_login
         send -- "stty -echo\r"
         guest {findmnt -nr -o FSTYPE -T /home/owner/host | grep -x 9p}
         if {$option eq "--share"} {
@@ -98,11 +95,7 @@ set failed [catch {
     exec /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b $disk $env(TIZEN_DISK)
     set socket [exec $root/scripts/vm-runtime $env(TIZEN_DISK)].packages
     spawn -noecho $root/scripts/run-vm.sh --foreground --no-host-network --share $share
-    expect {
-        -re {root:[^\r\n]*> $} {}
-        timeout {error "Guest did not boot for the SIGTERM test"}
-        eof {error "Launcher exited before SIGTERM"}
-    }
+    root_login
     exec kill -TERM [exp_pid]
     expect {
         eof {}

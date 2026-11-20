@@ -23,3 +23,5 @@ if [[ ! -e $unit && ! -L $unit ]]; then
 fi
 install -Dm755 "$project/tests/linux-tools" "$root/usr/local/bin/tizen-linux-tools-check"
 setfattr -n security.SMACK64 -v _ "$root/usr/local/bin/tizen-linux-tools-check"
+install -Dm755 "$project/guest/tizen-dev-packages" "$root/usr/local/bin/tizen-dev-packages"
+setfattr -n security.SMACK64 -v _ "$root/usr/local/bin/tizen-dev-packages"

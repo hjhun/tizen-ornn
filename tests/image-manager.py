@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
+import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -82,10 +83,44 @@ class ImageSelection(unittest.TestCase):
         self.copy.side_effect = OSError('interrupted')
         with self.assertRaises(OSError):
             self.update()
-        (self.old / 'tizen-rootfs.ext4').write_bytes(b'resumed previous guest')
+        (self.old / 'tizen-rootfs.ext4').write_bytes(b'resumed previous guest with new data')
         self.copy.side_effect = None
         self.update()
         self.assertEqual(self.builder.call_count, 2)
+
+    def test_delete_managed_disk_and_restore_previous(self):
+        new = self.update()
+        disk = manager.disk_at(new)
+        with manager.stopped(new), self.assertRaisesRegex(ValueError, 'in use'):
+            manager.delete_image(self.home, new, new.name, True)
+        with self.assertRaisesRegex(ValueError, 'cancelled'), patch('sys.stdin.isatty', return_value=False):
+            manager.delete_image(self.home, new, new.name, False)
+        self.assertTrue(disk.exists())
+        manager.delete_image(self.home, new, new.name, True)
+        self.assertFalse(disk.exists())
+        self.assertEqual(manager.active_image(self.home), self.old)
+
+    def test_delete_preserves_qcow2_backing_disk(self):
+        new = self.update()
+        overlay = new.parent / 'child'
+        overlay.mkdir()
+        disk = manager.disk_at(new)
+        subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2',
+                                '-F', 'raw', '-b', disk, overlay / 'tizen-rootfs.qcow2'],
+                               check=True)
+        with self.assertRaisesRegex(ValueError, 'backing image'):
+            manager.delete_image(self.home, new, new.name, True)
+        self.assertTrue(disk.exists())
+        self.assertEqual(manager.active_image(self.home), new)
+
+    def test_delete_rejects_paths_outside_the_managed_store(self):
+        new = self.update()
+        alias = new.parent / 'alias'
+        alias.symlink_to(self.old)
+        for name in ('../dev', str(self.old), 'alias', '.', '.building-test'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                manager.delete_image(self.home, new, name, True)
+        self.assertTrue(manager.disk_at(self.old).is_file())
 
     def test_legacy_real_current_directory_is_retained(self):
         self.old.rename(self.home / 'current')
@@ -125,7 +160,7 @@ class ImageSelection(unittest.TestCase):
     def test_live_commands_select_disk_and_forward_arguments(self):
         disk = str(self.old / 'tizen-rootfs.ext4')
         examples = [
-            (['stop'], ['guest-command', disk, 'stop']),
+            (['shutdown'], ['guest-command', disk, 'shutdown']),
             (['install', 'codex', 'ed'], ['guest-command', disk, 'install', 'codex', 'ed']),
             (['update', '--packages'], ['update-packages', disk]),
             (['update', '--packages', '--snapshot', release, 'ed'], ['update-packages', disk, '--snapshot', release, 'ed']),

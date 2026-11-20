@@ -75,7 +75,7 @@ set failed [catch {
         set share [list --share $env(TIZEN_TEST_SHARE)]
     }
     set a [attach 1 {*}$share]
-    visible "root:~>"
+    visible {tizen@localhost:~$}
     if {[llength $share]} {
         reject_startup_change "different share settings" --share-ro $env(TIZEN_TEST_SHARE)
         if {[lsearch -exact $launcher --no-host-network] == -1} {
@@ -86,7 +86,7 @@ set failed [catch {
     command $a {cd /opt && saved=$$; sleep 180 & bg=$!; echo JOB-READY} JOB-READY
     send -i $a -- "\004"
     command $a {test "$$" = "$saved" && echo EOF-OK} EOF-OK
-    command $a {su - owner} "owner:~>"
+    command $a {su -} "root:~>"
     send -i $a -- "exit\r"
     command $a {test "$$" = "$saved" && echo NESTED-OK} NESTED-OK
 
@@ -107,7 +107,7 @@ set failed [catch {
     set d [attach 1 {*}$share]
     command $d {test "$saved" = "$$" && kill -0 "$bg" && echo RECONNECTED-OK} RECONNECTED-OK
     set cli [file join [file dirname [file normalize [info script]]] .. tizen-vm]
-    exec $cli stop
+    exec $cli shutdown
     finished $d
     exec flock -n $disk true
 } message]

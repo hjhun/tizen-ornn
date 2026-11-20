@@ -27,7 +27,7 @@ With the updated host CLI and guest image, start the VM with browser access enab
 tizen-vm run --host-browser
 ```
 
-Install `agy` from a second host terminal with `tizen-vm install agy`, then run `tizen-ai-shell agy` at the guest console. Selecting Google sign-in sends the HTTPS URL to the Windows default browser on WSL or the desktop browser on Linux. Complete sign-in there and paste the authorization code into the guest when prompted. The browser port is available to the guest owner and root for the lifetime of that boot. To enable it on an already running VM, stop the VM and start it again with the option.
+Install `agy` from a second host terminal with `tizen-vm install agy`, then run `tizen-ai-shell agy` at the guest console. Selecting Google sign-in sends the HTTPS URL to the Windows default browser on WSL or the desktop browser on Linux. Complete sign-in there and paste the authorization code into the guest when prompted. The browser port is available to the guest tizen, owner and root accounts for the lifetime of that boot. To enable it on an already running VM, stop the VM and start it again with the option.
 
 On an older image or a host without a desktop browser, run `tizen-ai-shell agy acp --login`. Open the printed link on your host and paste the returned code or callback URL into the guest prompt. Then start `tizen-ai-shell agy`.
 

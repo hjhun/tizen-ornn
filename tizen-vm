@@ -237,6 +237,62 @@ def prepare(home, active, snapshot):
         print(f'Previous disk retained at {active}. Run tizen-vm rollback to use it.')
 
 
+def delete_image(home, active, name, yes):
+    images = home / 'images'
+    if name is None:
+        if images.is_dir() and not images.is_symlink():
+            for path in sorted(images.iterdir()):
+                if path.name.startswith('.') or path.is_symlink() or not path.is_dir():
+                    continue
+                if any((path / filename).is_file() for filename in
+                       ('tizen-rootfs.ext4', 'tizen-rootfs.qcow2')):
+                    print(path.name, '(selected)' if path == active else '')
+        return
+    if name.startswith('.') or Path(name).name != name or images.is_symlink():
+        raise ValueError('Use one image directory name from the managed images directory.')
+    image = images / name
+    if image.is_symlink() or not image.is_dir():
+        raise ValueError(f'No managed image named {name}.')
+    disk = disk_at(image)
+    if disk.is_symlink() or all((image / f'tizen-rootfs.{ext}').exists()
+                               for ext in ('ext4', 'qcow2')):
+        raise ValueError('Expected one regular disk in the image directory.')
+    link = selection_link(home)
+    previous = None
+    if link.is_symlink():
+        generation = (home / os.readlink(link)).parent
+        if generation.parent == home / '.tizen-selections':
+            candidate = generation / 'previous'
+            if candidate.is_dir():
+                previous = candidate.resolve()
+    with stopped(image):
+        loops = subprocess.check_output(['losetup', '-j', disk], text=True)
+        if loops.strip() or os.path.ismount(image) or os.path.ismount(disk):
+            raise ValueError('The image is mounted or attached to a loop device.')
+        for overlay in images.glob('*/tizen-rootfs.qcow2'):
+            if overlay == disk:
+                continue
+            info = subprocess.check_output(['qemu-img', 'info', '-U', '--output=json',
+                                            '--backing-chain', str(overlay)], text=True)
+            for layer in json.loads(info):
+                backing = layer.get('full-backing-filename')
+                if backing and Path(backing).resolve() == disk:
+                    raise ValueError(f'{overlay} uses this disk as a backing image.')
+        if not yes:
+            if not sys.stdin.isatty() or input(f'Delete {disk}? Type {name} to confirm: ') != name:
+                raise ValueError('Deletion cancelled. For non-interactive use specify --yes.')
+        if active == image:
+            if previous and previous != image:
+                disk_at(previous)
+                select(home, previous, None)
+            elif link.is_symlink():
+                link.unlink()
+        elif previous == image:
+            select(home, active, None)
+        disk.unlink()
+    print(f'Deleted {disk}')
+
+
 def rollback(home, active):
     current = selection_link(home)
     if not active or not current.is_symlink():
@@ -275,7 +331,7 @@ def main():
     sharing = start.add_mutually_exclusive_group()
     sharing.add_argument('--share', metavar='HOST_DIR', help='mount a host directory at /home/owner/host')
     sharing.add_argument('--share-ro', metavar='HOST_DIR', help='mount a read-only host directory at /home/owner/host')
-    commands.add_parser('stop', help='power off the selected VM and wait for its disk to be released')
+    commands.add_parser('shutdown', help='power off the selected VM and wait for its disk to be released')
     install = commands.add_parser('install', help='install packages or AI tools in the running VM')
     install.add_argument('packages', nargs='*', metavar='NAME', help='RPM or optional tool name; omit for build')
     update = commands.add_parser('update', help='update a stopped image or upgrade packages in the running VM')
@@ -284,6 +340,9 @@ def main():
     mode.add_argument('--packages', action='store_true', help='upgrade installed RPMs against the selected snapshot')
     update.add_argument('--snapshot', metavar='ID', help='select a specific dated snapshot')
     update.add_argument('names', nargs='*', metavar='RPM', help='limit --packages to these installed RPMs')
+    delete = commands.add_parser('delete', help='delete a stopped managed disk by image directory name')
+    delete.add_argument('image', nargs='?', help='image directory name; omit to list managed disks')
+    delete.add_argument('--yes', action='store_true', help='skip the interactive confirmation')
     commands.add_parser('rollback', help='switch back to the previous stopped disk')
     args = parser.parse_args()
     if args.command == 'config':
@@ -317,7 +376,7 @@ def main():
         os.execv(run, command)
     if args.gui:
         parser.error('--gui applies to run')
-    if args.command == 'stop':
+    if args.command == 'shutdown':
         disk = os.environ.get('TIZEN_DISK')
         if not disk:
             image = Path(explicit) if explicit else active_image(home)
@@ -325,7 +384,7 @@ def main():
                 raise ValueError('No image installed.')
             disk = str(disk_at(image))
         client = str(SCRIPTS / 'guest-command')
-        os.execv(client, [client, disk, 'stop'])
+        os.execv(client, [client, disk, 'shutdown'])
     if os.environ.get('TIZEN_DISK') or os.environ.get('TIZEN_KERNEL'):
         parser.error('unset TIZEN_DISK and TIZEN_KERNEL to manage the selected image')
     if explicit and Path(explicit).resolve() != home:
@@ -346,7 +405,9 @@ def main():
     home.mkdir(mode=0o755, parents=True, exist_ok=True)
     with lock_file(home / '.tizen-management.lock', 'Another image installation or switch is in progress.', create=True):
         active = active_image(home)
-        if args.command == 'rollback':
+        if args.command == 'delete':
+            delete_image(home, active, args.image, args.yes)
+        elif args.command == 'rollback':
             rollback(home, active)
         elif args.command in ('install', 'build') and active:
             dependencies(build=False)

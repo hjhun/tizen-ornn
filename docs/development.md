@@ -17,7 +17,7 @@ systemctl --user --no-pager list-units --type=service --state=running
 
 ## 개발과 패키지 설치
 
-직렬 콘솔의 root는 패키지 관리에 사용할 수 있습니다. 플랫폼 사용자로 개발하려면 `su - owner` 후 `cd /home/owner/workspace`를 실행합니다. `/home`은 `/opt/usr/home`을 가리킵니다. 원래 홈은 Tizen의 `User::Home` SMACK 라벨을 유지하고, 소스와 산출물은 일반 셸에서 쓸 수 있는 개발 디렉터리에 저장합니다. GUI 예제에는 별도의 `dev` 계정도 사용할 수 있습니다. 기본 도구에는 Git, Vim, GCC/G++, glibc·libstdc++·GLib의 개발 헤더, pkg-config, CMake/CTest, Ninja, Make, GDB, strace, rustc, Cargo, rpmbuild가 포함되어 있습니다. Meson, Autoconf, Automake, Libtool, M4, SSH 클라이언트, rsync, jq와 iputils도 설치됩니다. `owner`의 작업 디렉터리에서 `tizen-linux-tools-check`로 기본 빌드·디버깅 도구를 검사할 수 있습니다.
+직렬 콘솔에서 `su -`로 진입한 root는 패키지 관리에 사용할 수 있습니다. 플랫폼 사용자로 개발하려면 `su - owner` 후 `cd /home/owner/workspace`를 실행합니다. `/home`은 `/opt/usr/home`을 가리킵니다. 원래 홈은 Tizen의 `User::Home` SMACK 라벨을 유지하고, 소스와 산출물은 일반 셸에서 쓸 수 있는 개발 디렉터리에 저장합니다. 기본 개발 계정은 `tizen`입니다. 기본 도구에는 Git, Vim, GCC/G++, glibc·libstdc++·GLib의 개발 헤더, pkg-config, CMake/CTest, Ninja, Make, GDB, strace, rustc, Cargo, rpmbuild가 포함되어 있습니다. Meson, Autoconf, Automake, Libtool, M4, SSH 클라이언트, rsync, jq와 iputils도 설치됩니다. `owner`의 작업 디렉터리에서 `tizen-linux-tools-check`로 기본 빌드·디버깅 도구를 검사할 수 있습니다.
 
 ```sh
 # root
@@ -35,7 +35,7 @@ cargo run --offline
 
 ## owner로 aul-1 빌드
 
-게스트의 직렬 콘솔에서 `su - owner`를 실행합니다. Gerrit 접근 권한이 있으면 아래의 `GERRIT_ID`를 자신의 사용자 이름으로 바꿔 clone합니다. R4와 같은 소스는 Unified 스냅샷의 `aul-0.83.29-1.src.rpm`에 기록된 커밋입니다.
+게스트의 직렬 콘솔에서 `su -`로 root에 진입한 뒤 `su - owner`를 실행합니다. Gerrit 접근 권한이 있으면 아래의 `GERRIT_ID`를 자신의 사용자 이름으로 바꿔 clone합니다. R4와 같은 소스는 Unified 스냅샷의 `aul-0.83.29-1.src.rpm`에 기록된 커밋입니다.
 
 ```sh
 cd /home/owner/workspace
@@ -88,7 +88,7 @@ rpm -Uvh ./tizen-build-1.0-1.noarch.rpm
 ```sh
 # 게스트 root
 systemctl stop tizen-ui-demo.service
-su dev
+su - tizen
 cd
 cp -r /usr/share/tizen-dev/examples/efl-counter "$HOME/efl-counter"
 cd "$HOME/efl-counter"
@@ -98,11 +98,11 @@ tizen-ui-run "$PWD/tizen-ui"
 
 이 경로는 Tizen의 Wayland 공유 메모리 버퍼로 그립니다. 스냅샷 기본 Flutter 홈 화면(`org.tizen.homescreen`)은 현재 EGL 디스플레이 초기화에 실패합니다. GUI 모드에서 Tizen의 `starter`는 이 홈 앱 실행을 재시도합니다. 아래 EFL 예제의 렌더링과 입력은 확인했습니다. `tizen-ui-run`은 일반 사용자에게 쓰기 권한이 있는 런타임 디렉터리와 게스트의 Wayland 소켓을 설정합니다.
 
-같은 예제 디렉터리에서 `./build.sh "$HOME/ui"`를 실행하면 실행 파일과 공식 CLI가 서명한 `org.example.tizencounter-1.0.0-x86_64.tpk`가 함께 생성됩니다. TPK의 ELF와 원래 파일이 일치하는지 빌드 스크립트가 검사합니다. 플랫폼의 패키지 관리 경로를 사용하려면 root 콘솔에서 `pkgcmd -i -t tpk -p /home/dev/ui/org.example.tizencounter-1.0.0-x86_64.tpk`를 실행하고 `pkginfo --app org.example.tizencounter`로 등록을 조회합니다.
+같은 예제 디렉터리에서 `./build.sh "$HOME/ui"`를 실행하면 실행 파일과 공식 CLI가 서명한 `org.example.tizencounter-1.0.0-x86_64.tpk`가 함께 생성됩니다. TPK의 ELF와 원래 파일이 일치하는지 빌드 스크립트가 검사합니다. 플랫폼의 패키지 관리 경로를 사용하려면 root 콘솔에서 `pkgcmd -i -t tpk -p /home/tizen/ui/org.example.tizencounter-1.0.0-x86_64.tpk`를 실행하고 `pkginfo --app org.example.tizencounter`로 등록을 조회합니다.
 
 ## x86_64와 ARMv7 빌드
 
-아래 예시의 `$HOME/ui-*`, `$HOME/packages` 등 경로는 `dev` 계정 기준입니다. `owner`로 실행할 때는 출력 경로를 `$HOME/workspace/` 아래로 지정합니다. `gcc`, `g++`, `pkg-config`는 x86_64용입니다. ARMv7은 `tizen-armv7l-gcc`, `tizen-armv7l-g++`, `tizen-armv7l-pkg-config`를 사용합니다. ARM 헤더·라이브러리는 공식 `armv7l` RPM에서 가져와 `/opt/tizen/sysroots/armv7l`에 설치했습니다.
+아래 예시의 `$HOME/ui-*`, `$HOME/packages` 등 경로는 `tizen` 계정 기준입니다. `owner`로 실행할 때는 출력 경로를 `$HOME/workspace/` 아래로 지정합니다. `gcc`, `g++`, `pkg-config`는 x86_64용입니다. ARMv7은 `tizen-armv7l-gcc`, `tizen-armv7l-g++`, `tizen-armv7l-pkg-config`를 사용합니다. ARM 헤더·라이브러리는 공식 `armv7l` RPM에서 가져와 `/opt/tizen/sysroots/armv7l`에 설치했습니다.
 
 ```sh
 cd /usr/share/tizen-dev/examples/efl-counter
@@ -169,3 +169,16 @@ TIZEN_USB=001:004 ./scripts/run-vm.sh
 ```
 
 WSL2에서는 먼저 Windows에서 usbipd-win으로 선택한 장치를 WSL에 연결한 후 WSL의 `lsusb` 번호를 사용합니다. Windows의 BUSID와 이 번호는 형식이 다릅니다. 게스트 커널에는 xHCI/PCI와 USB 지원이 내장돼 있습니다. TCP 검증은 별도 환경의 공식 Tizen sdbd를 대상으로 했으며, 물리 USB 장치 접속은 미검증입니다. [Microsoft USB 연결 안내](https://learn.microsoft.com/en-us/windows/wsl/connect-usb)
+
+### 개발 패키지 선택
+
+게스트에서 `tizen-dev-packages list`로 기본 유틸리티, 빌드, 디버깅, 편집기 그룹을 확인합니다. 그룹과 개별 RPM 이름을 함께 지정할 수 있습니다.
+
+```sh
+tizen-dev-packages search ctags
+tizen-dev-packages plan build ctags
+tizen-dev-packages download build ctags
+tizen-dev-packages install build ctags
+```
+
+`plan`은 현재 스냅샷에서 의존성과 변경 내역을 확인합니다. `download`는 선택한 RPM을 사용자 캐시에 받고, `install`은 zypper에서 변경 내역을 확인한 뒤 설치합니다.

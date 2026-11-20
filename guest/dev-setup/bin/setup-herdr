@@ -1,0 +1,13 @@
+#!/bin/bash
+# Match the Ubuntu workstation's Herdr release.
+set -eu
+base=$HOME/dev-setup/cli/bin
+mkdir -p "$base"
+tmp=$(mktemp "$base/.herdr-XXXXXXXX")
+trap 'rm -f -- "$tmp"' EXIT
+curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 \
+    https://github.com/herdrdev/herdr/releases/download/v0.9.4/herdr-linux-x86_64 -o "$tmp"
+echo "493304fbefb0ed0ea0455f373b47f48d24e8774bc7974f4c916ad2e937675b23  $tmp" | sha256sum --check --status
+chmod 755 "$tmp"
+"$tmp" --version
+mv -f "$tmp" "$base/herdr"
