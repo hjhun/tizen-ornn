@@ -42,13 +42,19 @@ for key in ui branch status diff commit; do
 done
 
 for name in agy claude codex herdr; do
-    if "$base/cli/bin/$name" --version 2>/dev/null; then continue; fi
+    if "$base/cli/bin/$name" --version 2>/dev/null; then
+        if [[ $name == claude ]]; then "$base/bin/setup-claude-statusline"; fi
+        continue
+    fi
     if [[ $name == herdr ]]; then
         "$base/bin/setup-herdr"
     else
         "$base/bin/install-ai-clis" "$name"
     fi
 done
+
+"$base/bin/setup-graphify"
+"$base/bin/setup-skills"
 
 key=$HOME/.ssh/id_ed25519_tizen_gerrit
 if [[ ${1:-} == --with-ssh-key && ! -e $key ]]; then

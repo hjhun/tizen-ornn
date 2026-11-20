@@ -12,6 +12,8 @@ From the host terminal, run `tizen-vm` to start the selected guest or return to 
 | Run `tizen-vm shutdown` on the host | Shut down the selected guest, including a detached session. |
 | Run `systemctl poweroff` as guest root | Shut down the VM and release its disk. |
 
+At startup the serial console takes the host terminal’s rows and columns, with a 24 by 80 fallback. Reattaching with `tizen-vm` reapplies the attaching terminal’s size when the guest control channel is ready. All viewers share the same guest terminal size.
+
 Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-vm update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
 
 The serial console logs in as the ordinary Unix user `tizen` with the `System::Privileged` SMACK label. Run `su -` for a passwordless root login. From root, `su - owner` selects the platform owner's `User::Shell` label. Use `id` and `cat /proc/$$/attr/current` to inspect the login.

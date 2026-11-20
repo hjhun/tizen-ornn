@@ -63,7 +63,11 @@ disk=${TIZEN_DISK:-$default_disk}
 format=${TIZEN_DISK_FORMAT:-raw}
 if [[ -z ${TIZEN_DISK_FORMAT:-} && $disk == *.qcow2 ]]; then format=qcow2; fi
 [[ -r "$kernel" && -w "$disk" ]] || { echo 'Missing kernel or writable Tizen disk' >&2; exit 1; }
+# QEMU's emulated UART forwards bytes but not the host's terminal size.
+console_size=${TIZEN_CONSOLE_SIZE:-$(stty size 2>/dev/null || :)}
+[[ $console_size =~ ^[1-9][0-9]{0,3}\ [1-9][0-9]{0,3}$ ]] || console_size='24 80'
 if (( managed )) && [[ -t 0 && -t 1 ]]; then
+    export TIZEN_CONSOLE_SIZE="$console_size"
     if [[ ! -f $out/.tizen-vm-image-revision ]]; then
         echo "Legacy image: upgrade with tizen-vm update --image to detach by typing exit." >&2
     fi
@@ -180,8 +184,8 @@ if [[ -n ${TIZEN_USB:-} ]]; then
     fi
     args+=(-device qemu-xhci,id=xhci -device "usb-host,bus=xhci.0,hostbus=$((10#${BASH_REMATCH[1]})),hostaddr=$((10#${BASH_REMATCH[2]}))")
 fi
-console_cmdline=
-if [[ ${TIZEN_CONSOLE_MANAGED:-0} == 1 ]]; then console_cmdline=' tizen.console=managed'; fi
+console_cmdline=" tizen.console_size=${console_size/ /x}"
+if [[ ${TIZEN_CONSOLE_MANAGED:-0} == 1 ]]; then console_cmdline+=' tizen.console=managed'; fi
 exec "${runner[@]}" "$qemu" "${args[@]}" -machine pc -smp "${TIZEN_CPUS:-2}" -m "${TIZEN_RAM:-3072}" \
     -nodefaults "${display[@]}" -no-reboot -monitor none \
     -chardev stdio,id=console,signal=off -serial chardev:console \

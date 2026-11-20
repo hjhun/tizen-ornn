@@ -37,4 +37,5 @@ for name do
             ;;
     esac
     "$NPM_CONFIG_PREFIX/bin/$name" --version
+    if [[ $name == claude ]]; then "$base/bin/setup-claude-statusline"; fi
 done

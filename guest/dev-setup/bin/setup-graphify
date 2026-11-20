@@ -1,0 +1,17 @@
+#!/bin/bash
+set -eu
+base=$HOME/dev-setup
+# Tizen's platform loader admits native Python extensions under /usr.
+venv=/usr/local/lib/tizen-vm/graphify-0.9.40
+mkdir -p "$base/cli/bin" "$base/skills/graphify"
+if ! "$venv/bin/python" -Ic 'import tree_sitter, tree_sitter_cpp; from importlib.metadata import version; assert version("graphifyy") == "0.9.40"' 2>/dev/null; then
+    su - root -c 'set -e
+        venv=/usr/local/lib/tizen-vm/graphify-0.9.40
+        python3 -m venv --without-pip "$venv"
+        python3 -m pip --python "$venv/bin/python" install --disable-pip-version-check graphifyy==0.9.40'
+fi
+"$venv/bin/python" -Ic 'import tree_sitter, tree_sitter_cpp'
+ln -sfn "$venv/bin/graphify" "$base/cli/bin/graphify"
+"$venv/bin/python" -c 'from importlib.resources import files; import sys; sys.stdout.buffer.write(files("graphify").joinpath("skill.md").read_bytes())' > "$base/skills/graphify/SKILL.md.new"
+mv "$base/skills/graphify/SKILL.md.new" "$base/skills/graphify/SKILL.md"
+"$base/cli/bin/graphify" --help >/dev/null

@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+"""Merge the developer status line into the guest user's Claude Code settings."""
+import json
+import os
+from pathlib import Path
+import tempfile
+
+settings = (Path.home() / ".claude" / "settings.json").resolve()
+settings.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+config = json.loads(settings.read_text()) if settings.exists() else {}
+status = {"type": "command", "command": 'bash "$HOME/dev-setup/claude/statusline.sh"'}
+if config.get("statusLine") != status:
+    config["statusLine"] = status
+    with tempfile.NamedTemporaryFile(mode="w", dir=settings.parent, delete=False) as tmp:
+        temp = Path(tmp.name)
+        try:
+            json.dump(config, tmp, ensure_ascii=False, indent=2)
+            tmp.write("\n")
+            tmp.flush()
+            os.replace(temp, settings)
+        finally:
+            if temp.exists():
+                temp.unlink()

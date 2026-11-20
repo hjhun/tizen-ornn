@@ -1,4 +1,6 @@
 set nocompatible
+set loadplugins
+set packpath^=~/.vim
 set runtimepath^=~/.vim/tizen-runtime
 set packpath^=~/.vim/tizen-runtime
 syntax enable

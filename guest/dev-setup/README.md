@@ -16,3 +16,9 @@ From the guest console run `~/dev-setup/install.sh`. The installer offers the se
 Use `tizen-dev-packages list` to view package groups and `tizen-dev-packages plan build ctags` to resolve a selection. Use `download` to cache individual RPMs and `install` to install with dependencies.
 
 Run `install-ai-clis` to reinstall the three AI clients, or pass one name such as `install-ai-clis codex`. Run `setup-herdr` to reinstall the pinned Herdr release.
+
+The interactive Bash commands `claude`, `codex` and `agy` use their permission-bypass flags. Invoke `command claude`, `command codex` or `command agy` for the upstream defaults. Installing Claude merges the display command from `claude/statusline.sh` into the user's Claude settings. It shows the model, working directory and branch, context usage, cost, duration and available rate limits.
+
+The installer links the coding-style and development-style skills from `~/dev-setup/skills` into `~/.agents/skills`, `~/.agent/skills`, and `~/.claude/skills`. The distributed copies contain reusable engineering rules.
+
+Graphify is installed in a dedicated Python environment under `/usr/local/lib/tizen-vm` so Tizen can load its native parsers. Its skill comes from the matching graphifyy distribution, and the Herdr skill comes from the installed Herdr binary. Both are linked alongside the two development skills. Setup leaves graph builds and project hooks under the developer's control.

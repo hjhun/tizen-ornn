@@ -1,8 +1,18 @@
 # This file is sourced by login shells from /etc/profile.d.
 case $- in *i*) ;; *) return ;; esac
 [ -n "${BASH_VERSION:-}" ] && [ -t 0 ] || return
-case " $(cat /proc/cmdline) " in *" tizen.console=managed "*) ;; *) return ;; esac
 [ "$(tty)" = /dev/ttyS0 ] || return
+
+_tizen_cmdline=$(cat /proc/cmdline)
+if [[ $(stty size) =~ ^(0\ [0-9]+|[0-9]+\ 0)$ ]]; then
+    if [[ " $_tizen_cmdline " =~ \ tizen\.console_size=([1-9][0-9]{0,3})x([1-9][0-9]{0,3})\  ]]; then
+        stty rows "${BASH_REMATCH[1]}" cols "${BASH_REMATCH[2]}"
+    else
+        stty rows 24 cols 80
+    fi
+fi
+case " $_tizen_cmdline " in *" tizen.console=managed "*) ;; *) unset _tizen_cmdline; return ;; esac
+unset _tizen_cmdline
 
 IGNOREEOF=10
 # systemd starts the top-level Bash directly. su and nested shells keep

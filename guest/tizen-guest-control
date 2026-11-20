@@ -1,13 +1,16 @@
 #!/usr/bin/python3
 """Local virtio package service. One transaction runs at a time."""
 import base64
+import fcntl
 import hashlib
 import json
 import os
 import re
 import select
+import struct
 import subprocess
 import tempfile
+import termios
 import time
 
 MAX_BUNDLE = 64 * 1024 * 1024
@@ -149,6 +152,17 @@ def main():
                     continue
                 if op == "install":
                     code = run_commands(port, ident, install_commands(req.get("names")))
+                elif op == "resize":
+                    size = req.get("names")
+                    if not isinstance(size, list) or len(size) != 2 or not all(
+                            isinstance(n, str) and re.fullmatch(r"[1-9][0-9]{0,3}", n) for n in size):
+                        raise ValueError("Invalid terminal size")
+                    fd = os.open("/dev/ttyS0", os.O_RDWR | os.O_NOCTTY)
+                    try:
+                        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", int(size[0]), int(size[1]), 0, 0))
+                    finally:
+                        os.close(fd)
+                    code = 0
                 elif op == "poweroff":
                     code = subprocess.run(["/usr/bin/systemctl", "--no-block", "poweroff"]).returncode
                 elif op == "update":

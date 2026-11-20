@@ -95,6 +95,8 @@ def request(disk, op, names, bundle):
 
 
 def main(args):
+    if len(args) == 4 and args[1] == "resize":
+        return request(args[0], "resize", args[2:], None)
     if len(args) == 2 and args[1] == "shutdown":
         disk = args[0]
         with open(disk, "rb") as image:
