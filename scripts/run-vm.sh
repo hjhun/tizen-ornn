@@ -184,13 +184,21 @@ if [[ -n ${TIZEN_USB:-} ]]; then
     fi
     args+=(-device qemu-xhci,id=xhci -device "usb-host,bus=xhci.0,hostbus=$((10#${BASH_REMATCH[1]})),hostaddr=$((10#${BASH_REMATCH[2]}))")
 fi
+# Keep UART 0 reserved so the private boot-status channel remains ttyS1.
+console=ttyS0,115200
+serial=(-serial chardev:console)
+if [[ -f $out/.tizen-virtio-console ]] &&
+    grep -qx CONFIG_VIRTIO_CONSOLE=y "$(dirname -- "$kernel")/kernel.config" 2>/dev/null; then
+    console=hvc0
+    serial=(-serial null -device virtconsole,bus=guestbus.0,nr=0,chardev=console)
+fi
 console_cmdline=" tizen.console_size=${console_size/ /x}"
 if [[ ${TIZEN_CONSOLE_MANAGED:-0} == 1 ]]; then console_cmdline+=' tizen.console=managed'; fi
 exec "${runner[@]}" "$qemu" "${args[@]}" -machine pc -smp "${TIZEN_CPUS:-2}" -m "${TIZEN_RAM:-3072}" \
     -nodefaults "${display[@]}" -no-reboot -monitor none \
-    -chardev stdio,id=console,signal=off -serial chardev:console \
+    -chardev stdio,id=console,signal=off "${serial[@]}" \
     -kernel "$kernel" \
-    -append "root=/dev/vda rootfstype=ext4 rootwait rw console=ttyS0,115200 init=$init systemd.unit=$target net.ifnames=0$console_cmdline$init_args" \
+    -append "root=/dev/vda rootfstype=ext4 rootwait rw console=$console init=$init systemd.unit=$target net.ifnames=0$console_cmdline$init_args" \
     -blockdev "driver=file,node-name=file,filename=${disk//,/,,}" \
     -blockdev "driver=$format,node-name=root,file=file" \
     -device virtio-blk-pci,drive=root \

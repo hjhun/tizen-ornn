@@ -8,6 +8,7 @@ install -d "$root/etc/systemd/system" "$root/usr/local/libexec" "$root/usr/local
 for unit in tizen-dev.target tizen-dev-setup.service tizen-dev-console.service; do
     install -m644 "$project/guest/$unit" "$root/etc/systemd/system/$unit"
 done
+ln -sfn /dev/null "$root/etc/systemd/system/serial-getty@hvc0.service"
 install -m755 "$project/guest/tizen-dev-setup" "$root/usr/local/libexec/"
 install -m755 "$project/tests/smack.py" "$root/usr/local/libexec/tizen-dev-smack-check"
 install -m755 "$project/guest/dev-check" "$root/usr/local/bin/tizen-dev-check"

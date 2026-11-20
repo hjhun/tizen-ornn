@@ -48,6 +48,7 @@ fi
 cp "$out/bzImage" "$out/kernel.config" "$base/out/"
 if [[ -f "$out/snapshot.lock.json" ]]; then cp "$out/snapshot.lock.json" "$base/out/"; fi
 if [[ -f "$out/.tizen-vm-image-revision" ]]; then cp "$out/.tizen-vm-image-revision" "$base/out/"; fi
+if [[ -f "$out/.tizen-virtio-console" ]]; then touch "$base/out/.tizen-virtio-console"; fi
 # A qcow2 may have a backing file. Always export a standalone raw filesystem.
 raw="$disk"
 if [[ $disk == *.qcow2 ]]; then

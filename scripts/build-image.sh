@@ -68,4 +68,4 @@ detach
 [[ -z $(losetup -j "$disk") ]]
 chown "${SUDO_UID:-$(stat -c %u "$project")}:${SUDO_GID:-$(stat -c %g "$project")}" "$disk"
 install -m 0644 "$project/config/image-revision" "$TIZEN_OUT/.tizen-vm-image-revision"
-touch "$TIZEN_OUT/.image-ready"
+touch "$TIZEN_OUT/.tizen-virtio-console" "$TIZEN_OUT/.image-ready"

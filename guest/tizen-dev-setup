@@ -23,4 +23,10 @@ for path in /sys/class/net/*; do
         break
     fi
 done
+# The launcher can boot this image with either virtio or the legacy UART.
+case " $(cat /proc/cmdline) " in
+    *" console=hvc0 "*) console=/dev/hvc0 ;;
+    *) console=/dev/ttyS0 ;;
+esac
+ln -sfn "$console" /run/tizen-dev-console
 echo 'TizenDev local serial console ready'

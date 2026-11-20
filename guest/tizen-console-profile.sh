@@ -1,7 +1,7 @@
 # This file is sourced by login shells from /etc/profile.d.
 case $- in *i*) ;; *) return ;; esac
 [ -n "${BASH_VERSION:-}" ] && [ -t 0 ] || return
-[ "$(tty)" = /dev/ttyS0 ] || return
+[[ /proc/self/fd/0 -ef /run/tizen-dev-console ]] || return
 
 _tizen_cmdline=$(cat /proc/cmdline)
 if [[ $(stty size) =~ ^(0\ [0-9]+|[0-9]+\ 0)$ ]]; then

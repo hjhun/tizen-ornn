@@ -11,7 +11,7 @@ from host_browser import serve
 
 
 def run(command):
-    # ttyS0 belongs to the interactive console. ttyS1 carries one failure byte
+    # UART 0 is reserved on both console transports. ttyS1 carries one failure byte
     # on a private socketpair, with no serial transcript or host file.
     receiver, guest = socket.socketpair()
     browser_enabled = command[0] == '--host-browser'

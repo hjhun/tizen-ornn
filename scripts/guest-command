@@ -24,7 +24,12 @@ def request(disk, op, names, bundle):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError("Another host package operation is active on this disk.")
+            # A resize can briefly own the channel while the user requests shutdown.
+            # Give interactive operations one turn after the size observer yields.
+            if op == "resize" or subprocess.run(
+                    ["flock", "--exclusive", "--timeout", "1.5", str(lock.fileno())],
+                    pass_fds=(lock.fileno(),)).returncode:
+                raise ValueError("Another host package operation is active on this disk.")
         sock.settimeout(20)
         try:
             sock.connect(prefix + ".packages")

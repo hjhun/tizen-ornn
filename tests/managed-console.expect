@@ -87,6 +87,11 @@ set failed [catch {
         }
     }
     command $a {stty -echo; set +H; printf 'SETUP-%s\n' READY} SETUP-READY
+    if {[info exists env(TIZEN_TEST_CONSOLE_TTY)]} {
+        set device $env(TIZEN_TEST_CONSOLE_TTY)
+        if {$device ni {/dev/hvc0 /dev/ttyS0}} {error "Invalid expected TTY: $device"}
+        command $a "test \"\$(tty)\" = $device && echo CONSOLE-DEVICE-OK" CONSOLE-DEVICE-OK
+    }
     check_size $a 34 120 INITIAL-SIZE-OK
     set tty [exec tmux -S $sock list-clients -F "#{client_tty}"]
     exec stty -F $tty rows 57 cols 98

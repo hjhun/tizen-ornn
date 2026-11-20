@@ -18,5 +18,5 @@ Restart=always
 StandardInput=tty-force
 StandardOutput=tty
 StandardError=tty
-TTYPath=/dev/ttyS0
+TTYPath=/run/tizen-dev-console
 TTYReset=yes
