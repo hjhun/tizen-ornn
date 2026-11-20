@@ -23,10 +23,11 @@ fetch() {
     fi
 }
 
-node=node-v24.22.3-linux-x64
+node_version=v26.13.1
+node=node-$node_version-linux-x64
 rg=ripgrep-15.2.0-x86_64-unknown-linux-musl
-fetch "https://nodejs.org/dist/v24.22.3/$node.tar.xz" \
-    4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb
+fetch "https://nodejs.org/dist/$node_version/$node.tar.xz" \
+    5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864
 fetch "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/$rg.tar.gz" \
     33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c
 # Tizen's bubblewrap RPM provides its platform-specific isu-sandbox command.
@@ -37,12 +38,18 @@ fetch "https://github.com/containers/bubblewrap/releases/download/v0.13.1/$bubbl
     0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d
 fetch "https://deb.debian.org/debian/pool/main/s/socat/socat_1.8.1.3.orig.tar.bz2" \
     25bc6476292b2e614220989c77b0b6fca87bb2525d9747b31a6639b1fb602418
-install -d "$root/opt/tizen-dev" "$root/usr/local/bin"
-tar -xJf "$cache/$node.tar.xz" -C "$root/opt/tizen-dev" --no-same-owner
+node_lib=/usr/local/lib/$node
+install -d "$root/opt/tizen-dev" "$root/usr/local/bin" "$root/usr/local/lib" "$root/root/.local/bin"
+tar -xJf "$cache/$node.tar.xz" -C "$root/usr/local/lib" --no-same-owner
 tar -xzf "$cache/$rg.tar.gz" -C "$root/opt/tizen-dev" --no-same-owner \
     "$rg/rg" "$rg/COPYING" "$rg/LICENSE-MIT" "$rg/UNLICENSE"
 for bin in node npm npx; do
-    ln -sfn "/opt/tizen-dev/$node/bin/$bin" "$root/usr/local/bin/$bin"
+    ln -sfn "$node_lib/bin/$bin" "$root/usr/local/bin/$bin"
+done
+# Give root a conventional npm prefix while sharing the large executable.
+ln -f "$root$node_lib/bin/node" "$root/root/.local/bin/node"
+for bin in npm npx; do
+    ln -sfn "$node_lib/bin/$bin" "$root/root/.local/bin/$bin"
 done
 ln -sfn "/opt/tizen-dev/$rg/rg" "$root/usr/local/bin/rg"
 
@@ -77,7 +84,7 @@ INSTALL
 install -Dm755 "$project/guest/tizen-ai-shell" "$root/usr/local/bin/tizen-ai-shell"
 install -Dm755 "$project/guest/tizen-ai-install" "$root/usr/local/bin/tizen-ai-install"
 install -Dm755 "$project/tests/ai-tools" "$root/usr/local/bin/tizen-ai-check"
-for file in "$root/opt/tizen-dev/$node/bin/node" "$root/opt/tizen-dev/$rg/rg" \
+for file in "$root$node_lib/bin/node" "$root/opt/tizen-dev/$rg/rg" \
             "$root/usr/local/bin/bwrap" "$root/usr/local/bin/socat" \
             "$root/usr/local/bin/tizen-ai-shell" "$root/usr/local/bin/tizen-ai-install" \
             "$root/usr/local/bin/tizen-ai-check"; do

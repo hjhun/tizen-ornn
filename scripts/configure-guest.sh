@@ -12,6 +12,8 @@ install -m755 "$project/guest/tizen-dev-setup" "$root/usr/local/libexec/"
 install -m755 "$project/tests/smack.py" "$root/usr/local/libexec/tizen-dev-smack-check"
 install -m755 "$project/guest/dev-check" "$root/usr/local/bin/tizen-dev-check"
 install -m644 "$project/guest/tizen-dev-path.sh" "$root/etc/profile.d/zz-tizen-dev-path.sh"
+install -m644 "$project/guest/tizen-prompt.sh" "$root/etc/profile.d/zz-tizen-prompt.sh"
+install -m755 "$project/guest/tizen-su" "$root/usr/local/bin/su"
 install -m644 "$project/guest/tizen-console-profile.sh" "$root/etc/profile.d/zz-tizen-console.sh"
 install -Dm644 "$project/packaging/ui-demo/tizen-ui-counter.spec" \
     "$root/usr/share/tizen-dev/examples/efl-counter/tizen-ui-counter.spec"
@@ -20,8 +22,24 @@ install -m755 "$project/packaging/ui-demo/build-rpm.sh" \
 if ! chroot "$root" /usr/bin/id dev >/dev/null 2>&1; then
     chroot "$root" /usr/sbin/useradd -m -d /home/dev -s /bin/bash dev
 fi
+for account in root dev owner; do
+    IFS=: read -r _ _ uid gid _ home _ < <(chroot "$root" getent passwd "$account")
+    # Resolve /home inside the guest, even when the snapshot uses an absolute symlink.
+    home=$(chroot "$root" readlink -f "$home")
+    if [[ ! -e "$root$home/.bash_profile" && ! -e "$root$home/.bash_login" && ! -e "$root$home/.profile" ]]; then
+        printf '%s\n' 'case $- in *i*) [ ! -r ~/.bashrc ] || . ~/.bashrc ;; esac' > "$root$home/.profile"
+        chown "$uid:$gid" "$root$home/.profile"
+    fi
+    if [[ ! -e "$root$home/.bashrc" ]]; then
+        install -o "$uid" -g "$gid" -m644 "$project/guest/tizen-bashrc" "$root$home/.bashrc"
+        case $account in
+            owner) setfattr -n security.SMACK64 -v 'User::Shell' "$root$home/.bashrc" ;;
+            dev) setfattr -n security.SMACK64 -v User "$root$home/.bashrc" ;;
+        esac
+    fi
+done
 # New paths in the offline root need explicit Tizen security attributes.
-setfattr -n security.SMACK64 -v 'User::Shell' "$root/home/dev"
+setfattr -n security.SMACK64 -v User "$root/home/dev"
 setfattr -n security.SMACK64TRANSMUTE -v TRUE "$root/home/dev"
 printf 'nameserver 10.0.2.3\n' > "$root/etc/resolv.conf"
 "$project/scripts/configure-platform.sh" "$root"

@@ -38,7 +38,9 @@ def request(disk, op, names, bundle):
             def receive():
                 while True:
                     line = stream.readline(MAX_FRAME + 1)
-                    if not line or len(line) > MAX_FRAME:
+                    if not line:
+                        raise ConnectionError("The guest control channel closed.")
+                    if len(line) > MAX_FRAME:
                         raise ValueError("The guest package channel closed or sent an invalid reply.")
                     try:
                         msg = json.loads(line)
@@ -71,7 +73,14 @@ def request(disk, op, names, bundle):
             else:
                 send(op=op, names=names)
             while True:
-                reply = receive()
+                try:
+                    reply = receive()
+                except ConnectionError:
+                    # Shutdown can close this port before systemctl's reply.
+                    # stop still waits for QEMU to release the disk lock.
+                    if op == "poweroff":
+                        return 0
+                    raise
                 kind = reply.get("type")
                 if kind == "output":
                     sys.stdout.buffer.write(base64.b64decode(reply["data"], validate=True))
@@ -86,8 +95,27 @@ def request(disk, op, names, bundle):
 
 
 def main(args):
+    if len(args) == 2 and args[1] == "stop":
+        disk = args[0]
+        with open(disk, "rb") as image:
+            try:
+                fcntl.flock(image, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                pass
+            else:
+                print("The selected VM is already stopped.")
+                return 0
+            code = request(disk, "poweroff", [], None)
+            if code:
+                return code
+            # QEMU holds the exclusive disk lock until shutdown finishes.
+            if subprocess.run(["flock", "--shared", "--timeout", "90", str(image.fileno())],
+                              pass_fds=(image.fileno(),)).returncode:
+                raise ValueError("Shutdown was requested but the disk is still in use.")
+            print("The selected VM has stopped.")
+            return 0
     if len(args) < 3 or args[1] not in ("install", "update"):
-        raise ValueError("Usage: guest-command DISK install NAME... | guest-command DISK update BUNDLE")
+        raise ValueError("Usage: guest-command DISK install NAME... | guest-command DISK update BUNDLE | guest-command DISK stop")
     disk, op, *names = args
     if op == "install":
         if len(names) > 128 or not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,126}", n) for n in names):

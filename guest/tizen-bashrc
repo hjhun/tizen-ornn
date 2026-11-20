@@ -1,0 +1,3 @@
+# Shared defaults for Tizen VM developers. Add personal settings below.
+. /etc/profile.d/zz-tizen-dev-path.sh
+. /etc/profile.d/zz-tizen-prompt.sh

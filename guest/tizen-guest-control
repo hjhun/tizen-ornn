@@ -149,6 +149,8 @@ def main():
                     continue
                 if op == "install":
                     code = run_commands(port, ident, install_commands(req.get("names")))
+                elif op == "poweroff":
+                    code = subprocess.run(["/usr/bin/systemctl", "--no-block", "poweroff"]).returncode
                 elif op == "update":
                     code = update(port, req)
                 else:

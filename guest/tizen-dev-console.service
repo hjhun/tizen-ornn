@@ -8,9 +8,9 @@ Before=shutdown.target
 
 [Service]
 Type=simple
-SmackProcessLabel=User::Shell
+SmackProcessLabel=System::Privileged
 WorkingDirectory=/root
-Environment=HOME=/root TERM=vt100
+Environment=HOME=/root TERM=xterm-256color
 ExecStart=/bin/bash --login -i
 Restart=always
 StandardInput=tty-force

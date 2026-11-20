@@ -95,6 +95,13 @@ set failure [catch {
         run_step sdb [string map [list PORT $port "\n" " "] $probe]
     }
     run_step env {tizen-dev-check}
+    set accounts {(set -e;
+        test "$(id -u)" = 0; test "$(cat /proc/self/attr/current)" = System::Privileged;
+        test "$(command -v node)" = /root/.local/bin/node;
+        test "$(node --version)" = v26.13.1;
+        su - dev -c 'test "$(cat /proc/self/attr/current)" = User && test -r ~/.bashrc && node --version';
+        su - owner -c 'test "$(cat /proc/self/attr/current)" = User::Shell && test -r ~/.bashrc && node --version')}
+    run_step login_accounts [string map [list "\n" " "] $accounts]
     run_step ai_runtime {tizen-ai-check}
     run_step package {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/sample-output"'}
     run_step rust {su -s /bin/bash dev -c 'cd && cargo new --bin --vcs none rust-smoke && cd rust-smoke && cargo run --offline'}

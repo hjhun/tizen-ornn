@@ -5,7 +5,7 @@ if [[ ${1:-} != --inside ]]; then
     exec /usr/local/bin/tizen-ai-shell "$0" --inside
 fi
 (( EUID != 0 ))
-node -e 'if (process.platform !== "linux" || process.arch !== "x64" || +process.versions.node.split(".")[0] < 22) process.exit(1)'
+node -e 'if (process.platform !== "linux" || process.arch !== "x64" || process.version !== "v26.13.1") process.exit(1)'
 npm --version
 rg --version | head -n 1
 bwrap --version

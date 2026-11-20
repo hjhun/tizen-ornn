@@ -45,6 +45,7 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 | Host | `tizen-vm run --gui` | Start with a window for UI apps on WSLg or a Linux desktop |
 | Guest console | Ctrl+C | Interrupt the foreground command, including a running dlog viewer |
 | Top-level guest shell | `exit` | Return to the host while keeping the VM, shell and jobs running |
+| Host | `tizen-vm stop` | Shut down the selected VM and wait for its disk to be released |
 | Guest root shell | `systemctl poweroff` | Shut down the VM |
 | Another host terminal | `tizen-vm install ed` | Install a Tizen RPM and its dependencies in the running VM |
 | Another host terminal | `tizen-vm install codex` | Install the optional coding client for the guest developer |

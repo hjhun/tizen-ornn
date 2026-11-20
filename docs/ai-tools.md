@@ -27,7 +27,9 @@ A normal VM restart retains these files. The image updater copies the owner work
 
 ## Runtime and verification
 
-The image supplies Node.js 24.22.3 LTS with npm 11.19.1 and npx, ripgrep 15.2.0, bubblewrap 0.13.1 and socat 1.8.1.3. The builder verifies SHA-256 digests, installs the upstream Node.js and ripgrep distributions, and compiles bubblewrap and socat against the guest's glibc. Licenses ship with the tools. The development image also has Git, curl, jq, CA certificates and the native build toolchain. [Node.js release](https://nodejs.org/dist/v24.22.3/), [ripgrep release](https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0), [bubblewrap release](https://github.com/containers/bubblewrap/releases/tag/v0.13.1), [socat source package](https://packages.debian.org/source/sid/socat).
+The image supplies Node.js 26.13.1 LTS with npm 11.20.0 and npx, ripgrep 15.2.0, bubblewrap 0.13.1 and socat 1.8.1.3. The builder verifies SHA-256 digests, installs the upstream Node.js and ripgrep distributions, and compiles bubblewrap and socat against the guest's glibc. Licenses ship with the tools. The development image also has Git, curl, jq, CA certificates and the native build toolchain. [Node.js release](https://nodejs.org/dist/v26.13.1/), [ripgrep release](https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0), [bubblewrap release](https://github.com/containers/bubblewrap/releases/tag/v0.13.1), [socat source package](https://packages.debian.org/source/sid/socat).
+
+The root login finds `node`, `npm` and `npx` under `/root/.local/bin`. Other users run the same distribution through `/usr/local/bin`. Image updates refresh these three root commands while migrating other user-installed tools.
 
 Run `tizen-ai-check` at the guest console to create and execute an offline npm package under a temporary developer prefix, start a read-only bubblewrap namespace and exercise a local socat relay. An optional account-free Codex check after installation is `tizen-ai-shell codex sandbox -- /bin/echo hello`. Claude Code uses bubblewrap and socat for its Linux sandbox. [Claude sandbox documentation](https://code.claude.com/docs/en/sandboxing).
 

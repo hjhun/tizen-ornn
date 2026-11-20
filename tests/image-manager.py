@@ -125,6 +125,7 @@ class ImageSelection(unittest.TestCase):
     def test_live_commands_select_disk_and_forward_arguments(self):
         disk = str(self.old / 'tizen-rootfs.ext4')
         examples = [
+            (['stop'], ['guest-command', disk, 'stop']),
             (['install', 'codex', 'ed'], ['guest-command', disk, 'install', 'codex', 'ed']),
             (['update', '--packages'], ['update-packages', disk]),
             (['update', '--packages', '--snapshot', release, 'ed'], ['update-packages', disk, '--snapshot', release, 'ed']),

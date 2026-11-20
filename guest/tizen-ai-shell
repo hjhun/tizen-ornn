@@ -2,7 +2,7 @@
 # Give upstream CLIs a writable home while keeping the platform home label.
 set -euo pipefail
 if (( EUID == 0 )); then
-    exec /bin/su -s /bin/bash owner -c 'exec /usr/local/bin/tizen-ai-shell "$@"' -- bash "$@"
+    exec /usr/local/bin/su -s /bin/bash owner -c 'exec /usr/local/bin/tizen-ai-shell "$@"' -- bash "$@"
 fi
 login_home=$(getent passwd "$(id -u)" | cut -d: -f6)
 if [[ $(id -un) == owner ]]; then
@@ -21,4 +21,7 @@ if [[ ! -x . || $PWD == /root || $PWD == "$login_home" ]]; then
     cd "$login_home/workspace" 2>/dev/null || cd "$HOME"
 fi
 if (( $# )); then exec "$@"; fi
+if [[ ! -e $HOME/.bashrc && -r $login_home/.bashrc ]]; then
+    exec /bin/bash --rcfile "$login_home/.bashrc" -i
+fi
 exec /bin/bash -i

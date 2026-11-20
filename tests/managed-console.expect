@@ -106,8 +106,8 @@ set failed [catch {
     wait -i $c
     set d [attach 1 {*}$share]
     command $d {test "$saved" = "$$" && kill -0 "$bg" && echo RECONNECTED-OK} RECONNECTED-OK
-    send -i $d -- {kill "$bg"; sync; systemctl --force poweroff}
-    send -i $d -- "\r"
+    set cli [file join [file dirname [file normalize [info script]]] .. tizen-vm]
+    exec $cli stop
     finished $d
     exec flock -n $disk true
 } message]

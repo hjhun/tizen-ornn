@@ -9,9 +9,16 @@ From the host terminal, run `tizen-vm` to start the selected guest or return to 
 | Type `exit` in a nested shell or after `su - owner` | Return to the parent shell. |
 | Type `exit` at the top-level serial shell | Detach all viewers. The VM, shell and background jobs continue running. |
 | Close the host terminal | Other viewers remain connected. Run `tizen-vm` to reconnect. |
+| Run `tizen-vm stop` on the host | Shut down the selected guest, including a detached session. |
 | Run `systemctl poweroff` as guest root | Shut down the VM and release its disk. |
 
 Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-vm update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
+
+The default console logs in as root with the `System::Privileged` SMACK label. At the console, `su - dev` selects `User` and `su - owner` selects `User::Shell`. The VM's `/usr/local/bin/su` sets the account label before invoking the platform's `/bin/su`. Use `id -un` and `cat /proc/self/attr/current` to inspect the active session.
+
+Root and dev have their own `~/.local/bin` first on PATH. Owner uses `~/workspace/.ai-home/.local/bin` for the same tools installed by `tizen-vm install`. Each account can customize its interactive Bash shell in `~/.bashrc`. In a Git worktree the prompt shows the branch in green when clean, red with local changes and cyan when clean and ahead of its upstream.
+
+The host stop command requires an image with the poweroff operation. On an older image, run `systemctl poweroff` at the guest console, then use the updated host CLI to run `tizen-vm update --image`.
 
 ## Launch from a checkout
 

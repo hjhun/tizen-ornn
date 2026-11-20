@@ -1,0 +1,33 @@
+#!/usr/bin/python3 -I
+"""Select the Tizen account label before shadow su drops root privileges."""
+import getopt
+import os
+from pathlib import Path
+import sys
+
+argv = sys.argv[1:]
+if os.getuid() == 0:
+    # These are the options accepted by the guest's shadow-utils su.
+    try:
+        options, args = getopt.gnu_getopt(
+            argv, "c:hlmps:", ["command=", "help", "login", "preserve-environment", "shell="])
+    except getopt.GetoptError as error:
+        sys.exit(f"su: {error}")
+    if args[:1] == ["-"]:
+        options.append(("-l", ""))
+        args = args[1:]
+    # Pass precisely the parsed login to su, keeping shell arguments opaque.
+    argv = []
+    for option, value in options:
+        argv.append(option)
+        if option in ("-c", "--command", "-s", "--shell"):
+            argv.append(value)
+    argv.extend(["--", *args])
+    account = args[0] if args else "root"
+    if account != "root":
+        label = b"User" if account == "dev" else b"User::Shell"
+        attr = Path("/proc/self/attr/current")
+        if attr.read_bytes().rstrip(b"\x00\n") != label:
+            attr.write_bytes(label)
+
+os.execv("/bin/su", ["su", *argv])

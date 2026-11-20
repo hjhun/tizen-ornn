@@ -274,6 +274,7 @@ def main():
     sharing = start.add_mutually_exclusive_group()
     sharing.add_argument('--share', metavar='HOST_DIR', help='mount a host directory at /home/owner/host')
     sharing.add_argument('--share-ro', metavar='HOST_DIR', help='mount a read-only host directory at /home/owner/host')
+    commands.add_parser('stop', help='power off the selected VM and wait for its disk to be released')
     install = commands.add_parser('install', help='install packages or AI tools in the running VM')
     install.add_argument('packages', nargs='*', metavar='NAME', help='RPM or optional tool name; omit for build')
     update = commands.add_parser('update', help='update a stopped image or upgrade packages in the running VM')
@@ -313,6 +314,15 @@ def main():
         os.execv(run, command)
     if args.gui:
         parser.error('--gui applies to run')
+    if args.command == 'stop':
+        disk = os.environ.get('TIZEN_DISK')
+        if not disk:
+            image = Path(explicit) if explicit else active_image(home)
+            if image is None:
+                raise ValueError('No image installed.')
+            disk = str(disk_at(image))
+        client = str(SCRIPTS / 'guest-command')
+        os.execv(client, [client, disk, 'stop'])
     if os.environ.get('TIZEN_DISK') or os.environ.get('TIZEN_KERNEL'):
         parser.error('unset TIZEN_DISK and TIZEN_KERNEL to manage the selected image')
     if explicit and Path(explicit).resolve() != home:

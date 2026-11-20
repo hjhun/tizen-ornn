@@ -88,7 +88,8 @@ fi
 if [[ $old_home != /opt/usr/home || $new_home != /opt/usr/home ]]; then
     merge "$old_home" "$new_home"
 fi
-merge /root /root
+# Restore user-installed tools, keeping the three image-supplied Node commands.
+merge /root /root --exclude=/.local/bin/node --exclude=/.local/bin/npm --exclude=/.local/bin/npx
 sync -f "$stage/new"
 umount "$stage/new"
 umount "$stage/old"
