@@ -1,0 +1,14 @@
+The bundled Linux kernel is built from the Tizen 10.1 RPi4 Linux 6.12.41
+source RPM, including its Tizen patches. The source retains the individual
+copyright notices of the Linux and Tizen contributors.
+
+Linux is distributed under the GNU General Public License version 2.
+On Ubuntu the license text is available in /usr/share/common-licenses/GPL-2.
+
+Corresponding kernel source RPM:
+https://github.com/hjhun/tizen-vm/releases/download/10.1-r4/rpi4-linux-kernel-6.12.41-0.src.rpm
+
+The host package includes the kernel build script (with the source RPM
+SHA-256 and Tizen source revision), configuration fragment and final kernel
+configuration in /usr/lib/tizen-vm/scripts/build-kernel.sh and
+/usr/lib/tizen-vm/kernel/.

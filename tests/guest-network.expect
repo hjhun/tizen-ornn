@@ -1,0 +1,89 @@
+#!/usr/bin/expect -f
+# Use one local HTTP listener for both proxy-form and direct requests.
+set timeout 90
+log_user 0
+if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" ||
+    ![info exists env(TIZEN_DISK)] || ![file isfile $env(TIZEN_DISK)] ||
+    [catch {exec flock -n $env(TIZEN_DISK) true}]} {
+    puts stderr "Supply TIZEN_OUT, an unused disposable TIZEN_DISK and TIZEN_DISK_FORMAT=qcow2."
+    exit 2
+}
+set project [file dirname [file dirname [file normalize [info script]]]]
+set serverCode {
+import http.server, sys, threading
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        replies = {"http://127.0.0.1:1/via-proxy": b"proxied", "/direct": b"direct"}
+        body = replies.get(self.path)
+        self.send_response(200 if body else 404)
+        self.end_headers()
+        self.wfile.write(body or b"unexpected request target")
+
+    def log_message(self, *args):
+        pass
+
+with http.server.HTTPServer(("127.0.0.1", 0), Handler) as server:
+    print(server.server_port, flush=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    sys.stdin.readline()
+    server.shutdown()
+}
+proc guest {command} {
+    global spawn_id
+    send -- "$command; printf '\\nNETWORK_RESULT=%s\\n' \$?\r"
+    expect {
+        -re {[\r\n]NETWORK_RESULT=([0-9]+)[\r\n]} {
+            if {$expect_out(1,string) != 0} {error "Guest command failed: $command"}
+        }
+        timeout {error "Guest command timed out: $command"}
+        eof {error "Guest exited during network test"}
+    }
+}
+set server [open [list | /usr/bin/python3 -u -c $serverCode] r+]
+set failed [catch {
+    if {[gets $server port] < 0 || ![string is integer -strict $port]} {error "HTTP fixture failed to start"}
+    foreach name {http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY} {
+        unset -nocomplain env($name)
+    }
+    set env(http_proxy) "http://127.0.0.1:$port"
+    set env(no_proxy) 10.0.2.2
+    set gateway "http://10.0.2.2:$port"
+    foreach mode {on off} {
+        set args {}
+        if {$mode eq "off"} {lappend args --no-host-network}
+        spawn -noecho $project/scripts/run-vm.sh --foreground {*}$args
+        expect {
+            -re {root:[^\r\n]*> $} {}
+            timeout {error "Guest did not reach its console"}
+            eof {error "VM exited before login"}
+        }
+        send -- "stty -echo\r"
+        guest {pid=$(systemctl show -p MainPID --value tizen-guest-control.service) && test "$pid" -gt 0}
+        if {$mode eq "on"} {
+            guest [string map [list @GATEWAY@ $gateway] {tr '\0' '\n' <"/proc/$pid/environ" | grep -Fxq 'http_proxy=@GATEWAY@'}]
+            guest {su - owner -c 'test "$no_proxy" = 10.0.2.2 && test "$(curl -fsS --max-time 10 http://127.0.0.1:1/via-proxy)" = proxied'}
+        } else {
+            guest {test ! -e /run/tizen-vm-network/login.sh && su - owner -c 'test -z "${http_proxy-}${HTTP_PROXY-}${no_proxy-}${NO_PROXY-}"'}
+            guest {test -r "/proc/$pid/environ" && ! tr '\0' '\n' <"/proc/$pid/environ" | grep -qi '^http_proxy='}
+        }
+        guest [string map [list @GATEWAY@ $gateway] {su - owner -c 'test "$(curl -fsS --max-time 10 @GATEWAY@/direct)" = direct'}]
+        send -- "sync; systemctl --force poweroff\r"
+        expect {
+            eof {}
+            timeout {error "VM did not power off"}
+        }
+        set status [wait]
+        unset spawn_id
+        if {[lindex $status 3] != 0} {error "QEMU exited $status"}
+    }
+} message]
+if {$failed && [info exists spawn_id]} {
+    catch {exec kill -TERM [exp_pid]}
+    catch {close}
+    catch {wait}
+}
+catch {puts $server done; flush $server}
+close $server
+if {$failed} {puts stderr $message; exit 1}
+puts "Passed proxy GET, no_proxy direct GET, service inheritance and opt-out after reboot."

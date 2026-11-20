@@ -40,6 +40,8 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 | From | Command | Result |
 |---|---|---|
 | Host | `tizen-vm run` or `tizen-vm` | Start the selected VM or reconnect to its console |
+| Host | `tizen-vm run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
+| Host | `tizen-vm run --share-ro "$PWD"` | Open the same directory read-only |
 | Host | `tizen-vm run --gui` | Start with a window for UI apps on WSLg or a Linux desktop |
 | Guest console | Ctrl+C | Interrupt the foreground command, including a running dlog viewer |
 | Top-level guest shell | `exit` | Return to the host while keeping the VM, shell and jobs running |
@@ -48,6 +50,10 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 | Another host terminal | `tizen-vm install codex` | Install the optional coding client for the guest developer |
 
 Connections share the same serial console. Closing a terminal leaves the VM running while the Linux host stays up. An `exit` inside `su - owner` returns to the parent guest shell. A single Ctrl+D at an empty top-level login prompt leaves it open. Shut down the guest before changing its display mode. [Console and graphical sessions](docs/running.md)
+
+### Use the host network and proxy
+
+The guest uses the Ubuntu host's outbound network and DNS through QEMU NAT. At boot, the CLI imports the host's DNS search domains and `http_proxy`, `https_proxy`, `all_proxy` and `no_proxy` settings. In WSL2 it also checks Windows manual proxy settings when Ubuntu has no proxy endpoint configured. Set a proxy for one boot with `https_proxy=http://proxy.example.org:3128 tizen-vm run`, or start with `tizen-vm run --no-host-network` to skip import. Power off the VM before changing boot options. [Shared directories, DNS and proxy details](docs/running.md#share-a-host-directory)
 
 ## Develop inside Tizen
 
@@ -76,7 +82,7 @@ For a coding assistant, use `tizen-vm install agy`, `gemini`, `claude` or `codex
 
 An image update merges the previous disk's `/opt/usr`, `/home` and `/root` into the new image, including owner projects and the AI tool home. Existing file contents, ownership, links and SMACK attributes are carried across. The new image supplies the system RPMs, package database and directories such as `/etc` and `/usr`. Reinstall any additional system RPMs you need. The previous disk remains available with its original system and data. Edits made after switching belong to the disk on which they were made.
 
-Allow space for both images and build downloads. Migrating a QCOW2 disk or recovering an unclean ext4 filesystem also needs space for a temporary sparse raw copy. To select a dated release for either update mode, append `--snapshot tizen-10.1-unified_20261119.053314`. To update the **host CLI**, repeat the first two installation commands. A VM built with an older CLI needs one `update --image` to gain live package management.
+Allow space for both images and build downloads. Migrating a QCOW2 disk or recovering an unclean ext4 filesystem also needs space for a temporary sparse raw copy. To select a dated release for either update mode, append `--snapshot tizen-10.1-unified_20261119.053314`. To update the **host CLI**, repeat the first two installation commands. Existing R5 guests gain host sharing and proxy import after the host package upgrade and guest shutdown. Guests built before R5 need one `update --image` to gain live package management.
 
 ## Choose the snapshot source
 

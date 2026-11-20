@@ -1,0 +1,132 @@
+#!/usr/bin/python3
+"""Describe the host settings that can be used on the guest's QEMU NAT network."""
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+PROXIES = ("http_proxy", "https_proxy", "all_proxy")
+GATEWAY = "10.0.2.2"
+WINDOWS_PROXY = r"""
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$p = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+[pscustomobject]@{enabled=[bool]$p.ProxyEnable; server=[string]$p.ProxyServer;
+                  bypass=[string]$p.ProxyOverride; pac=[bool]$p.AutoConfigURL} | ConvertTo-Json -Compress
+"""
+
+
+def windows_settings():
+    if not os.environ.get("WSL_DISTRO_NAME"):
+        return {}
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        return {}
+    try:
+        result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", WINDOWS_PROXY],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True, timeout=5)
+        return json.loads(result.stdout.decode("utf-8-sig"))
+    except (ValueError, OSError, subprocess.SubprocessError):
+        print("tizen-vm: cannot read the Windows proxy. Export proxy variables in WSL if needed.", file=sys.stderr)
+        return {}
+
+
+def windows_proxies(settings):
+    if not settings.get("enabled") or not settings.get("server"):
+        return {}
+    server = settings["server"].strip()
+    proxies = {}
+    if "=" in server:
+        for entry in server.split(";"):
+            proto, _, value = entry.strip().partition("=")
+            name = {"http": "http_proxy", "https": "https_proxy", "socks": "all_proxy"}.get(proto.lower())
+            if name and value:
+                if name == "all_proxy" and "://" not in value:
+                    value = "socks5h://" + value
+                proxies[name] = value
+    else:
+        proxies.update(http_proxy=server, https_proxy=server)
+
+    bypass = []
+    for host in settings.get("bypass", "").split(";"):
+        host = host.strip()
+        if not host:
+            continue
+        if host.startswith("*."):
+            host = host[1:]
+        if host.lower() == "<local>" or ("*" in host and host != "*") or "?" in host:
+            print("tizen-vm: a Windows bypass pattern needs an explicit no_proxy domain in WSL.", file=sys.stderr)
+            continue
+        bypass.append(host)
+    if bypass:
+        proxies["no_proxy"] = ",".join(bypass)
+    return proxies
+
+
+def proxy_url(value, name):
+    try:
+        if len(value) > 4096 or re.search(r"[\x00-\x20\x7f]", value):
+            raise ValueError
+        uri = urlsplit(value if "://" in value else "http://" + value)
+        host, port = uri.hostname, uri.port
+        if (uri.scheme not in ("http", "https", "socks4", "socks4a", "socks5", "socks5h") or not host
+                or uri.path not in ("", "/") or uri.query or uri.fragment):
+            raise ValueError
+        if uri.username is not None or uri.password is not None:
+            print(f"tizen-vm: using the {name} endpoint without its host credentials; configure authentication in the guest if required.", file=sys.stderr)
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            if not re.fullmatch(r"[a-zA-Z0-9_.-]+", host):
+                raise ValueError
+            loopback = host.rstrip(".").lower() == "localhost"
+        else:
+            loopback = ip.is_loopback
+        if loopback:
+            host = GATEWAY
+        elif ":" in host:
+            host = f"[{host}]"
+        return f"{uri.scheme}://{host}" + (f":{port}" if port is not None else "")
+    except ValueError:
+        raise ValueError(f"invalid {name} endpoint. Set it to a proxy address or use --no-host-network.") from None
+
+
+def dns_search(path):
+    suffixes = []
+    for line in path.read_text(errors="replace").splitlines():
+        fields = re.split(r"[#;]", line, maxsplit=1)[0].split()
+        if fields and fields[0] in ("search", "domain"):
+            names = fields[1:] if fields[0] == "search" else fields[1:2]
+            suffixes = [s for s in names if len(s) <= 253 and re.fullmatch(r"[a-zA-Z0-9_.-]+", s)]
+    return suffixes
+
+
+def settings(env, resolver):
+    local = {name: env.get(name, env.get(name.upper())) for name in (*PROXIES, "no_proxy")}
+    chosen = {}
+    if not any(local[name] is not None for name in PROXIES):
+        windows = windows_settings()
+        chosen = windows_proxies(windows)
+        if env.get("WSL_PAC_URL") or windows.get("pac"):
+            print("tizen-vm: PAC rules are per URL. Export static proxy and no_proxy values in WSL to reproduce them in the guest.", file=sys.stderr)
+    chosen.update({key: val for key, val in local.items() if val is not None})
+    proxies = {name: proxy_url(chosen[name], name) for name in PROXIES if chosen.get(name)}
+    bypass = chosen.get("no_proxy", "")
+    if bypass:
+        if len(bypass) > 16384 or re.search(r"[\x00-\x1f\x7f]", bypass):
+            raise ValueError("invalid no_proxy list. Use comma-separated hosts or domains.")
+        proxies["no_proxy"] = bypass
+    return {"proxy": proxies, "search": dns_search(resolver)}
+
+
+if __name__ == "__main__":
+    try:
+        data = settings(os.environ, Path("/etc/resolv.conf"))
+        if any(data.values()):
+            print(json.dumps(data, separators=(",", ":")))
+    except (OSError, ValueError) as error:
+        sys.exit(f"tizen-vm: {error}")

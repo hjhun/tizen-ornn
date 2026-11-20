@@ -8,6 +8,18 @@ TIZEN_OUT="$PWD/out/dev" TIZEN_DISK="$PWD/verification.qcow2" TIZEN_DISK_FORMAT=
   ./tests/boot-smoke.expect "$PWD/verification.log"
 ```
 
+## R6 호스트 디렉터리 공유와 네트워크 검증
+
+WSL2의 Ubuntu 24.04.4 x86_64에서 R5 디스크(공식 Unified `20261119.053314`)의 일회용 QCOW2 오버레이를 부팅했습니다. R6 커널은 같은 Tizen RPi4 소스로 만든 `6.12.41-tizen-qemu`이며, 9p virtio와 QEMU `fw_cfg`를 내장합니다.
+
+| 실행한 경로 | 실제 결과 |
+|---|---|
+| `--share`로 WSL 디렉터리와 Windows `/mnt/c` 디렉터리 공유 | SMACK이 활성화된 게스트의 `owner`(UID 5001, `User::Shell`)가 `/home/owner/host`에서 호스트 파일을 읽고 파일을 생성했습니다. 호스트에서 생성 내용을 확인했고, 호스트의 수정도 게스트에서 읽었습니다. |
+| `--share-ro`로 읽기 전용 공유 | `owner`의 파일 생성이 `Read-only file system`으로 실패했습니다. 게스트 root가 읽기·쓰기로 재마운트를 시도한 뒤에도 파일 생성이 거부됐고 호스트 디렉터리에 파일이 생기지 않았습니다. |
+| 호스트 프록시와 `no_proxy` 상속 | `owner`의 HTTP 요청이 테스트 프록시를 거쳤고, `no_proxy` 대상 요청은 서버에 직접 도착했습니다. 게스트 패키지 서비스가 `https_proxy`를 상속했습니다. `ed-1.19-1.1.x86_64` RPM을 설치할 때 프록시에서 `download.tizen.org:443`으로 향하는 HTTPS CONNECT를 관찰했습니다. |
+| 같은 디스크를 `--no-host-network`로 재부팅 | 새 `owner` 셸과 패키지 서비스에서 이전 프록시 설정이 사라졌고 게스트에서 직접 HTTP 요청에 성공했습니다. |
+| DNS 검색 도메인과 디렉터리 공유 동시 사용 | 호스트의 테스트 검색 도메인 `example.org`와 QEMU DNS 주소 `10.0.2.3`가 게스트에 적용됐습니다. `owner`로 `getent ahostsv4 www`를 실행해 주소를 얻었으며 같은 부팅에서 프록시 설정과 읽기 전용 공유 파일도 확인했습니다. |
+
 ## R5 호스트 CLI와 게스트 검증
 
 Ubuntu 24.04.4 LTS x86_64를 실행하는 WSL2에서 Ubuntu 패키지를 APT로 설치했습니다. 공식 Unified `20261118.052410`과 `20261119.053314`을 사용했습니다. 별도 Ubuntu 물리 장비와 AI 서비스 계정 로그인은 이번 검증에 포함하지 않았습니다.

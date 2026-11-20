@@ -20,7 +20,9 @@ if [[ $1 == --pane ]]; then
 fi
 
 disk=$1
-shift
+share_id=$2
+host_network=$3
+shift 3
 command -v tmux >/dev/null || { echo 'Install tmux on the host to start a persistent console.' >&2; exit 1; }
 self=$(realpath -- "$0")
 prefix=$("${self%/*}/vm-runtime" "$disk")
@@ -43,12 +45,25 @@ if ! "${tm[@]}" has-session -t '=vm' 2>/dev/null; then
     : > "$result"
     : > "$result.log"
     new=1
+else
+    if [[ -n $share_id ]]; then
+        active_share=$("${tm[@]}" show-environment -t '=vm' TIZEN_VM_SHARE_ID 2>/dev/null || :)
+        if [[ $active_share != "TIZEN_VM_SHARE_ID=$share_id" ]]; then
+            echo 'The running VM has different share settings. Run systemctl poweroff in the guest to change them.' >&2
+            exit 2
+        fi
+    fi
+    if (( ! host_network )) && [[ $("${tm[@]}" show-environment -t '=vm' TIZEN_VM_HOST_NETWORK 2>/dev/null || :) == TIZEN_VM_HOST_NETWORK=1 ]]; then
+        echo 'The running VM started with host network import enabled. Run systemctl poweroff in the guest before changing this option.' >&2
+        exit 2
+    fi
 fi
 # Keep this launch's diagnostics even if another VM starts immediately after it exits.
 exec 6<"$result" 7<"$result.log"
 status=0
 if (( new )); then
-    "${tm[@]}" new-session -d -s vm -n console -- "$self" --pane "$result" "$@" 6<&- 7<&- 8>&- || status=$?
+    "${tm[@]}" new-session -d -s vm -n console -e "TIZEN_VM_SHARE_ID=$share_id" -e "TIZEN_VM_HOST_NETWORK=$host_network" \
+        -- "$self" --pane "$result" "$@" 6<&- 7<&- 8>&- || status=$?
 fi
 exec 8>&-
 if (( status == 0 )); then

@@ -1,0 +1,75 @@
+#!/usr/bin/python3
+"""Apply boot-time QEMU resolver and proxy settings in the Tizen guest."""
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+
+FIRMWARE = Path("/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/network-data/raw")
+RUN = Path("/run/tizen-vm-network")
+LOGIN = Path("/etc/profile.d/zz-tizen-vm-network.sh")
+HOOK = 'if [ -r /run/tizen-vm-network/login.sh ]; then\n    . /run/tizen-vm-network/login.sh\nfi\n'
+PROXIES = {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
+
+
+def readable(path):
+    os.setxattr(path, "security.SMACK64", b"_")
+
+
+def proxy_environment(values):
+    # The static profile hook also runs after 'su - owner' clears the environment.
+    env = {}
+    for name, value in values.items():
+        if name not in PROXIES or not isinstance(value, str) or any(c in value for c in "\r\n\x00"):
+            raise ValueError("invalid proxy setting")
+        env[name] = env[name.upper()] = value
+    login = RUN / "login.sh"
+    login.write_text("".join(f"export {key}={shlex.quote(value)}\n" for key, value in env.items()))
+    readable(login)
+    if not os.path.lexists(LOGIN):
+        # Only the fixed, conditional hook is persistent on existing guest disks.
+        with tempfile.NamedTemporaryFile(dir=LOGIN.parent, delete=False) as tmp:
+            temp = Path(tmp.name)
+        try:
+            temp.write_text(HOOK)
+            temp.chmod(0o644)
+            readable(temp)
+            os.link(temp, LOGIN)
+        finally:
+            temp.unlink()
+    directory = Path("/run/systemd/system.conf.d")
+    directory.mkdir(exist_ok=True, parents=True)
+    conf = directory / "70-tizen-vm-network.conf"
+    lines = ["[Manager]"]
+    for key, value in env.items():
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+        lines.append(f'DefaultEnvironment="{key}={escaped}"')
+    conf.write_text("\n".join(lines) + "\n")
+    readable(conf)
+
+
+def dns_search(names):
+    # Keep the stock 10.0.2.3 forwarder. Host loopback resolvers are not guest IPs.
+    resolver = Path("/etc/resolv.conf")
+    lines = [line for line in resolver.read_text().splitlines()
+             if line.split()[:1] not in (["nameserver"], ["search"], ["domain"])]
+    lines.append("nameserver 10.0.2.3")
+    lines.append("search " + " ".join(names))
+    active = RUN / "resolv.conf"
+    active.write_text("\n".join(lines) + "\n")
+    readable(active)
+    subprocess.run(["/bin/mount", "--bind", str(active), str(resolver)], check=True)
+    # ConnMan rewrites resolv.conf at startup. Protect this boot's host DNS view.
+    subprocess.run(["/bin/mount", "-o", "remount,bind,ro", str(resolver)], check=True)
+
+
+if __name__ == "__main__":
+    settings = json.loads(FIRMWARE.read_bytes())
+    RUN.mkdir(mode=0o755, exist_ok=True)
+    readable(RUN)
+    if settings["proxy"]:
+        proxy_environment(settings["proxy"])
+    if settings["search"]:
+        dns_search(settings["search"])

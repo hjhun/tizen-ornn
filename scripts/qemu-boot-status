@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+"""Return a guest boot setup failure to the host after QEMU powers down."""
+import signal
+import socket
+import subprocess
+import sys
+
+
+def run(command):
+    # ttyS0 belongs to the interactive console. ttyS1 carries one failure byte
+    # on a private socketpair, with no serial transcript or host file.
+    receiver, guest = socket.socketpair()
+    with receiver, guest:
+        child = None
+        pending = set()
+
+        def forward(signum, frame):
+            if child is None:
+                pending.add(signum)
+            else:
+                child.send_signal(signum)
+
+        for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, forward)
+        guest.set_inheritable(True)
+        command += ['-chardev', f'socket,id=bootstatus,fd={guest.fileno()}', '-serial', 'chardev:bootstatus']
+        # QEMU also needs the disk lock and any anonymous fw_cfg descriptor.
+        child = subprocess.Popen(command, close_fds=False)
+        guest.close()
+        for sig in pending:
+            child.send_signal(sig)
+        code = child.wait()
+        receiver.setblocking(False)
+        try:
+            marker = receiver.recv(1)
+        except BlockingIOError:
+            marker = b''
+        if marker == b'!':
+            print('tizen-vm: guest startup failed while applying host settings. Check the guest console.', file=sys.stderr)
+            return 1
+        return code if code >= 0 else 128 - code
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(run(sys.argv[1:]))
+    except OSError as error:
+        sys.exit(f'tizen-vm: {error}')

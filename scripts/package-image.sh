@@ -16,7 +16,10 @@ if [[ -f "$out/snapshot.lock.json" ]]; then
     release=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["release"])' "$out/snapshot.lock.json")
 fi
 [[ $release =~ ^tizen-10\.1-unified_([0-9]{8}\.[0-9]{6})$ ]] || { echo "Invalid snapshot ID" >&2; exit 1; }
-bundle=tizen-dev-10.1-x86_64-${BASH_REMATCH[1]}-r5
+snapshot=${BASH_REMATCH[1]}
+version=$(<"$project/config/version")
+[[ $version =~ ^10\.1-([0-9]+)$ ]] || { echo "Invalid host package version: $version" >&2; exit 1; }
+bundle=tizen-dev-10.1-x86_64-${snapshot}-r${BASH_REMATCH[1]}
 archive="$dest/$bundle.tar.zst"
 [[ -f "$out/bzImage" && -f "$out/kernel.config" ]]
 disk="$out/tizen-rootfs.ext4"
@@ -34,6 +37,14 @@ for item in README.md tizen-vm config scripts kernel guest tests packaging sdk c
     cp -a "$project/$item" "$base/"
 done
 find "$base" -type d -name __pycache__ -prune -exec rm -rf {} +
+# The launcher uses the release kernel for features missing from older disks.
+# A host package already includes this pair. A checkout uses its kernel build.
+if [[ ! -f $base/kernel/kernel.sha256 ]]; then
+    kernel_dir=$project/out/share-kernel
+    TIZEN_OUT="$kernel_dir" TIZEN_PREBUILT_KERNEL=0 "$project/scripts/build-kernel.sh" --reuse
+    cp -- "$kernel_dir"/{bzImage,kernel.config,kernel.sha256} "$base/kernel/"
+fi
+(cd "$base/kernel" && sha256sum -c kernel.sha256)
 cp "$out/bzImage" "$out/kernel.config" "$base/out/"
 if [[ -f "$out/snapshot.lock.json" ]]; then cp "$out/snapshot.lock.json" "$base/out/"; fi
 if [[ -f "$out/.tizen-vm-image-revision" ]]; then cp "$out/.tizen-vm-image-revision" "$base/out/"; fi
@@ -41,9 +52,11 @@ if [[ -f "$out/.tizen-vm-image-revision" ]]; then cp "$out/.tizen-vm-image-revis
 raw="$disk"
 if [[ $disk == *.qcow2 ]]; then
     raw="$stage/tizen-rootfs.ext4"
-    qemu-img convert -f qcow2 -O raw "$disk" "$raw"
+    qemu_img=/usr/bin/qemu-img
+    if [[ ! -x $qemu_img ]]; then qemu_img=qemu-img; fi
+    "$qemu_img" convert -f qcow2 -O raw "$disk" "$raw"
 fi
-(cd "$base" && sha256sum out/bzImage out/kernel.config > SHA256SUMS)
+(cd "$base" && sha256sum out/bzImage out/kernel.config kernel/bzImage kernel/kernel.config > SHA256SUMS)
 digest=$(sha256sum <"$raw")
 printf '%s  out/tizen-rootfs.ext4\n' "${digest%% *}" >> "$base/SHA256SUMS"
 # Read the raw disk in place, including when the archive is on another volume.

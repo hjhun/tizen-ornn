@@ -1,0 +1,126 @@
+#!/usr/bin/expect -f
+# Exercise a boot-time export as Tizen's ordinary developer account.
+set timeout 90
+log_user 0
+if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" ||
+    ![info exists env(TIZEN_DISK)] || ![file isfile $env(TIZEN_DISK)] ||
+    [catch {exec flock -n $env(TIZEN_DISK) true}]} {
+    puts stderr "Supply TIZEN_OUT, an unused disposable TIZEN_DISK and TIZEN_DISK_FORMAT=qcow2."
+    exit 2
+}
+set root [file dirname [file dirname [file normalize [info script]]]]
+set scratch [exec mktemp -d]
+set disk [file normalize $env(TIZEN_DISK)]
+set parent [expr {[info exists env(TIZEN_TEST_SHARE_PARENT)] ? $env(TIZEN_TEST_SHARE_PARENT) : "/tmp"}]
+set share [exec mktemp -d [file join $parent {tizen share,XXXXXXXX}]]
+proc write_file {path value} {
+    set handle [open $path w]
+    puts $handle $value
+    close $handle
+}
+proc contents {path} {
+    set handle [open $path r]
+    set result [string trimright [read $handle] "\n"]
+    close $handle
+    return $result
+}
+proc guest {command} {
+    global spawn_id
+    send -- "$command; printf '\\nSHARE_STATUS=%s\\n' \$?\r"
+    expect {
+        -re {[\r\n]SHARE_STATUS=([0-9]+)[\r\n]} {
+            if {$expect_out(1,string) != 0} {error "Guest command failed: $command"}
+        }
+        timeout {error "Guest command timed out: $command"}
+        eof {error "Guest exited during share test"}
+    }
+}
+set failed [catch {
+    write_file [file join $share host.txt] from-host
+    file attributes [file join $share host.txt] -permissions 0600
+    foreach option {--share --share-ro} {
+        if {$option eq "--share-ro"} {
+            # Leave the caller's test disk reusable after seeding the failure case.
+            set overlay [file join $scratch occupied.qcow2]
+            exec /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b $disk $overlay
+            set env(TIZEN_DISK) $overlay
+        }
+        spawn -noecho $root/scripts/run-vm.sh --foreground --no-host-network $option $share
+        expect {
+            -re {root:[^\r\n]*> $} {}
+            timeout {error "Guest did not boot"}
+            eof {error "Launcher exited before login"}
+        }
+        send -- "stty -echo\r"
+        guest {findmnt -nr -o FSTYPE -T /home/owner/host | grep -x 9p}
+        if {$option eq "--share"} {
+            guest {su - owner -c 'set -e; cd /home/owner/host; test "$(id -u)" = 5001; test "$(cat host.txt)" = from-host; echo from-guest > guest.txt'}
+            if {[contents [file join $share guest.txt]] ne "from-guest"} {error "Host missed guest write"}
+            write_file [file join $share host.txt] changed-on-host
+            guest {su - owner -c 'test "$(cat /home/owner/host/host.txt)" = changed-on-host'}
+        } else {
+            guest {su - owner -c 'set -e; cd /home/owner/host; test "$(cat host.txt)" = changed-on-host; LC_ALL=C touch denied 2>&1 | grep -F "Read-only file system"'}
+            # Also exercise the host export's readonly flag against guest root.
+            guest {mount -o remount,rw /home/owner/host 2>/dev/null || :; LC_ALL=C touch /home/owner/host/root-denied 2>&1 | grep -F 'Read-only file system'}
+            foreach denied {denied root-denied} {
+                if {[file exists [file join $share $denied]]} {error "Guest modified read-only export"}
+            }
+            guest {umount /home/owner/host && touch /home/owner/host/keep}
+        }
+        send -- "sync; systemctl --force poweroff\r"
+        expect {
+            eof {}
+            timeout {error "Guest did not power off"}
+        }
+        set status [wait]
+        if {[lindex $status 3] != 0} {error "QEMU exited $status"}
+        unset spawn_id
+    }
+    set env(TERM) xterm-256color
+    foreach launcher [list [list $root/scripts/run-vm.sh --foreground] [list $root/tizen-vm run]] {
+        spawn -noecho {*}$launcher --no-host-network --share $share
+        expect {
+            -ex "guest startup failed while applying host settings" {}
+            eof {error "Launcher lost the guest startup failure"}
+            timeout {error "Occupied mount point did not stop the VM"}
+        }
+        expect {
+            eof {}
+            timeout {error "Startup failure did not return control to the host"}
+        }
+        set status [wait]
+        if {[lindex $status 2] != 0 || [lindex $status 3] != 1} {error "Expected startup failure: $status"}
+        unset spawn_id
+        exec flock -n $env(TIZEN_DISK) true
+    }
+    # Send SIGTERM to the foreground launcher PID alone, as a host supervisor would.
+    set env(TIZEN_DISK) [file join $scratch signal.qcow2]
+    exec /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b $disk $env(TIZEN_DISK)
+    set socket [exec $root/scripts/vm-runtime $env(TIZEN_DISK)].packages
+    spawn -noecho $root/scripts/run-vm.sh --foreground --no-host-network --share $share
+    expect {
+        -re {root:[^\r\n]*> $} {}
+        timeout {error "Guest did not boot for the SIGTERM test"}
+        eof {error "Launcher exited before SIGTERM"}
+    }
+    exec kill -TERM [exp_pid]
+    expect {
+        eof {}
+        timeout {error "Launcher did not forward SIGTERM to QEMU"}
+    }
+    set status [wait]
+    unset spawn_id
+    if {[lindex $status 2] != 0 || [lindex $status 3] != 0 || [file exists $socket]} {
+        error "QEMU did not shut down cleanly on SIGTERM: $status"
+    }
+    exec flock -n $env(TIZEN_DISK) true
+} message]
+if {$failed && [info exists spawn_id]} {
+    catch {exec kill -TERM [exp_pid]}
+    catch {close}
+    catch {wait}
+}
+file delete -force $share
+file delete -force $scratch
+if {$failed} {puts stderr $message; exit 1}
+puts "Shared directory passed owner read/write, host changes, host-enforced read-only access, occupied mount failure and SIGTERM."

@@ -20,9 +20,9 @@ if {[catch {exec flock -n $disk true}] || ![catch {exec tmux -S $sock has-sessio
     exit 2
 }
 set env(TERM) xterm-256color
-proc attach {{viewers 1}} {
+proc attach {{viewers 1} args} {
     global launcher sock timeout
-    spawn -noecho {*}$launcher
+    spawn -noecho {*}$launcher {*}$args
     set stop [expr {[clock seconds] + $timeout}]
     while {[clock seconds] < $stop} {
         if {![catch {exec tmux -S $sock list-clients -F "#{client_name}"} output] &&
@@ -56,10 +56,32 @@ proc finished {client} {
         error "Console client exit: $result"
     }
 }
+proc reject_startup_change {diagnostic args} {
+    global launcher
+    spawn -noecho {*}$launcher {*}$args
+    expect {
+        -ex $diagnostic {}
+        timeout {error "Running VM accepted different startup options"}
+        eof {error "Missing startup conflict diagnostic: $diagnostic"}
+    }
+    expect eof
+    set result [wait]
+    if {[lindex $result 3] != 2} {error "Unexpected startup conflict status: $result"}
+}
 
 set failed [catch {
-    set a [attach]
+    set share {}
+    if {[info exists env(TIZEN_TEST_SHARE)]} {
+        set share [list --share $env(TIZEN_TEST_SHARE)]
+    }
+    set a [attach 1 {*}$share]
     visible "root:~>"
+    if {[llength $share]} {
+        reject_startup_change "different share settings" --share-ro $env(TIZEN_TEST_SHARE)
+        if {[lsearch -exact $launcher --no-host-network] == -1} {
+            reject_startup_change "host network import enabled" --no-host-network
+        }
+    }
     command $a {stty -echo; set +H; printf 'SETUP-%s\n' READY} SETUP-READY
     command $a {cd /opt && saved=$$; sleep 180 & bg=$!; echo JOB-READY} JOB-READY
     send -i $a -- "\004"
@@ -82,7 +104,7 @@ set failed [catch {
     command $c {test "$saved" = "$$" && test "$PWD" = /opt && kill -0 "$bg" && echo RESUMED-OK} RESUMED-OK
     close -i $c
     wait -i $c
-    set d [attach]
+    set d [attach 1 {*}$share]
     command $d {test "$saved" = "$$" && kill -0 "$bg" && echo RECONNECTED-OK} RECONNECTED-OK
     send -i $d -- {kill "$bg"; sync; systemctl --force poweroff}
     send -i $d -- "\r"

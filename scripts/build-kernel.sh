@@ -8,11 +8,20 @@ if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 ]]; then
     mkdir -p "$out"
     stage=$(mktemp -d "$out/.kernel.XXXXXXXX")
     trap 'rm -rf -- "$stage"' EXIT
-    release=https://github.com/hjhun/tizen-vm/releases/download/10.1-r4
-    for file in bzImage kernel.config; do
-        curl -fLsS --retry 2 "$release/$file" -o "$stage/$file"
-    done
-    (cd "$stage" && sha256sum -c "$root/kernel/r4.sha256")
+    # The host package carries its matching guest kernel. An unpackaged
+    # checkout can also reuse the local kernel prepared by package-cli.sh.
+    prebuilt=$root/kernel
+    if [[ ! -f $prebuilt/bzImage ]]; then prebuilt=$root/out/share-kernel; fi
+    if [[ -f $prebuilt/bzImage ]]; then
+        cp -- "$prebuilt/bzImage" "$prebuilt/kernel.config" "$stage/"
+        (cd "$stage" && sha256sum -c "$prebuilt/kernel.sha256")
+    else
+        release=https://github.com/hjhun/tizen-vm/releases/download/10.1-r6
+        for file in bzImage kernel.config; do
+            curl -fLsS --retry 2 "$release/$file" -o "$stage/$file"
+        done
+        (cd "$stage" && sha256sum -c "$root/kernel/r6.sha256")
+    fi
     mv -fT "$stage/kernel.config" "$out/kernel.config"
     mv -fT "$stage/bzImage" "$out/bzImage"
     exit 0
@@ -34,6 +43,11 @@ jobs=${JOBS:-$(nproc)}
 
 exec 9>"$work/build.lock"
 flock 9
+if [[ ${1:-} == --reuse && -f $out/.kernel-recipe.sha256 && -f $out/kernel.sha256 ]] &&
+   (cd "$root" && sha256sum --check --status "$out/.kernel-recipe.sha256") &&
+   (cd "$out" && sha256sum --check --status kernel.sha256); then
+    exit 0
+fi
 stage=$(mktemp -d "$work/staging.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 if [[ ! -f $work/source.rpm ]]; then
@@ -97,6 +111,10 @@ fi
 "${kmake[@]}" -j"$jobs" bzImage
 install -m 0644 "$work/build/arch/x86/boot/bzImage" "$stage/bzImage"
 install -m 0644 "$work/build/.config" "$stage/kernel.config"
+(cd "$stage" && sha256sum bzImage kernel.config > kernel.sha256)
+(cd "$root" && sha256sum scripts/build-kernel.sh kernel/qemu-x86_64.config > "$stage/.kernel-recipe.sha256")
 mv -fT "$stage/kernel.config" "$out/kernel.config"
 mv -fT "$stage/bzImage" "$out/bzImage"
+mv -fT "$stage/kernel.sha256" "$out/kernel.sha256"
+mv -fT "$stage/.kernel-recipe.sha256" "$out/.kernel-recipe.sha256"
 sha256sum "$out/bzImage"

@@ -28,6 +28,36 @@ For serial automation such as Expect, use `./scripts/run-vm.sh --foreground`. Th
 
 In a second host terminal, run `tizen-vm install ed` to install a Tizen RPM or `tizen-vm update --packages ed` to update it from the configured snapshot. The commands stream guest output to that terminal and return the guest operation's exit status. The serial console keeps its foreground process. A private virtio port connects the host user to the guest service. The guest must be running. Older images gain this service through `tizen-vm update --image` after shutdown.
 
+## Share a host directory
+
+Run the launcher as your normal Ubuntu user. On an existing R5 disk, upgrade the host CLI to R6 or later to use the bundled kernel for sharing. The project stays on the host and its files are accessible under `/home/owner/host` for this boot.
+
+```sh
+tizen-vm run --share "$PWD"
+# In the guest console
+su - owner
+cd /home/owner/host
+```
+
+To share a Windows project from WSL2, use its WSL path, for example `tizen-vm run --share "/mnt/c/Users/me/My Project"`. Use `--share-ro` to enforce read-only access on the host side. With `--share`, guest edits and deletions affect the host files immediately. The export has the access rights of the Ubuntu account launching QEMU. Guest `owner` can work in private directories without changing their host ownership. File permissions, case sensitivity and link support on Windows paths depend on the underlying filesystem and WSL mount settings.
+
+Choose one directory per boot. The guest mountpoint must be absent or empty. The launcher uses a Linux user namespace and a virtio-9p device. To check whether your Ubuntu host permits the required user mapping, run `unshare --user --map-user=5001 --map-group=100 -- true` as the user who starts the VM. The guest shuts down with a diagnostic if it cannot mount the directory. Run plain `tizen-vm` to reattach. After `systemctl poweroff`, the next launch may select a different directory or omit sharing. A full image update carries the files stored on the guest disk. Shared project files already live on the host.
+
+## Host networking
+
+The VM keeps its own interface and private IP. QEMU routes outbound connections over Ubuntu's network and forwards guest DNS requests through `10.0.2.3`. On startup the CLI reads the host resolver's search domains so tools can resolve short hostnames. In WSL2, DNS and VPN reachability depend on the Windows-to-WSL network configuration. [Microsoft's WSL network guide](https://learn.microsoft.com/en-us/windows/wsl/networking)
+
+The CLI takes proxy settings from the environment in the terminal that starts the VM. Lowercase names take precedence over uppercase names. In WSL2, if no proxy endpoint variable is set, the CLI reads the current Windows user's manual proxy settings through PowerShell interop. It supports one proxy for all HTTP traffic or separate HTTP, HTTPS and SOCKS endpoints. The guest receives settings at boot for login shells and systemd services, including the package service behind `tizen-vm install`.
+
+| Host setting | Guest behavior |
+|---|---|
+| `http_proxy`, `https_proxy`, `all_proxy` | Use the configured endpoint. A loopback proxy address is translated to `10.0.2.2`, the QEMU host gateway. The proxy must be reachable from Ubuntu or WSL. |
+| `no_proxy` | Preserve the comma-separated bypass list. Windows manual bypass entries such as `*.example.org` become domain suffixes. |
+| PAC, WPAD, or the Windows `<local>` bypass rule | Applications differ in how they evaluate these rules. Set explicit proxy endpoints and `no_proxy` in Ubuntu for the desired routes. |
+| Proxy URL with credentials | Only the endpoint is forwarded. Configure any required authentication in the guest through your organization's approved mechanism. |
+
+A terminal reconnect keeps the current VM's settings. To pick up a changed proxy or DNS search domain, shut down the guest and start it again. `tizen-vm run --no-host-network` keeps ordinary NAT and DNS while skipping the host proxy and search-domain import. Private CA certificates are configured separately. [HTTPS trust setup](https-certificates.md)
+
 ## Disk size
 
 The default raw disk `tizen-rootfs.ext4` is a 16 GiB sparse file. The guest retains its packages, source trees and build output across shutdowns. Use `df -h /` inside the guest to see free guest space and `du -h "$TIZEN_OUT/tizen-rootfs.ext4"` on the host to see allocated host space. Develop under `/home/owner/workspace`.
@@ -49,11 +79,11 @@ With the VM shut down, you can bundle the disk, kernel and launcher for local us
 ./scripts/package-image.sh "$TIZEN_OUT" "$PWD/dist"
 ```
 
-Use the archive name printed by the command. For example, the R5 bundle for the November 19 snapshot can be unpacked and started as follows.
+Use the archive name printed by the command. For example, the R6 bundle for the November 19 snapshot can be unpacked and started as follows.
 
 ```sh
 cd dist
-bundle=tizen-dev-10.1-x86_64-20261119.053314-r5
+bundle=tizen-dev-10.1-x86_64-20261119.053314-r6
 sha256sum -c "$bundle.tar.zst.sha256"
 tar --zstd -xf "$bundle.tar.zst"
 cd "$bundle"

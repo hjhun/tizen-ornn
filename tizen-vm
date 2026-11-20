@@ -270,6 +270,10 @@ def main():
     commands.add_parser('build', help='build the configured image or reuse the installed disk')
     start = commands.add_parser('run', aliases=['start'], help='start or reattach to the selected VM (default)')
     start.add_argument('--gui', dest='gui', action='store_true', default=argparse.SUPPRESS)
+    start.add_argument('--no-host-network', action='store_true', help='skip importing host proxy and DNS search settings')
+    sharing = start.add_mutually_exclusive_group()
+    sharing.add_argument('--share', metavar='HOST_DIR', help='mount a host directory at /home/owner/host')
+    sharing.add_argument('--share-ro', metavar='HOST_DIR', help='mount a read-only host directory at /home/owner/host')
     install = commands.add_parser('install', help='install packages or AI tools in the running VM')
     install.add_argument('packages', nargs='*', metavar='NAME', help='RPM or optional tool name; omit for build')
     update = commands.add_parser('update', help='update a stopped image or upgrade packages in the running VM')
@@ -297,7 +301,16 @@ def main():
             os.environ['TIZEN_SELECTION_LINK'] = str(selection_link(home))
         os.environ['TIZEN_OUT'] = str(image or home)
         run = SCRIPTS / 'run-vm.sh'
-        os.execv(run, [str(run)] + (['--gui'] if args.gui else []))
+        command = [str(run)]
+        if args.gui:
+            command.append('--gui')
+        if getattr(args, 'no_host_network', False):
+            command.append('--no-host-network')
+        if getattr(args, 'share', None) is not None:
+            command.extend(['--share', args.share])
+        elif getattr(args, 'share_ro', None) is not None:
+            command.extend(['--share-ro', args.share_ro])
+        os.execv(run, command)
     if args.gui:
         parser.error('--gui applies to run')
     if os.environ.get('TIZEN_DISK') or os.environ.get('TIZEN_KERNEL'):
