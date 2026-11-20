@@ -8,17 +8,11 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 import snapshot_rpms as bootstrap
-PINS = {
-    "tizen-emulator": "50482f0c776da41297d82614ecc602208a3c2a618fffa6d44cbf47c235e30537",
-    "tizen-base": "f031627bfbf35b8b071783f36e97a31b450229b7371704772be12c7276b4aa13",
-}
-if bootstrap.LOCK:
-    PINS = {alias: bootstrap.LOCK["repos"][alias]["repomd"] for alias in bootstrap.REPOS}
+PINS = {alias: bootstrap.LOCK["repos"][alias]["repomd"] for alias in bootstrap.REPOS}
 root = Path(sys.argv[1])
 destination = root / "usr/share/tizen-snapshot"
 destination.mkdir(parents=True, exist_ok=True)
-if bootstrap.LOCK:
-    (destination / "snapshot.lock.json").write_text(json.dumps(bootstrap.LOCK, indent=2, sort_keys=True) + "\n")
+(destination / "snapshot.lock.json").write_text(json.dumps(bootstrap.LOCK, indent=2, sort_keys=True) + "\n")
 seed = destination / "repos.d"
 seed.mkdir(exist_ok=True)
 live = root / "etc/zypp/repos.d"

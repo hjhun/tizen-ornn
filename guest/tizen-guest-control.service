@@ -1,0 +1,12 @@
+[Unit]
+Description=Handle host package requests for the Tizen developer VM
+BindsTo=dev-tizen\x2dvm\x2dpackages.device
+After=dev-tizen\x2dvm\x2dpackages.device tizen-dev-setup.service
+Requires=tizen-dev-setup.service
+
+[Service]
+Type=simple
+SmackProcessLabel=User::Shell
+ExecStart=/usr/local/libexec/tizen-guest-control
+Restart=on-failure
+RestartSec=2

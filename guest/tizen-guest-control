@@ -1,0 +1,165 @@
+#!/usr/bin/python3
+"""Local virtio package service. One transaction runs at a time."""
+import base64
+import hashlib
+import json
+import os
+import re
+import select
+import subprocess
+import tempfile
+import time
+
+MAX_BUNDLE = 64 * 1024 * 1024
+MAX_FRAME = 64 * 1024
+AI_TOOLS = {"codex", "gemini", "claude", "agy"}
+
+
+class Port:
+    def __init__(self, path):
+        self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+        self.buffer = bytearray()
+
+    def receive(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while b"\n" not in self.buffer:
+            if len(self.buffer) > MAX_FRAME:
+                self.buffer.clear()
+                raise ValueError("Frame too large")
+            wait = None if deadline is None else max(0, deadline - time.monotonic())
+            if not select.select([self.fd], [], [], wait)[0]:
+                raise TimeoutError("Metadata upload timed out")
+            try:
+                part = os.read(self.fd, 65536)
+            except BlockingIOError:
+                continue
+            if not part:
+                self.buffer.clear()
+                time.sleep(0.25)  # virtio returns EOF while the host is disconnected
+                raise EOFError
+            self.buffer.extend(part)
+        end = self.buffer.index(10) + 1
+        line = self.buffer[:end]
+        del self.buffer[:end]
+        if len(line) > MAX_FRAME:
+            raise ValueError("Frame too large")
+        msg = json.loads(line)
+        if not isinstance(msg, dict) or not re.fullmatch(r"[a-f0-9]{32}", str(msg.get("id"))):
+            raise ValueError("Invalid request")
+        return msg
+
+    def send(self, ident, kind, **fields):
+        frame = json.dumps(dict(fields, id=ident, type=kind), separators=(",", ":"))
+        # A new client may have received the tail of the prior reply.
+        leading = "\n" if kind == "ready" else ""
+        data = memoryview((leading + frame + "\n").encode())
+        deadline = time.monotonic() + 5
+        while data:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([], [self.fd], [], remaining)[1]:
+                raise TimeoutError("Host stopped reading")
+            try:
+                count = os.write(self.fd, data)
+            except BlockingIOError:
+                continue
+            if not count:
+                raise EOFError
+            data = data[count:]
+
+
+def install_commands(names):
+    if (not isinstance(names, list) or not 1 <= len(names) <= 128 or
+            not all(isinstance(n, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,126}", n) for n in names)):
+        raise ValueError("Invalid package names")
+    rpms = [n for n in names if n not in AI_TOOLS]
+    if rpms:
+        yield ["/usr/bin/zypper", "--non-interactive", "--no-refresh", "install", "--no-recommends", *rpms]
+    for name in names:
+        if name in AI_TOOLS:
+            yield ["/usr/local/bin/tizen-ai-install", name]
+
+
+def run_commands(port, ident, commands):
+    connected = True
+    for argv in commands:
+        with subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
+            while True:
+                readable = select.select([proc.stdout], [], [], 10)[0]
+                if readable:
+                    chunk = os.read(proc.stdout.fileno(), 16384)
+                    if not chunk:
+                        break
+                if connected:
+                    try:
+                        if readable:
+                            port.send(ident, "output", data=base64.b64encode(chunk).decode("ascii"))
+                        else:
+                            port.send(ident, "alive")
+                    except (EOFError, OSError):
+                        connected = False  # drain output and finish the transaction after host disconnect
+            code = proc.wait()
+            if code:
+                return code if code > 0 else 128 - code
+    return 0
+
+
+def update(port, req):
+    ident = req["id"]
+    size = req.get("size")
+    if type(size) is not int or not 1 <= size <= MAX_BUNDLE or not re.fullmatch(r"[0-9a-f]{64}", str(req.get("sha256"))):
+        raise ValueError("Invalid metadata size or checksum")
+    digest = hashlib.sha256()
+    received = 0
+    with tempfile.TemporaryDirectory(prefix="tizen-update-") as directory:
+        path = os.path.join(directory, "metadata.tar.gz")
+        with open(path, "xb") as bundle:
+            port.send(ident, "upload")
+            while True:
+                msg = port.receive(60)
+                if msg["id"] != ident:
+                    if msg.get("op") == "ping":
+                        port.send(msg["id"], "ready")
+                    raise ValueError("Metadata upload interrupted")
+                if msg.get("end") is True:
+                    break
+                data = msg.get("data")
+                if not isinstance(data, str):
+                    raise ValueError("Invalid metadata chunk")
+                chunk = base64.b64decode(data, validate=True)
+                received += len(chunk)
+                if not chunk or received > size:
+                    raise ValueError("Metadata exceeds specified size")
+                digest.update(chunk)
+                bundle.write(chunk)
+        if received != size or digest.hexdigest() != req["sha256"]:
+            raise ValueError("Incomplete or corrupt snapshot metadata")
+        return run_commands(port, ident, [["/usr/local/libexec/tizen-update-rpms", path]])
+
+
+def main():
+    port = Port("/dev/tizen-vm-packages")
+    while True:
+        try:
+            req = port.receive()
+            ident = req["id"]
+            try:
+                op = req.get("op")
+                if op == "ping":
+                    port.send(ident, "ready")
+                    continue
+                if op == "install":
+                    code = run_commands(port, ident, install_commands(req.get("names")))
+                elif op == "update":
+                    code = update(port, req)
+                else:
+                    raise ValueError("Unknown package operation")
+            except (ValueError, OSError) as error:
+                port.send(ident, "output", data=base64.b64encode((str(error) + "\n").encode()).decode("ascii"))
+                code = 1
+            port.send(ident, "exit", code=code)
+        except (EOFError, OSError, ValueError):
+            continue
+
+
+if __name__ == "__main__":
+    main()

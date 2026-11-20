@@ -8,7 +8,7 @@ if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 ]]; then
     mkdir -p "$out"
     stage=$(mktemp -d "$out/.kernel.XXXXXXXX")
     trap 'rm -rf -- "$stage"' EXIT
-    release=https://github.com/hjhun/tizen-wsl/releases/download/10.1-r4
+    release=https://github.com/hjhun/tizen-vm/releases/download/10.1-r4
     for file in bzImage kernel.config; do
         curl -fLsS --retry 2 "$release/$file" -o "$stage/$file"
     done
@@ -24,8 +24,12 @@ fragment=$root/kernel/qemu-x86_64.config
 revision=b6322b453844b6111e4619615fc65bd29b86c83e
 sha256=f29de2d367d165832402332f73e955cc9a231cd2b0b534e3b8048aea67a4a384
 snapshot=tizen-10.1-unified_20261119.053314
-url=https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified
-url=$url/$snapshot/repos/standard/source/rpi4-linux-kernel-6.12.41-0.src.rpm
+if [[ -n ${TIZEN_SNAPSHOT_LOCK:-} || -f $out/snapshot.lock.json ]]; then
+    source_url=$(python3 "$root/scripts/snapshot_lock.py" source)
+else
+    source_url=$("$root/scripts/tizen-image" --print-source)
+fi
+url=${source_url}Tizen-10.1-Unified/$snapshot/repos/standard/source/rpi4-linux-kernel-6.12.41-0.src.rpm
 jobs=${JOBS:-$(nproc)}
 
 exec 9>"$work/build.lock"

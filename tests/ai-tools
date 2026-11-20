@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Check the runtime and install a tiny offline npm tool as the developer.
+set -euo pipefail
+if [[ ${1:-} != --inside ]]; then
+    exec /usr/local/bin/tizen-ai-shell "$0" --inside
+fi
+(( EUID != 0 ))
+node -e 'if (process.platform !== "linux" || process.arch !== "x64" || +process.versions.node.split(".")[0] < 22) process.exit(1)'
+npm --version
+rg --version | head -n 1
+bwrap --version
+bwrap --unshare-user --ro-bind / / -- /bin/true
+printf '%s\n' 'local relay' | socat -u STDIN STDOUT | rg -Fx 'local relay'
+[[ -w "$HOME" && -w "$(npm prefix -g)/bin" && -w "$(npm config get cache)" ]]
+scratch=$(mktemp -d "$HOME/.npm-probe.XXXXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
+mkdir -p "$scratch/probe"
+cd "$scratch/probe"
+printf '%s\n' '{"name":"tizen-local-probe","version":"1.0.0","bin":{"ai-probe":"probe.js"}}' >package.json
+printf '%s\n' '#!/usr/bin/env node' 'console.log("Tizen npm works")' >probe.js
+chmod +x probe.js
+npm install --offline --no-audit --no-fund --global --prefix "$scratch/prefix" "$scratch/probe"
+"$scratch/prefix/bin/ai-probe" | rg -Fx 'Tizen npm works'

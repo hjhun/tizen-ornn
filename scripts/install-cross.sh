@@ -9,15 +9,7 @@ cache=${CROSS_RPM_CACHE:-"${TIZEN_OUT:-$project/out}/cache/cross"}
 mkdir -p "$cache" "$root/opt/tizen/sysroots"
 stage=$(mktemp -d "$root/opt/tizen/sysroots/.armv7l.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
-if [[ -n ${TIZEN_SNAPSHOT_LOCK:-} ]]; then
-    python3 "$project/scripts/snapshot_lock.py" cross > "$stage/packages.sha256"
-else
-    manifests=("$project/cross/sysroot.sha256")
-    if [[ -f "$project/cross/efl.sha256" ]]; then
-        manifests+=("$project/cross/efl.sha256")
-    fi
-    awk '{print $1 " " $2}' "${manifests[@]}" | sort -u > "$stage/packages.sha256"
-fi
+python3 "$project/scripts/snapshot_lock.py" cross > "$stage/packages.sha256"
 while read -r sha url; do
     name=${url##*/}
     rpmfile=$cache/$name

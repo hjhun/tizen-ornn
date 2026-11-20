@@ -3,7 +3,11 @@
 set -euo pipefail
 project=$(cd "$(dirname "$0")/.." && pwd)
 out=$(realpath "${1:-$project/out}")
-if [[ $# == 0 && -d $out/current ]]; then out=$(realpath "$out/current"); fi
+if [[ $# == 0 ]]; then
+    if [[ -d $out/.tizen-current ]]; then out=$(realpath "$out/.tizen-current")
+    elif [[ -d $out/current ]]; then out=$(realpath "$out/current")
+    fi
+fi
 dest=${2:-$project/dist}
 mkdir -p "$dest"
 dest=$(realpath "$dest")
@@ -12,7 +16,7 @@ if [[ -f "$out/snapshot.lock.json" ]]; then
     release=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["release"])' "$out/snapshot.lock.json")
 fi
 [[ $release =~ ^tizen-10\.1-unified_([0-9]{8}\.[0-9]{6})$ ]] || { echo "Invalid snapshot ID" >&2; exit 1; }
-bundle=tizen-dev-10.1-x86_64-${BASH_REMATCH[1]}-r4
+bundle=tizen-dev-10.1-x86_64-${BASH_REMATCH[1]}-r5
 archive="$dest/$bundle.tar.zst"
 [[ -f "$out/bzImage" && -f "$out/kernel.config" ]]
 disk="$out/tizen-rootfs.ext4"
@@ -26,12 +30,13 @@ stage=$(mktemp -d "$dest/.bundle.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 base=$stage/$bundle
 mkdir -p "$base/out"
-for item in README.md scripts kernel guest tests packaging sdk cross docs; do
+for item in README.md tizen-vm config scripts kernel guest tests packaging sdk cross docs; do
     cp -a "$project/$item" "$base/"
 done
 find "$base" -type d -name __pycache__ -prune -exec rm -rf {} +
 cp "$out/bzImage" "$out/kernel.config" "$base/out/"
 if [[ -f "$out/snapshot.lock.json" ]]; then cp "$out/snapshot.lock.json" "$base/out/"; fi
+if [[ -f "$out/.tizen-vm-image-revision" ]]; then cp "$out/.tizen-vm-image-revision" "$base/out/"; fi
 # A qcow2 may have a backing file. Always export a standalone raw filesystem.
 raw="$disk"
 if [[ $disk == *.qcow2 ]]; then

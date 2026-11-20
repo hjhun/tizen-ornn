@@ -1,21 +1,38 @@
-# VM 실행과 저장공간
+# Running the VM and managing storage
 
-이미지 생성 시 지정한 디렉터리에는 커널과 쓰기 가능한 게스트 파일시스템이 있습니다. 아래는 저장소에서 실행하는 호스트 명령입니다.
+From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. For a graphical guest, use `tizen-vm --gui` on the first start. The window needs WSLg or a Linux desktop. CPU, memory and display settings take effect when the VM boots.
+
+| Action | Result |
+| --- | --- |
+| Press Ctrl+C during `dlogutil` or a build | The guest sends SIGINT to the foreground job. |
+| Press Ctrl+D once at the empty top-level prompt | The shell stays open. |
+| Type `exit` in a nested shell or after `su - owner` | Return to the parent shell. |
+| Type `exit` at the top-level serial shell | Detach all viewers. The VM, shell and background jobs continue running. |
+| Close the host terminal | Other viewers remain connected. Run `tizen-vm` to reconnect. |
+| Run `systemctl poweroff` as guest root | Shut down the VM and release its disk. |
+
+Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-vm update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
+
+## Launch from a checkout
+
+The low-level script also accepts an explicit image directory. Defaults are two CPUs, 3072 MiB of RAM and user-mode NAT. The VM uses KVM when the host user can access `/dev/kvm`, and QEMU software emulation otherwise.
 
 ```sh
 export TIZEN_OUT="$PWD/out/dev"
-./scripts/run-vm.sh
-# 다음 부팅에 GUI와 다른 자원을 사용하는 예
 TIZEN_CPUS=4 TIZEN_RAM=4096 ./scripts/run-vm.sh --gui
 ```
 
-기본 CPU는 2개, 메모리는 3072 MiB입니다. 사용자가 호스트의 `/dev/kvm`에 접근할 수 있으면 KVM을 사용하고, 그 외에는 QEMU 소프트웨어 실행을 사용합니다. 네트워크는 기본적으로 사용자 모드 NAT입니다. GUI에는 WSLg 또는 Ubuntu 그래픽 세션이 필요합니다. 데스크톱 앱 창과 별도로 터미널에는 게스트의 root 셸이 열립니다. 종료는 게스트에서 `systemctl poweroff`로 요청합니다.
+For serial automation such as Expect, use `./scripts/run-vm.sh --foreground`. This connects stdin and stdout directly to QEMU. Piped input or output also selects foreground mode. The interactive launcher takes an exclusive lock on the disk throughout the VM's lifetime, including while detached.
 
-## 디스크
+## Install packages while developing
 
-기본 디스크 `tizen-rootfs.ext4`는 논리 크기 16 GiB의 sparse 파일입니다. 설치한 패키지와 소스, 빌드 결과는 게스트를 껐다 켜도 남습니다. 호스트에서는 실제 기록한 블록만큼 공간을 사용합니다. 게스트 안에서 `df -h /`, 호스트에서 `du -h "$TIZEN_OUT/tizen-rootfs.ext4"`로 각각 확인합니다. 홈의 개발 공간은 `/home/owner/workspace`입니다.
+In a second host terminal, run `tizen-vm install ed` to install a Tizen RPM or `tizen-vm update --packages ed` to update it from the configured snapshot. The commands stream guest output to that terminal and return the guest operation's exit status. The serial console keeps its foreground process. A private virtio port connects the host user to the guest service. The guest must be running. Older images gain this service through `tizen-vm update --image` after shutdown.
 
-처음부터 크게 만들려면 `sudo env TIZEN_FS_SIZE=32G ./scripts/tizen-image --out "$PWD/out/larger"`로 생성합니다. 기존 raw 디스크는 **VM을 종료하고 호스트 마운트도 해제한 후** 백업하고 확장합니다.
+## Disk size
+
+The default raw disk `tizen-rootfs.ext4` is a 16 GiB sparse file. The guest retains its packages, source trees and build output across shutdowns. Use `df -h /` inside the guest to see free guest space and `du -h "$TIZEN_OUT/tizen-rootfs.ext4"` on the host to see allocated host space. Develop under `/home/owner/workspace`.
+
+For a fresh store, `TIZEN_FS_SIZE=32G tizen-vm build` creates a 32 GiB disk. Use `TIZEN_CPUS=4 TIZEN_RAM=4096 tizen-vm run` to start with four virtual CPUs and 4096 MiB of guest RAM. To grow an existing raw disk, first shut down the guest, unmount the disk on the host and back it up. Then run these commands on the host.
 
 ```sh
 disk="$TIZEN_OUT/tizen-rootfs.ext4"
@@ -24,19 +41,25 @@ e2fsck -f "$disk"
 resize2fs "$disk"
 ```
 
-## 로컬 아카이브
+## Local archive
 
-정지된 디스크와 커널, 실행 스크립트를 함께 묶을 수 있습니다. SDK와 개발자가 추가한 소스 및 데이터도 디스크에 들어갑니다.
+With the VM shut down, you can bundle the disk, kernel and launcher for local use. The archive includes SDK components and any source, credentials or other data you have put into this guest.
 
 ```sh
 ./scripts/package-image.sh "$TIZEN_OUT" "$PWD/dist"
+```
+
+Use the archive name printed by the command. For example, the R5 bundle for the November 19 snapshot can be unpacked and started as follows.
+
+```sh
 cd dist
-sha256sum -c tizen-dev-10.1-x86_64-20261119.053314-r4.tar.zst.sha256
-tar --zstd -xf tizen-dev-10.1-x86_64-20261119.053314-r4.tar.zst
-cd tizen-dev-10.1-x86_64-20261119.053314-r4
+bundle=tizen-dev-10.1-x86_64-20261119.053314-r5
+sha256sum -c "$bundle.tar.zst.sha256"
+tar --zstd -xf "$bundle.tar.zst"
+cd "$bundle"
 sha256sum -c SHA256SUMS
 unset TIZEN_OUT
 ./scripts/run-vm.sh --gui
 ```
 
-파일 이름의 날짜와 시각은 선택한 스냅샷에 따라 달라집니다. 압축을 푼 뒤에는 호스트에 `qemu-system-x86`, `qemu-system-gui`, `seabios`, `util-linux`가 있으면 실행할 수 있습니다.
+An unpacked bundle requires `qemu-system-x86`, `seabios`, `util-linux` and `tmux` on the host. Install `qemu-system-gui` for the graphical window.

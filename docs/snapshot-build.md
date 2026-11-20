@@ -1,6 +1,6 @@
 # 새 Tizen 스냅샷에서 개발 이미지 만들기
 
-Ubuntu 24.04 x86_64 또는 WSL2의 Ubuntu 셸에서 배포본이나 저장소의 최상위 디렉터리로 이동합니다. 호스트 의존성은 README의 ‘처음 실행하기’에서 설치합니다. [호스트 설치 명령](../README.md#처음-실행하기) 이 도구는 공식 **Tizen 10.1 Unified의 날짜가 붙은 headed emulator64 Wayland** 원본에서 x86_64용 SMACK 커널과 쓰기 가능한 개발 디스크를 만듭니다. 작업 디렉터리는 루프 마운트와 ext4 보안 확장 속성을 지원해야 합니다.
+Ubuntu 24.04 x86_64 또는 WSL2의 Ubuntu 셸에서 배포본이나 저장소의 최상위 디렉터리로 이동합니다. 호스트 의존성은 README의 ‘Install and start’에서 설치합니다. [호스트 설치 명령](../README.md#install-and-start) 이 도구는 공식 **Tizen 10.1 Unified의 날짜가 붙은 headed emulator64 Wayland** 원본에서 x86_64용 SMACK 커널과 쓰기 가능한 개발 디스크를 만듭니다. 작업 디렉터리는 루프 마운트와 ext4 보안 확장 속성을 지원해야 합니다.
 
 ```sh
 release=tizen-10.1-unified_20261119.053314

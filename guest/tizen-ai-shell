@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Give upstream CLIs a writable home while keeping the platform home label.
+set -euo pipefail
+if (( EUID == 0 )); then
+    exec /bin/su -s /bin/bash owner -c 'exec /usr/local/bin/tizen-ai-shell "$@"' -- bash "$@"
+fi
+login_home=$(getent passwd "$(id -u)" | cut -d: -f6)
+if [[ $(id -un) == owner ]]; then
+    export HOME="$login_home/workspace/.ai-home"
+else
+    export HOME="$login_home"
+fi
+umask 077
+mkdir -p "$HOME/.local/bin" "$HOME/.cache/npm"
+export NPM_CONFIG_PREFIX="$HOME/.local" NPM_CONFIG_CACHE="$HOME/.cache/npm"
+export PATH="$HOME/.local/bin:$PATH"
+# Avoid inherited desktop settings that could point back into the platform home.
+export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache"
+export XDG_DATA_HOME="$HOME/.local/share" XDG_STATE_HOME="$HOME/.local/state"
+if [[ ! -x . || $PWD == /root || $PWD == "$login_home" ]]; then
+    cd "$login_home/workspace" 2>/dev/null || cd "$HOME"
+fi
+if (( $# )); then exec "$@"; fi
+exec /bin/bash -i

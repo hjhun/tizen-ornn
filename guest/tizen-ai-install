@@ -1,0 +1,45 @@
+#!/usr/local/bin/tizen-ai-shell /bin/bash
+# Install one optional CLI under the owner's writable development home.
+set -euo pipefail
+if (( $# != 1 )) || [[ $(id -un) != owner ]]; then
+    echo 'Usage (guest owner or root): tizen-ai-install {codex|gemini|claude|agy}' >&2
+    exit 2
+fi
+name=$1
+npm_options=(--global --no-fund --no-audit --no-progress)
+case $name in
+    codex) package=@openai/codex ;;
+    gemini) package=@google/gemini-cli ;;
+    claude) package=@anthropic-ai/claude-code; npm_options+=(--allow-scripts=@anthropic-ai/claude-code) ;;
+    agy) ;;
+    *) echo "Unknown AI CLI: $name" >&2; exit 2 ;;
+esac
+
+exec 9>"$NPM_CONFIG_PREFIX/.tizen-ai-install.lock"
+flock -x 9
+if [[ $name == agy ]]; then
+    # Use the same Linux AMD64 manifest and SHA-512 as Google's installer.
+    stage=$(mktemp -d "$NPM_CONFIG_PREFIX/.agy.XXXXXXXX")
+    trap 'rm -rf -- "$stage"' EXIT
+    curl_opts=(--fail --location --silent --show-error --retry 2 --proto '=https' --proto-redir '=https')
+    release=https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json
+    curl "${curl_opts[@]}" "$release" -o "$stage/manifest.json"
+    url=$(jq -er '.url' "$stage/manifest.json")
+    sha=$(jq -er '.sha512' "$stage/manifest.json")
+    [[ $url == https://* && $sha =~ ^[0-9a-fA-F]{128}$ ]] || {
+        echo 'Invalid Antigravity Linux release manifest' >&2; exit 1;
+    }
+    curl "${curl_opts[@]}" -o "$stage/payload" -- "$url"
+    printf '%s  %s\n' "$sha" "$stage/payload" | sha512sum --check --status
+    if [[ ${url%%\?*} == *.tar.gz ]]; then
+        tar -xzOf "$stage/payload" antigravity > "$stage/agy"
+    else
+        mv "$stage/payload" "$stage/agy"
+    fi
+    chmod 700 "$stage/agy"
+    "$stage/agy" --version
+    mv -f "$stage/agy" "$NPM_CONFIG_PREFIX/bin/agy"
+else
+    npm install "${npm_options[@]}" "$package"
+    "$NPM_CONFIG_PREFIX/bin/$name" --version
+fi

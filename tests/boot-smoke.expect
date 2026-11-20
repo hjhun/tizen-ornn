@@ -11,7 +11,7 @@ log_file -a [lindex $argv 0]
 log_user 0
 proc boot {} {
     global here timeout spawn_id
-    spawn -noecho [file join $here .. scripts run-vm.sh]
+    spawn -noecho [file join $here .. scripts run-vm.sh] --foreground
     expect {
         -re {root:[^\r\n]*> $} {}
         timeout {puts stderr "Guest did not reach the console"; exit 1}
@@ -31,6 +31,33 @@ proc run_step {name command} {
         eof {return -code error "$name lost its serial console"}
     }
 }
+proc interrupt_dlog {} {
+    global spawn_id
+    set timeout 15
+    set marker "tizen-ctrl-c-[pid]"
+    set setup {saved_shell=$$; saved_boot=$(cat /proc/sys/kernel/random/boot_id);
+        saved_logger=$(systemctl show --value -p MainPID dlog_logger.service);
+        test "$saved_logger" -gt 0 && dlogsend -b main -p Error -t CtrlCProbe}
+    run_step dlog_setup "[string map [list "\n" " "] $setup] $marker"
+    send -- "dlogutil -b main -v raw --color never -s CtrlCProbe:E\r"
+    # Only the log record contains the marker after dlog_setup has returned.
+    expect {
+        -re "$marker\[\r\n\]" {}
+        timeout {send -- "\003"; error "dlogutil did not display the probe record"}
+        eof {error "Guest exited while starting dlogutil"}
+    }
+    send -- "\003"
+    expect {
+        -re {root:[^\r\n]*> $} {}
+        timeout {error "Ctrl+C did not return to the guest prompt"}
+        eof {error "Ctrl+C terminated the VM while dlogutil was running"}
+    }
+    set still_running {test "$$" = "$saved_shell" &&
+        test "$(cat /proc/sys/kernel/random/boot_id)" = "$saved_boot" &&
+        systemctl is-active --quiet dlog_logger.service &&
+        test "$(systemctl show --value -p MainPID dlog_logger.service)" = "$saved_logger"}
+    run_step dlog_interrupt [string map [list "\n" " "] $still_running]
+}
 proc shutdown {} {
     global spawn_id timeout
     send -- "sync; systemctl --force poweroff\r"
@@ -47,11 +74,12 @@ set failure [catch {
         for n in {1..60}; do systemctl is-active --quiet tizen-dev.target && break; sleep 1; done;
         for unit in tizen-dev.target multi-user.target ac.service actd.service esd.service
             security-manager.service cynara.service pkgmgr-info.service package-manager.socket
-            user@5001.service; do
+            user@5001.service tizen-guest-control.service; do
             systemctl is-active --quiet "$unit" || { echo "$unit did not start"; exit 1; };
         done;
         test -S /run/user/5001/bus)}
     run_step platform [string map [list "\n" " "] $platform]
+    interrupt_dlog
     if {[info exists env(TIZEN_SDB_TEST_PORT)]} {
         set port $env(TIZEN_SDB_TEST_PORT)
         if {![regexp {^[1-9][0-9]{0,4}$} $port] || $port > 65535} {error "Invalid SDB test port"}
@@ -67,6 +95,7 @@ set failure [catch {
         run_step sdb [string map [list PORT $port "\n" " "] $probe]
     }
     run_step env {tizen-dev-check}
+    run_step ai_runtime {tizen-ai-check}
     run_step package {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/sample-output"'}
     run_step rust {su -s /bin/bash dev -c 'cd && cargo new --bin --vcs none rust-smoke && cd rust-smoke && cargo run --offline'}
     run_step rust_arm {su -s /bin/bash dev -c 'cd "$HOME/rust-smoke" && . /etc/profile.d/tizen-cargo-arm.sh && cargo run --offline --target arm-unknown-linux-gnueabi && readelf -A target/arm-unknown-linux-gnueabi/debug/rust-smoke | grep -E "Tag_CPU_arch: v7$"'}

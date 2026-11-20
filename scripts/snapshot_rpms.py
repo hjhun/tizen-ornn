@@ -16,21 +16,9 @@ import xml.etree.ElementTree as ET
 
 from snapshot_lock import read_lock
 
-BASE = "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"
-REPOS = {
-    "tizen-emulator": (
-        BASE + "Tizen-10.1-Unified/tizen-10.1-unified_20261119.053314/repos/emulator/packages/",
-        "f7db0671db9618c2404947fb2ab4075c7ce544851a7c7cd854c4edebff16a9a9",
-    ),
-    "tizen-base": (
-        BASE + "Tizen-10.1-Base/tizen-10.1-base_20261118.084133/repos/standard/packages/",
-        "f43ac7e9c9e146fe916d771aec7720fb4b29beb95c720a87d4afdd9f45b609aa",
-    ),
-}
 LOCK = read_lock()
-if LOCK:
-    REPOS = {alias: (LOCK["repos"][alias]["url"], LOCK["repos"][alias]["primary"])
-             for alias in ("tizen-emulator", "tizen-base")}
+REPOS = {alias: (LOCK["repos"][alias]["url"], LOCK["repos"][alias]["primary"])
+         for alias in ("tizen-emulator", "tizen-base")}
 TOOLS = """bash coreutils diffutils file util-linux shadow-utils iproute2 toybox-symlinks-dhcp
 rpm rpm-build smack ca-certificates ca-certificates-tizen zypper vim gdb strace
 gcc gcc-c++ cpp glibc-devel libstdc++-devel glib2-devel cmake ninja make pkg-config

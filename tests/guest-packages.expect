@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+# Boot a disposable guest; test out-of-band administration during foreground input.
+set timeout 120
+set root [file dirname [file dirname [file normalize [info script]]]]
+if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" ||
+    ![info exists env(TIZEN_DISK)] || ![file isfile $env(TIZEN_DISK)]} {
+    puts stderr "Supply TIZEN_DISK and TIZEN_DISK_FORMAT=qcow2 for an unused, disposable QCOW2 guest."
+    exit 2
+}
+set disk [file normalize $env(TIZEN_DISK)]
+if {[catch {exec flock -n $disk true}]} {error "The disposable guest is already running."}
+if {$argv ni {{} --gui}} {error "Usage: guest-packages.expect [--gui]"}
+if {$argv eq "--gui" && ![info exists env(TIZEN_QMP)]} {error "Supply a temporary TIZEN_QMP socket for --gui."}
+set client [list $root/scripts/guest-command $disk install]
+log_user 0
+if {[info exists env(TIZEN_TEST_LOG)]} {log_file -a $env(TIZEN_TEST_LOG)}
+spawn -noecho $root/scripts/run-vm.sh --foreground {*}$argv
+proc required {pattern} {
+    expect {
+        -re $pattern {return $expect_out(0,string)}
+        timeout {error "Missing console output: $pattern"}
+        eof {error "Guest exited while waiting for $pattern"}
+    }
+}
+set failed [catch {
+    required {root:[^\r\n]*> }
+    send -- {stty -echo; printf 'CONSOLE-%s\n' READY}
+    send -- "\r"
+    required {CONSOLE-READY}
+    send -- {rpm -q ed >/dev/null && echo ED-PRESENT || echo ED-ABSENT}
+    send -- "\r"
+    if {[required {ED-(PRESENT|ABSENT)}] ne "ED-ABSENT"} {error "Use a fresh guest without ed."}
+    send -- {sh -c 'echo FOREGROUND-START-$$; read word; test "$word" = resume && echo FOREGROUND-END-$$'}
+    send -- "\r"
+    set start [required {FOREGROUND-START-[0-9]+}]
+    exec python3 $root/tests/guest-channel.py $disk
+    set installed [exec {*}$client ed]
+    if {[string first "Installing: ed-" $installed] < 0} {error $installed}
+    if {![catch {exec {*}$client tizen-vm-nonexistent-rpm-test} msg opts] ||
+        [lindex [dict get $opts -errorcode] 2] != 104} {error "Missing RPM status: $msg"}
+
+    send -- "resume\r"
+    required [string map {START END} $start]
+    send -- {rpm -q ed; stat -c %U:%G:%a "$(readlink -f /dev/tizen-vm-packages)"; test -z "$(find /tmp -maxdepth 1 -name 'tizen-update-*' -print -quit)" && echo UPLOAD-CLEAN}
+    send -- "\r"
+    required {ed-[0-9][^\r\n]*\.x86_64}
+    required {root:root:600}
+    required {UPLOAD-CLEAN}
+    if {$argv eq "--gui"} {
+        # The optional display assertion uses python3-pil on the host.
+        puts [exec python3 $root/tests/guest-counter.py $env(TIZEN_QMP)]
+    }
+    send -- "sync; systemctl --force poweroff\r"
+    expect {
+        eof {}
+        timeout {error "VM did not power off"}
+    }
+    set status [wait]
+    if {[lindex $status 3] != 0} {error "VM exited $status"}
+    if {![catch {exec {*}$client ed}]} {error "Install unexpectedly succeeded after shutdown."}
+} error]
+if {$failed} {
+    # This process was launched directly with --foreground on the test overlay.
+    catch {exec kill -TERM [exp_pid]}
+    catch {close}
+    catch {wait}
+    puts stderr $error
+    exit 1
+}
+puts "Live package test passed installation, error status, upload recovery, foreground input and shutdown."

@@ -1,0 +1,4 @@
+# A Tizen 10.1 snapshot tree containing Tizen-10.1-Unified/ and Tizen-10.1-Base/.
+repository = "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"
+# The default for installing a VM. Updates resolve Unified/latest/build.xml.
+snapshot = "tizen-10.1-unified_20261119.053314"

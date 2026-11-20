@@ -6,9 +6,6 @@ export TIZEN_OUT=${TIZEN_OUT:-$project/out}
 [[ $EUID == 0 ]] || { echo 'Run with sudo on the Ubuntu build host.' >&2; exit 1; }
 mkdir -p "$TIZEN_OUT"
 TIZEN_OUT=$(cd "$TIZEN_OUT" && pwd)
-if [[ -f $TIZEN_OUT/snapshot.lock.json ]]; then
-    export TIZEN_SNAPSHOT_LOCK="$TIZEN_OUT/snapshot.lock.json"
-fi
 root=$TIZEN_OUT/root
 disk=$TIZEN_OUT/tizen-rootfs.ext4
 exec 8>"$TIZEN_OUT/.image-build.lock"
@@ -20,6 +17,24 @@ fi
 if [[ -e "$TIZEN_OUT/.image-ready" ]]; then
     echo 'Use a fresh TIZEN_OUT directory to preserve the installed development filesystem.' >&2
     exit 1
+fi
+if [[ -f $TIZEN_OUT/snapshot.lock.json ]]; then
+    export TIZEN_SNAPSHOT_LOCK="$TIZEN_OUT/snapshot.lock.json"
+elif [[ -z ${TIZEN_SNAPSHOT_LOCK:-} ]]; then
+    # Direct callers can have a populated download cache. Pin inputs before
+    # any build stage reads them, just as the tizen-image entry point does.
+    lock_tmp=$(mktemp "$TIZEN_OUT/.snapshot.XXXXXXXX")
+    trap 'rm -f -- "$lock_tmp"' EXIT
+    "$project/scripts/tizen-image" --print-lock > "$lock_tmp"
+    if [[ -e $TIZEN_OUT/.root-work/extracted ]]; then
+        # A build started before locks existed always used this source image.
+        python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1]))["archive"]["sha256"] !=
+            "7ce64dbf088fbaa800d601e73209a687944dd07b56da874c30366008d0428d0f")' "$lock_tmp" ||
+            { echo "Different source image; select a new output directory." >&2; exit 1; }
+    fi
+    chmod 644 "$lock_tmp"
+    mv "$lock_tmp" "$TIZEN_OUT/snapshot.lock.json"
+    export TIZEN_SNAPSHOT_LOCK="$TIZEN_OUT/snapshot.lock.json"
 fi
 # The VM owns its writable image after finalization. This trap is restricted to
 # the loop device backed by the disk created by this build.
@@ -46,8 +61,11 @@ CACHE_DIR="$TIZEN_OUT/cache/sdk" "$project/scripts/install-sdk.sh" "$root"
 "$project/scripts/install-aul-devel.sh" "$root"
 "$project/scripts/install-spec-builder.sh" "$root"
 "$project/scripts/install-linux-tools.sh" "$root"
+"$project/scripts/install-ai-prereqs.sh" "$root"
+"$project/scripts/install-guest-control.sh" "$root"
 sync -f "$root"
 detach
 [[ -z $(losetup -j "$disk") ]]
 chown "${SUDO_UID:-$(stat -c %u "$project")}:${SUDO_GID:-$(stat -c %g "$project")}" "$disk"
+install -m 0644 "$project/config/image-revision" "$TIZEN_OUT/.tizen-vm-image-revision"
 touch "$TIZEN_OUT/.image-ready"

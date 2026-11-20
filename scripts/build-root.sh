@@ -11,18 +11,11 @@ cache="$out/cache"
 root="$out/root"
 disk="$out/tizen-rootfs.ext4"
 work="$out/.root-work"
-release=tizen-10.1-unified_20261119.053314
-archive="$cache/emulator-20261119.053314.tar.gz"
-archive_sha=7ce64dbf088fbaa800d601e73209a687944dd07b56da874c30366008d0428d0f
-profile=tizen-headed-emulator64-wayland
-url="https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/$release/images/emulator/$profile/${release}_$profile.tar.gz"
-if [[ -n ${TIZEN_SNAPSHOT_LOCK:-} ]]; then
-    fields=$(python3 "$project/scripts/snapshot_lock.py" archive)
-    mapfile -t fields <<< "$fields"
-    archive_sha=${fields[0]}
-    url=${fields[1]}
-    archive=${TIZEN_SOURCE_ARCHIVE:-"$cache/${url##*/}"}
-fi
+fields=$(python3 "$project/scripts/snapshot_lock.py" archive)
+mapfile -t fields <<< "$fields"
+archive_sha=${fields[0]}
+url=${fields[1]}
+archive=${TIZEN_SOURCE_ARCHIVE:-"$cache/${url##*/}"}
 mkdir -p "$out" "$cache" "$work" "$root"
 exec 9>"$work/build.lock"
 flock -n 9 || { echo 'Another rootfs build holds the lock.' >&2; exit 1; }

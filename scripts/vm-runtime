@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Stable private socket prefix shared by the VM launcher and its clients.
+set -euo pipefail
+disk=${1:?supply a VM disk}
+key=$(stat -Lc '%D-%i' -- "$disk")
+runtime=/tmp/tizen-vm-$UID
+if ! mkdir -m 700 -- "$runtime" 2>/dev/null; then
+    [[ -d $runtime && ! -L $runtime && -O $runtime && $(stat -c %a -- "$runtime") == 700 ]] ||
+        { echo "Cannot use private VM directory $runtime" >&2; exit 1; }
+fi
+printf '%s/%s\n' "$runtime" "$key"

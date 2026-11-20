@@ -1,0 +1,237 @@
+#!/usr/bin/python3
+"""Apply a host-selected pair of pinned native Tizen RPM repositories."""
+import fcntl
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit
+
+ALIASES = ("tizen-emulator", "tizen-base")  # Native solver priority order.
+SHARE = Path("usr/share/tizen-snapshot")
+LIVE = Path("etc/zypp/repos.d")
+STATE = Path("/var/lib/tizen-vm/rpm-updates")
+NAME = r"[A-Za-z0-9][A-Za-z0-9+._-]{0,199}"
+HASH = r"[0-9a-f]{64}"
+MIB = 1024 * 1024
+
+
+def require(value, message):
+    if not value:
+        raise ValueError(message)
+    return value
+
+
+def extract(bundle, dest):
+    require(bundle.stat().st_size <= 64 * MIB, "repository bundle exceeds 64 MiB")
+    allowed = {"packages.json", str(SHARE / "snapshot-index.asc"), str(SHARE / "snapshot.lock.json")}
+    for alias in ALIASES:
+        for directory in (SHARE / "repos.d", LIVE):
+            allowed.add(str(directory / (alias + ".repo")))
+    total = 0
+    seen = set()
+    with tarfile.open(bundle, "r|gz") as archive:
+        for member in archive:
+            name = member.name
+            index = re.fullmatch(r"usr/share/tizen-snapshot/(tizen-emulator|tizen-base)/repodata/"
+                                 r"(repomd\.xml(?:\.asc|\.key)?|[0-9a-f]{64}-[a-zA-Z0-9_.-]+)", name)
+            require(member.type in (tarfile.REGTYPE, tarfile.AREGTYPE) and not member.sparse
+                    and (name in allowed or index) and name not in seen, "invalid archive member: " + name)
+            seen.add(name)
+            total += member.size
+            require(len(seen) <= 160 and 0 <= member.size <= 32 * MIB and total <= 96 * MIB,
+                    "repository archive too large")
+            path = dest / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("xb") as output:
+                shutil.copyfileobj(archive.extractfile(member), output)
+    require(allowed <= seen, "repository bundle is incomplete")
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open("rb") as file:
+        for data in iter(lambda: file.read(MIB), b""):
+            h.update(data)
+    return h.hexdigest()
+
+
+def catalog(tree, verify=True):
+    lock = json.loads((tree / "snapshot.lock.json").read_text())
+    require(lock["format"] == 1 and re.fullmatch(r"tizen-10\.1-unified_\d{8}\.\d{6}", lock["release"]),
+            "invalid lock identity")
+    result = {}
+    for alias in ALIASES:
+        pin = lock["repos"][alias]
+        url = pin["url"]
+        uri = urlsplit(url)
+        require(uri.scheme == "https" and uri.hostname and not uri.username and not uri.password
+                and not uri.query and not uri.fragment and not re.search(r"[\s\x00-\x1f\x7f]", url),
+                "invalid repository URL")
+        repo = tree / alias
+        md = repo / "repodata/repomd.xml"
+        require(re.fullmatch(HASH, pin["repomd"]) and digest(md) == pin["repomd"], "repomd mismatch: " + alias)
+        indexes = ET.parse(md).getroot()
+        if verify:
+            require((md.parent / "repomd.xml.key").read_bytes() == (tree / "snapshot-index.asc").read_bytes()
+                    and (md.parent / "repomd.xml.asc").is_file(), "missing repository signature")
+        for data in indexes.findall("{*}data"):
+            href = data.find("{*}location").get("href")
+            sha = data.findtext("{*}checksum[@type='sha256']", "")
+            require(re.fullmatch(r"repodata/" + HASH + r"-[a-zA-Z0-9_.-]+", href)
+                    and href.startswith("repodata/" + sha + "-") and re.fullmatch(HASH, sha),
+                    "invalid repository metadata path")
+            if verify:
+                file = repo / href
+                require(file.stat().st_size == int(data.findtext("{*}size")) and digest(file) == sha,
+                        "metadata size/checksum mismatch: " + href)
+        primary = indexes.find("{*}data[@type='primary']")
+        require(primary is not None and primary.findtext("{*}checksum[@type='sha256']") == pin["primary"],
+                "unrecognized primary index")
+        with gzip.open(repo / primary.find("{*}location").get("href"), "rb") as file:
+            xml = file.read(64 * MIB + 1)
+        require(len(xml) <= 64 * MIB and len(xml) == int(primary.findtext("{*}open-size")), "invalid primary size")
+        for pkg in ET.fromstring(xml):
+            arch = pkg.findtext("{*}arch")
+            if arch not in ("x86_64", "noarch"):
+                continue
+            name = pkg.findtext("{*}name")
+            v = pkg.find("{*}version").attrib
+            key = "|".join((name, arch, v.get("epoch", "0"), v["ver"], v["rel"]))
+            sha = pkg.findtext("{*}checksum[@type='sha256']", "")
+            require(re.fullmatch(NAME, name) and re.fullmatch(HASH, sha), "invalid native package")
+            result.setdefault(key, (alias, sha))
+    return lock, result
+
+
+def atomic_file(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+        tmp.write(content.encode())
+        tmp.flush()
+        os.fsync(tmp.fileno())
+    os.chmod(tmp.name, 0o644)
+    os.replace(tmp.name, path)
+
+
+def repo_text(alias, url):
+    return (f"[{alias}]\nname={alias}\nenabled=1\nautorefresh=0\nbaseurl={url}\ntype=rpm-md\n"
+            f"priority={1 if alias == ALIASES[0] else 99}\ngpgcheck=1\n")
+
+
+def installed():
+    rows = subprocess.check_output(["rpm", "-qa", "--qf", "%{NAME}|%{ARCH}|%{EPOCHNUM}|%{VERSION}|%{RELEASE}\\n"],
+                                   text=True)
+    return set(rows.splitlines())
+
+
+def replacements(installed_keys, known, new, names):
+    return sorted(k for k in installed_keys if k in new and k in known and known[k] != new[k][1]
+                  and (not names or k.partition("|")[0] in names))
+
+
+def update(bundle):
+    sets = STATE / "sets"
+    sets.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=sets) as tmp:
+        stage = Path(tmp)
+        extract(bundle, stage)
+        names = json.loads((stage / "packages.json").read_text())
+        require(isinstance(names, list) and len(names) <= 512
+                and all(isinstance(n, str) and re.fullmatch(NAME, n) for n in names), "invalid package selection")
+        lock, new = catalog(stage / SHARE)
+        base = json.dumps([lock["repos"][a] for a in ALIASES], sort_keys=True).encode()
+        dest = sets / hashlib.sha256(base).hexdigest()
+        if not dest.exists():
+            # Each tree has immutable indexes; repeat calls reuse its signature/key.
+            for alias in ALIASES:
+                url = lock["repos"][alias]["url"]
+                require((stage / LIVE / (alias + ".repo")).read_text() == repo_text(alias, url)
+                        and (stage / SHARE / "repos.d" / (alias + ".repo")).read_text()
+                        == repo_text(alias, "file:///usr/share/tizen-snapshot/" + alias + "/"),
+                        "unexpected repository definition")
+                atomic_file(stage / SHARE / "repos.d" / (alias + ".repo"),
+                            repo_text(alias, (dest / SHARE / alias).as_uri() + "/"))
+            os.chmod(stage, 0o755)
+            stage.rename(dest)
+
+    tree = dest / SHARE
+    current = installed()
+    unknown = set(names) - {k.partition("|")[0] for k in current}
+    require(not unknown, "not installed: " + ", ".join(sorted(unknown)))
+    state = STATE / "installed-sha256.json"
+    known = json.loads(state.read_text()) if state.exists() else {}
+    active = STATE / "active.json"
+    previous_tree = Path("/") / SHARE
+    if active.is_file():
+        previous_set = json.loads(active.read_text())["generation"]
+        require(re.fullmatch(HASH, previous_set), "invalid prior repository generation")
+        previous_tree = sets / previous_set / SHARE
+    # Packages can also have been installed manually since the last update.
+    # Resolve their origins using the then-active primary indexes.
+    missing = current - known.keys()
+    if missing and (previous_tree / "snapshot.lock.json").is_file() and all(
+        (previous_tree / a / "repodata/repomd.xml").is_file() for a in ALIASES
+    ):
+        _, old = catalog(previous_tree)
+        known.update({k: old[k][1] for k in missing if k in old})
+    atomic_file(state, json.dumps(known))
+
+    # Use a private cache while fetching/updating; unrelated system repos and
+    # the image's original source lock are kept intact.
+    subprocess.run(["rpm", "--import", tree / "snapshot-index.asc"], check=True)
+    with tempfile.TemporaryDirectory(dir=STATE) as cache:
+        zypper = ["zypper", "--non-interactive", "--cache-dir", cache, "--reposd-dir"]
+        subprocess.run([*zypper, tree / "repos.d", "refresh", "--force"], check=True)
+        live = [*zypper, dest / LIVE, "--no-refresh"]
+        subprocess.run([*live, "update", "--", *names], check=True)
+        current = installed()
+        changed = replacements(current, known, new, names)
+        for alias in ALIASES:
+            group = [k for k in changed if new[k][0] == alias]
+            specs = []
+            for k in group:
+                name, arch, epoch, version, release = k.split("|")
+                evr = f"{epoch}:" if epoch != "0" else ""
+                specs.append(f"{name}.{arch}={evr}{version}-{release}")
+            if specs:
+                print(f"Reinstalling {len(specs)} changed same-version RPM(s) from {alias}", flush=True)
+                subprocess.run([*live, "install", "--force", "--no-recommends", "--from", alias, "--", *specs],
+                               check=True)
+                known.update({k: new[k][1] for k in group})
+                atomic_file(state, json.dumps(known))
+
+    current = installed()
+    # Keep the installed origin of untouched packages across a selective update.
+    known = {k: known.get(k, new[k][1]) for k in current if k in new} | {
+        k: known[k] for k in current if k not in new and k in known}
+    atomic_file(state, json.dumps(known))
+    for alias in ALIASES:
+        file = alias + ".repo"
+        atomic_file(Path("/") / LIVE / file, (dest / LIVE / file).read_text())
+        atomic_file(Path("/") / SHARE / "repos.d" / file, (tree / "repos.d" / file).read_text())
+    subprocess.run(["/usr/bin/tizen-refresh-pinned"], check=True)
+    atomic_file(STATE / "active.json", json.dumps({"release": lock["release"], "generation": dest.name, "repos": lock["repos"]}) + "\n")
+    for old in sets.iterdir():
+        if old != dest and re.fullmatch(HASH, old.name) and old.is_dir():
+            shutil.rmtree(old)
+    print("Guest RPM repositories now use " + lock["release"], flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        require(len(sys.argv) == 2 and os.geteuid() == 0, "usage: tizen-update-rpms BUNDLE (as root)")
+        STATE.mkdir(parents=True, exist_ok=True)
+        with (STATE / "update.lock").open("a") as guard:
+            fcntl.flock(guard, fcntl.LOCK_EX)
+            update(Path(sys.argv[1]))
+    except (OSError, ValueError, KeyError, ET.ParseError, tarfile.TarError, subprocess.CalledProcessError) as error:
+        sys.exit(f"tizen-update-rpms: {error}")

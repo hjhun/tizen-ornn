@@ -1,0 +1,3 @@
+qemu-system-x86 qemu-system-gui qemu-utils seabios tmux util-linux python3
+bubblewrap rpm rpm2cpio createrepo-c gnupg cpio curl ca-certificates rsync attr e2fsprogs zstd unzip xz-utils
+build-essential bc bison flex libelf-dev libssl-dev patch pkg-config dpkg-dev

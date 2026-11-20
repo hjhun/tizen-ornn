@@ -12,6 +12,7 @@ install -m755 "$project/guest/tizen-dev-setup" "$root/usr/local/libexec/"
 install -m755 "$project/tests/smack.py" "$root/usr/local/libexec/tizen-dev-smack-check"
 install -m755 "$project/guest/dev-check" "$root/usr/local/bin/tizen-dev-check"
 install -m644 "$project/guest/tizen-dev-path.sh" "$root/etc/profile.d/zz-tizen-dev-path.sh"
+install -m644 "$project/guest/tizen-console-profile.sh" "$root/etc/profile.d/zz-tizen-console.sh"
 install -Dm644 "$project/packaging/ui-demo/tizen-ui-counter.spec" \
     "$root/usr/share/tizen-dev/examples/efl-counter/tizen-ui-counter.spec"
 install -m755 "$project/packaging/ui-demo/build-rpm.sh" \

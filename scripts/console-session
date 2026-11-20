@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Run the VM's serial console in a private tmux server so it survives detach.
+set -euo pipefail
+
+if [[ $1 == --pane ]]; then
+    shift
+    result=$1
+    shift
+    # Keep startup errors available even if QEMU exits before tmux's first draw.
+    status=0
+    exec 5> >(tee "$result.log" >&2)
+    copier=$!
+    "$@" 2>&5 5>&- || status=$?
+    exec 5>&-
+    wait "$copier" || :
+    if (( status )); then
+        printf '%s\n' "$status" > "$result"
+    fi
+    exit "$status"
+fi
+
+disk=$1
+shift
+command -v tmux >/dev/null || { echo 'Install tmux on the host to start a persistent console.' >&2; exit 1; }
+self=$(realpath -- "$0")
+prefix=$("${self%/*}/vm-runtime" "$disk")
+tm=(tmux -S "$prefix.sock" -f "${self%/*}/console.tmux.conf")
+unset TMUX TMUX_PANE
+if [[ -z ${TERM:-} || $TERM == dumb ]]; then export TERM=xterm; fi
+
+# Serialize creation and release the gate before waiting for interactive input.
+exec 8>"$prefix.lock"
+flock 8
+result="$prefix.exit"
+new=0
+if ! "${tm[@]}" has-session -t '=vm' 2>/dev/null; then
+    if ! flock -n "$disk" true; then
+        echo "Tizen disk is already in use outside this console: $disk" >&2
+        echo 'Stop the foreground VM or wait for the image operation to finish.' >&2
+        exit 1
+    fi
+    rm -f -- "$result" "$result.log"
+    : > "$result"
+    : > "$result.log"
+    new=1
+fi
+# Keep this launch's diagnostics even if another VM starts immediately after it exits.
+exec 6<"$result" 7<"$result.log"
+status=0
+if (( new )); then
+    "${tm[@]}" new-session -d -s vm -n console -- "$self" --pane "$result" "$@" 6<&- 7<&- 8>&- || status=$?
+fi
+exec 8>&-
+if (( status == 0 )); then
+    "${tm[@]}" attach-session -t '=vm' || status=$?
+fi
+if read -r failure <&6; then
+    cat <&7 >&2
+    status=$failure
+fi
+exit "$status"

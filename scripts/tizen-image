@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Build the Tizen developer VM from an official dated 10.1 emulator image."""
+"""Build the Tizen developer VM from a dated Tizen 10.1 emulator image."""
 import argparse
 import fcntl
 import gzip
@@ -13,44 +13,22 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-PROJECT = Path(__file__).resolve().parent.parent
-SERVER = "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"
-PROFILE = "tizen-headed-emulator64-wayland"
-DATED = r"\d{8}\.\d{6}"
-RELEASE = rf"tizen-10\.1-unified_{DATED}"
-DEFAULT = "tizen-10.1-unified_20261119.053314"
-
-
-def read_url(url):
-    return subprocess.check_output(
-        ["curl", "-fLsS", "--retry", "2", "--proto", "=https", "--proto-redir", "=https", url]
-    )
-
-
-def archive_url(release):
-    return (f"{SERVER}Tizen-10.1-Unified/{release}/images/emulator/{PROFILE}/"
-            f"{release}_{PROFILE}.tar.gz")
-
-
-def parse_release(value):
-    match = re.search(RELEASE, value)
-    if not match or value not in (match[0], archive_url(match[0])):
-        raise argparse.ArgumentTypeError("expected a dated 10.1 Unified ID or its official headed-emulator64 archive URL")
-    return match[0]
+from image_source import DATED, ImageSource, PROJECT, read_url
 
 
 def checksum(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def repositories(build_xml, release):
+def repositories(build_xml, release, base_url):
     build = ET.fromstring(build_xml)
     base_name = build.findtext("base_id", "")
-    base_root = SERVER + "Tizen-10.1-Base/"
+    base_root = base_url + "Tizen-10.1-Base/"
     if (build.findtext("id") != release or not re.fullmatch(rf"tizen-10\.1-base_{DATED}", base_name)
-            or build.find("base_id").get("url", "").replace("http://", "https://", 1) != base_root):
+            or not build.find("base_id").get("url", "").rstrip("/").endswith("/Tizen-10.1-Base")):
         raise ValueError("unexpected Unified or Base release in build.xml")
-    unified = f"{SERVER}Tizen-10.1-Unified/{release}/"
+    # Mirrored build.xml may retain the upstream URL. Fetch from the configured tree.
+    unified = f"{base_url}Tizen-10.1-Unified/{release}/"
     repos = {}
     for target, arch in [("emulator", "x86_64"), ("standard", "armv7l")]:
         node = build.find(f"buildtargets/buildtarget[@name='{target}']")
@@ -93,8 +71,8 @@ def package_index(url):
     return {"url": url, "repomd": checksum(md), "primary": digest}, packages
 
 
-def make_lock(release):
-    url = archive_url(release)
+def make_lock(source, release):
+    url = source.archive_url(release)
     folder, archive = url.rsplit("/", 1)
     image_xml = archive.removesuffix(".tar.gz") + ".xml"
     sums = {}
@@ -113,10 +91,10 @@ def make_lock(release):
     expected = {("/", "emulator-rootfs.img", "ext4"), ("/opt", "emulator-sysdata.img", "ext4")}
     if image.get("arch") != "x86_64" or partitions != expected:
         raise ValueError("this recipe requires x86_64 with ext4 emulator-rootfs and emulator-sysdata")
-    build_xml = read_url(f"{SERVER}Tizen-10.1-Unified/{release}/build.xml")
+    build_xml = read_url(f"{source.base_url}Tizen-10.1-Unified/{release}/build.xml")
     repos = {}
     indexes = {}
-    for alias, base in repositories(build_xml, release).items():
+    for alias, base in repositories(build_xml, release, source.base_url).items():
         repos[alias], indexes[alias] = package_index(base)
 
     def package(alias, arch, name):
@@ -143,7 +121,7 @@ def make_lock(release):
             "rust": {"url": rust_url, "sha256": sha, "version": version}}
 
 
-def build(args):
+def build(args, source):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     with (out / ".snapshot-input.lock").open("a") as guard:
@@ -151,7 +129,7 @@ def build(args):
         path = out / "snapshot.lock.json"
         if not path.exists() and any(p != Path(guard.name) for p in out.iterdir()):
             raise ValueError(f"choose a fresh output directory; {out} contains other files")
-        lock = make_lock(args.snapshot)
+        lock = make_lock(source, args.snapshot)
         if args.sha256 and args.sha256.lower() != lock["archive"]["sha256"]:
             raise ValueError("the supplied SHA-256 differs from the published archive checksum")
         if args.archive:
@@ -180,15 +158,31 @@ def build(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", type=parse_release, default=DEFAULT, help="dated Unified ID or its official archive URL")
-    parser.add_argument("--out", type=Path, required=True, help="fresh output directory, or a previous run with the same lock")
+    parser.add_argument("--snapshot", help="dated Unified ID, latest, or archive URL under the configured repository")
+    parser.add_argument("--out", type=Path, help="fresh output directory, or a previous run with the same lock")
     parser.add_argument("--archive", type=Path, help="use a downloaded copy of the official source image")
     parser.add_argument("--sha256", help="also require this independently supplied archive checksum")
     parser.add_argument("--lock-only", action="store_true", help="resolve and check inputs without running the filesystem/kernel build")
+    query = parser.add_mutually_exclusive_group()
+    query.add_argument("--print-source", action="store_true", help="print the configured snapshot repository")
+    query.add_argument("--print-snapshot", action="store_true", help="print the resolved dated release ID")
+    query.add_argument("--print-lock", action="store_true", help="write the selected input lock to stdout")
     args = parser.parse_args()
-    if not args.lock_only and os.geteuid() != 0:
-        parser.exit(1, "tizen-image: run the build with sudo, or use --lock-only\n")
     try:
-        build(args)
+        source = ImageSource.load()
+        if args.print_source:
+            print(source.base_url)
+        else:
+            args.snapshot = source.resolve(args.snapshot)
+            if args.print_snapshot:
+                print(args.snapshot)
+            elif args.print_lock:
+                print(json.dumps(make_lock(source, args.snapshot), indent=2, sort_keys=True))
+            else:
+                if not args.out:
+                    parser.error("specify --out for an image build")
+                if not args.lock_only and os.geteuid() != 0:
+                    parser.exit(1, "tizen-image: run the build with sudo, or use --lock-only\n")
+                build(args, source)
     except (OSError, ValueError, subprocess.CalledProcessError, ET.ParseError) as err:
         parser.exit(1, f"tizen-image: {err}\n")

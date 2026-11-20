@@ -1,0 +1,98 @@
+#!/usr/bin/expect -f
+# Point TIZEN_OUT and TIZEN_DISK at a managed image and its disposable overlay.
+# An optional command argument exercises an installed launcher, e.g. tizen-vm.
+set timeout 90
+log_user 0
+if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" ||
+    ![info exists env(TIZEN_DISK)] || ![file isfile $env(TIZEN_DISK)]} {
+    puts stderr "Supply TIZEN_DISK and TIZEN_DISK_FORMAT=qcow2 for a disposable QCOW2 overlay."
+    exit 2
+}
+set disk [file normalize $env(TIZEN_DISK)]
+set key [exec stat -Lc %D-%i -- $disk]
+set sock /tmp/tizen-vm-[exec id -u]/$key.sock
+set launcher $argv
+if {![llength $launcher]} {
+    set launcher [list [file join [file dirname [file normalize [info script]]] .. scripts run-vm.sh]]
+}
+if {[catch {exec flock -n $disk true}] || ![catch {exec tmux -S $sock has-session -t =vm}]} {
+    puts stderr "Use an unused, disposable overlay."
+    exit 2
+}
+set env(TERM) xterm-256color
+proc attach {{viewers 1}} {
+    global launcher sock timeout
+    spawn -noecho {*}$launcher
+    set stop [expr {[clock seconds] + $timeout}]
+    while {[clock seconds] < $stop} {
+        if {![catch {exec tmux -S $sock list-clients -F "#{client_name}"} output] &&
+            [llength [split $output "\n"]] == $viewers} {return $spawn_id}
+        after 100
+    }
+    error "Console client failed to attach"
+}
+proc visible {text} {
+    global sock timeout
+    set stop [expr {[clock seconds] + $timeout}]
+    while {[clock seconds] < $stop} {
+        if {![catch {exec tmux -S $sock capture-pane -p -J -t vm:} output] &&
+            [string first $text $output] >= 0} {return}
+        after 100
+    }
+    error "Timed out waiting for console text: $text"
+}
+proc command {client script marker} {
+    send -i $client -- "$script\r"
+    visible $marker
+}
+proc finished {client} {
+    global timeout
+    expect -i $client {
+        eof {}
+        timeout {error "Console client did not exit"}
+    }
+    set result [wait -i $client]
+    if {[lindex $result 2] != 0 || [lindex $result 3] != 0} {
+        error "Console client exit: $result"
+    }
+}
+
+set failed [catch {
+    set a [attach]
+    visible "root:~>"
+    command $a {stty -echo; set +H; printf 'SETUP-%s\n' READY} SETUP-READY
+    command $a {cd /opt && saved=$$; sleep 180 & bg=$!; echo JOB-READY} JOB-READY
+    send -i $a -- "\004"
+    command $a {test "$$" = "$saved" && echo EOF-OK} EOF-OK
+    command $a {su - owner} "owner:~>"
+    send -i $a -- "exit\r"
+    command $a {test "$$" = "$saved" && echo NESTED-OK} NESTED-OK
+
+    command $a {PROMPT_COMMAND='case $? in 130) echo SIGINT-OK;; esac'; echo TRAP-READY} TRAP-READY
+    set b [attach 2]
+    command $b {dlogsend -b main -p Error -t TizenSerial probe-running && dlogutil -b main -v raw --color never -s TizenSerial:E} probe-running
+    send -i $b -- "\003"
+    visible SIGINT-OK
+    send -i $b -- "exit\r"
+    finished $a
+    finished $b
+    if {![catch {exec flock -n $disk true}]} {error "Detached VM released the disk lock"}
+
+    set c [attach]
+    command $c {test "$saved" = "$$" && test "$PWD" = /opt && kill -0 "$bg" && echo RESUMED-OK} RESUMED-OK
+    close -i $c
+    wait -i $c
+    set d [attach]
+    command $d {test "$saved" = "$$" && kill -0 "$bg" && echo RECONNECTED-OK} RECONNECTED-OK
+    send -i $d -- {kill "$bg"; sync; systemctl --force poweroff}
+    send -i $d -- "\r"
+    finished $d
+    exec flock -n $disk true
+} message]
+if {$failed} {
+    # Only this test's private tmux server for the supplied disposable disk.
+    catch {exec tmux -S $sock kill-server}
+    puts stderr $message
+    exit 1
+}
+puts "Managed console passed two attachments, Ctrl+C/D, shell exit, terminal close and poweroff."

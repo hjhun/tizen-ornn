@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Run a package operation on the guest's dedicated local virtio channel."""
+import base64
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import stat
+import subprocess
+import sys
+import uuid
+
+MAX_BUNDLE = 64 * 1024 * 1024
+MAX_FRAME = 64 * 1024
+
+
+def request(disk, op, names, bundle):
+    prefix = subprocess.check_output([Path(__file__).with_name("vm-runtime"), disk], text=True).strip()
+    ident = uuid.uuid4().hex
+    with open(prefix + ".request.lock", "a") as lock, socket.socket(socket.AF_UNIX) as sock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("Another host package operation is active on this disk.")
+        sock.settimeout(20)
+        try:
+            sock.connect(prefix + ".packages")
+        except (ConnectionRefusedError, FileNotFoundError):
+            raise ValueError("Start the selected VM using tizen-vm before managing its packages.")
+
+        def send(**fields):
+            sock.sendall((json.dumps(dict(fields, id=ident), separators=(",", ":")) + "\n").encode())
+
+        with sock.makefile("rb") as stream:
+            def receive():
+                while True:
+                    line = stream.readline(MAX_FRAME + 1)
+                    if not line or len(line) > MAX_FRAME:
+                        raise ValueError("The guest package channel closed or sent an invalid reply.")
+                    try:
+                        msg = json.loads(line)
+                    except (UnicodeError, ValueError):
+                        continue  # a partial reply from a previous connection
+                    if isinstance(msg, dict) and msg.get("id") == ident:
+                        return msg
+
+            # Delimit a partial upload frame left by a disconnected client.
+            sock.sendall(b"\n")
+            send(op="ping")
+            try:
+                if receive().get("type") != "ready":
+                    raise ValueError("Guest package service is unavailable.")
+            except TimeoutError:
+                raise ValueError("Guest package service did not respond. Wait for boot or an active transaction. Older images require a guest with package service support.")
+            sock.settimeout(90)
+            if bundle:
+                size = os.fstat(bundle.fileno()).st_size
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: bundle.read(65536), b""):
+                    digest.update(chunk)
+                bundle.seek(0)
+                send(op="update", size=size, sha256=digest.hexdigest())
+                if receive().get("type") != "upload":
+                    raise ValueError("The guest rejected the metadata transfer.")
+                for chunk in iter(lambda: bundle.read(24576), b""):
+                    send(data=base64.b64encode(chunk).decode("ascii"))
+                send(end=True)
+            else:
+                send(op=op, names=names)
+            while True:
+                reply = receive()
+                kind = reply.get("type")
+                if kind == "output":
+                    sys.stdout.buffer.write(base64.b64decode(reply["data"], validate=True))
+                    sys.stdout.buffer.flush()
+                elif kind == "exit":
+                    code = reply.get("code")
+                    if type(code) is not int or not 0 <= code <= 255:
+                        raise ValueError("Guest returned an invalid exit status.")
+                    return code
+                elif kind != "alive":
+                    raise ValueError("Unexpected guest reply.")
+
+
+def main(args):
+    if len(args) < 3 or args[1] not in ("install", "update"):
+        raise ValueError("Usage: guest-command DISK install NAME... | guest-command DISK update BUNDLE")
+    disk, op, *names = args
+    if op == "install":
+        if len(names) > 128 or not all(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,126}", n) for n in names):
+            raise ValueError("Supply RPM package names or codex, gemini, claude, agy.")
+        return request(disk, op, names, None)
+    if len(names) != 1:
+        raise ValueError("Supply one snapshot metadata bundle.")
+    with os.fdopen(os.open(names[0], os.O_RDONLY | os.O_NONBLOCK), "rb") as bundle:
+        info = os.fstat(bundle.fileno())
+        if not stat.S_ISREG(info.st_mode) or not 1 <= info.st_size <= MAX_BUNDLE:
+            raise ValueError("Metadata bundle must be a regular file of at most 64 MiB.")
+        return request(disk, op, [], bundle)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        print("Disconnected. A package transaction already started in the guest can continue.", file=sys.stderr)
+        sys.exit(130)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        sys.exit(str(error))
