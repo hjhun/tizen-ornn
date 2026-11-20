@@ -27,7 +27,7 @@ sudo env JOBS=4 ./scripts/tizen-image \
 
 - 이미지별 XML에서 x86_64 아키텍처와 `emulator-rootfs.img`, `emulator-sysdata.img`의 ext4 구성을 확인합니다. 원본 아카이브와 파티션 XML은 공식 디렉터리의 `SHA256SUMS`와 대조합니다.
 - Unified `build.xml`의 `base_id`로 Base 날짜를 찾습니다. 네이티브 RPM에는 해당 Unified emulator와 Base standard, ARM에는 Unified standard와 Base standard를 씁니다. 각 저장소의 `repomd.xml` SHA-256을 고정하고 primary와 개별 RPM 체크섬을 검증합니다. ARM 패키지 선정은 배포 레시피에 선언한 패키지 이름을 따릅니다.
-- 커널은 RPi4 소스 RPM `rpi4-linux-kernel-6.12.41-0.src.rpm`과 Gerrit 리비전 `b6322b453844b6111e4619615fc65bd29b86c83e`에서 x86_64용으로 다시 빌드합니다. SDK는 `sdk/packages.sha256`의 Tizen Studio CLI 2.5.107·SDB 4.2.36 등을 사용합니다. Git은 레시피의 2.56.1을 사용합니다. 이 입력들의 버전을 변경하려면 해당 레시피와 런타임 호환성을 별도로 검증해야 합니다.
+- 커널은 RPi4 소스 RPM `rpi4-linux-kernel-6.12.41-0.src.rpm`과 Gerrit 리비전 `b6322b453844b6111e4619615fc65bd29b86c83e`에서 x86_64용으로 다시 빌드합니다. SDK는 `sdk/packages.sha256`에 고정한 CLI ZIP 패키지 2.5.107과 SDB 4.2.36 등을 사용합니다. 이 CLI가 게스트에서 표시하는 버전은 2.5.25입니다. Git은 레시피의 2.56.1을 사용합니다. 이 입력들의 버전을 변경하려면 해당 레시피와 런타임 호환성을 별도로 검증해야 합니다.
 - 날짜가 달라지면 제공 RPM, Rust 타깃, 라이브러리 ABI, 서비스 그래프가 달라질 수 있습니다. 도구가 입력을 확인한 뒤 실제 빌드에서 RPM 트랜잭션·필수 파일을 검사합니다. 새 디스크를 부팅한 뒤 `tizen-linux-tools-check`와 실제 대상 프로젝트의 `tizen-build test`로 개발 동작을 확인할 수 있습니다.
 
 [공식 Tizen 10.1 Unified 스냅샷 목록](https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/) · [예시 스냅샷의 Base·저장소 정보](https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/tizen-10.1-unified_20261119.053314/build.xml)

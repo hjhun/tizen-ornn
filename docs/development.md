@@ -72,6 +72,8 @@ tizen-build-aul .
 ls ../aul-rpmbuild/RPMS/x86_64
 ```
 
+이 예에서 생성한 RPM은 게스트의 네이티브 `rpmbuild` 결과입니다. 배포 품질 확인에 필요한 GBS 격리 빌드와 물리 기기 검증은 별도로 수행합니다.
+
 기존 R3를 사용 중이면 보조 RPM만 설치해 같은 명령을 쓸 수 있습니다. 배포한 `tizen-build-1.0-1.noarch.rpm`을 게스트로 복사한 뒤, 게스트 root 셸에서 아래 명령을 실행합니다.
 
 ```sh

@@ -20,6 +20,22 @@ WSL2에서 x86_64 Tizen VM을 부팅해 수행했습니다. 게스트의 일반 
 | 다른 플랫폼 프로젝트 | `capi-base-common`(직접 cmake 호출)과 `libslp-db-util`(%cmake)에서도 x86-64 공유 라이브러리 생성 |
 | `tizen-linux-tools-check` | Meson/Ninja 1/1, Autotools/Make 1/1. SSH 클라이언트, rsync, patch, jq, GDB, strace 실행 |
 
+GitHub 계정이나 Gerrit 자격 증명 없이 게스트에서 공개 `aul-0.83.29-1.src.rpm`을 내려받아 체크섬을 대조했습니다. 풀어낸 소스에서 `tizen-build test`로 CTest 1/1, Google Test 295/295를 통과했습니다.
+
+## GitHub Release에서 처음 시작하는 경로
+
+R4 태그 `7054021`을 인증 없이 새로 clone한 후 빈 출력 디렉터리에서 README의 `TIZEN_PREBUILT_KERNEL=1 ./scripts/tizen-image` 경로를 실행했습니다. WSL2 Ubuntu 24.04.4, 사전에 설치한 호스트 빌드 도구, tmpfs 작업 디렉터리에서 이미지 생성에 **3분 50초**가 걸렸습니다(1회 측정, 호스트 패키지 설치·게스트 부팅 시간 제외). 스냅샷·SDK·RPM을 공식 서버에서 다시 받았고 커널은 Release에서 받아 SHA-256을 대조했습니다.
+
+새 디스크의 일회용 오버레이에서 `tests/boot-smoke.expect`로 두 번 부팅했습니다. 플랫폼 서비스, SMACK 검사, 일반 사용자 C++·Rust TPK, x86_64/ARMv7 ELF·RPM, ARM CMake 테스트, GDB/strace, HTTPS Git 조회와 zypper 설치가 통과했습니다. 재부팅 후 첫 부팅에서 빌드한 프로그램과 TPK가 유지됐습니다. 이 실행에서는 별도 SDB 피어를 지정하지 않았습니다.
+
+## 다른 날짜의 원본에서 생성한 VM
+
+`scripts/tizen-image --snapshot tizen-10.1-unified_20261118.052410`으로 별도 개발 디스크를 만들었습니다. 생성기는 대응하는 Base `20261112.005213`을 선택했습니다. WSL2 Ubuntu 24.04.4에서 기존 커널 빌드 캐시와 해시가 일치하는 일부 패키지 다운로드를 재사용했습니다.
+
+- 게스트 커널은 `6.12.41-tizen-qemu`였고 systemd가 보고한 실패 유닛은 0개였습니다. 보안 서비스, 앱 프레임워크 데몬, `user@5001`, SDB와 패키지 관리자 소켓이 시작됐습니다.
+- 같은 UID와 파일 권한에서 SMACK 라벨을 바꾸었을 때 접근 허용 및 `EACCES`를 각각 확인했습니다.
+- `owner`에서 `tizen-linux-tools-check`를 통과했고 `tizen-build`로 해당 날짜의 `capi-base-common`을 x86-64 공유 라이브러리로 빌드했습니다. 이 날짜의 GUI와 ARM 앱 실행은 별도로 검증하지 않았습니다.
+
 ## R3 기반 이미지에서 검증한 기능
 
 WSL2의 Ubuntu 24.04.4에서 배포 커널과 디스크의 일회용 오버레이로 검사했습니다.
