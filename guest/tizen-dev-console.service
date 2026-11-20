@@ -1,0 +1,20 @@
+[Unit]
+Description=Local Tizen developer serial console
+DefaultDependencies=no
+Requires=tizen-dev-setup.service multi-user.target
+After=tizen-dev-setup.service multi-user.target user@5001.service
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+SmackProcessLabel=User::Shell
+WorkingDirectory=/root
+Environment=HOME=/root TERM=vt100
+ExecStart=/bin/bash --login -i
+Restart=always
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=yes

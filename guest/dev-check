@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+uname -r
+cat /proc/self/attr/current; echo
+mountpoint /sys/fs/smackfs
+chsmack /usr/bin/pkgcmd
+python3 /usr/local/libexec/tizen-dev-smack-check
+for bin in gcc g++ vim gdb strace make ninja cmake ctest git zypper rustc cargo; do
+    command -v "$bin" >/dev/null
+    "$bin" --version | sed -n '1p'
+done
+rpm -q gcc gcc-c++ glibc glibc-devel libstdc++ libstdc++-devel libglib glib2-devel
+scratch=$(mktemp -d "${HOME:?}/.tizen-dev-check.XXXXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+cd "$scratch"
+cat > main.cpp <<'CPP'
+#include <glib.h>
+#include <iostream>
+int main() {
+    std::cout << g_quark_to_string(g_quark_from_string("glib-cpp-ok")) << '\n';
+}
+CPP
+cat > CMakeLists.txt <<'CMAKE'
+cmake_minimum_required(VERSION 3.16)
+project(devcheck LANGUAGES C CXX)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+add_executable(devcheck main.cpp)
+target_link_libraries(devcheck PRIVATE PkgConfig::GLIB)
+enable_testing()
+add_test(NAME run COMMAND devcheck)
+set_tests_properties(run PROPERTIES PASS_REGULAR_EXPRESSION "glib-cpp-ok")
+CMAKE
+cmake -S . -B build -G Ninja
+cmake --build build
+ctest --test-dir build --no-tests=error --output-on-failure
+cargo new --vcs none --bin rustcheck
+cargo build --offline --manifest-path rustcheck/Cargo.toml
+rustcheck/target/debug/rustcheck
+git init -q repo
+git -C repo rev-parse --is-inside-work-tree
+tizen version
+sdb version
+sdb devices
+echo TIZEN_DEV_ENVIRONMENT_OK

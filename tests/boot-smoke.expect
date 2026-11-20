@@ -1,0 +1,91 @@
+#!/usr/bin/expect -f
+# Run against a disposable QCOW2 overlay. Each phase must return a guest status.
+set timeout 120
+set here [file dirname [file normalize [info script]]]
+if {$argc != 1} {puts stderr "usage: boot-smoke.expect HOST_LOG"; exit 2}
+if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2"} {
+    puts stderr "Set TIZEN_DISK to a disposable QCOW2 overlay and TIZEN_DISK_FORMAT=qcow2"
+    exit 2
+}
+log_file -a [lindex $argv 0]
+log_user 0
+proc boot {} {
+    global here timeout spawn_id
+    spawn -noecho [file join $here .. scripts run-vm.sh]
+    expect {
+        -re {root:[^\r\n]*> $} {}
+        timeout {puts stderr "Guest did not reach the console"; exit 1}
+        eof {puts stderr "Guest exited before the console"; exit 1}
+    }
+}
+proc run_step {name command} {
+    global timeout spawn_id
+    send -- "$command; printf '\\n__STEP_$name=%s\\n' \$?\r"
+    expect {
+        -re "\[\r\n\]__STEP_$name=(\[0-9\]+)\[\r\n\]" {
+            set status $expect_out(1,string)
+            puts "$name exit $status"
+            if {$status != 0} {return -code error "$name failed"}
+        }
+        timeout {return -code error "$name timed out"}
+        eof {return -code error "$name lost its serial console"}
+    }
+}
+proc shutdown {} {
+    global spawn_id timeout
+    send -- "sync; systemctl --force poweroff\r"
+    expect {
+        eof {}
+        timeout {error "Guest failed to power off"}
+    }
+    set result [wait]
+    if {[lindex $result 3] != 0} {error "QEMU failed: $result"}
+}
+boot
+set failure [catch {
+    set platform {(set -e;
+        for n in {1..60}; do systemctl is-active --quiet tizen-dev.target && break; sleep 1; done;
+        for unit in tizen-dev.target multi-user.target ac.service actd.service esd.service
+            security-manager.service cynara.service pkgmgr-info.service package-manager.socket
+            user@5001.service; do
+            systemctl is-active --quiet "$unit" || { echo "$unit did not start"; exit 1; };
+        done;
+        test -S /run/user/5001/bus)}
+    run_step platform [string map [list "\n" " "] $platform]
+    if {[info exists env(TIZEN_SDB_TEST_PORT)]} {
+        set port $env(TIZEN_SDB_TEST_PORT)
+        if {![regexp {^[1-9][0-9]{0,4}$} $port] || $port > 65535} {error "Invalid SDB test port"}
+        # The caller supplies a disposable Tizen sdbd peer with writable /mnt.
+        set probe {su -s /bin/bash dev -c 'set -eu; cd; p=10.0.2.2:PORT;
+            sdb connect "$p"; sdb -s "$p" shell id | grep uid=;
+            dir=$(mktemp -d); cd "$dir";
+            remote=/mnt/tizen-dev-${dir##*/};
+            printf "Tizen SDB round trip\n" > send;
+            sdb -s "$p" push send "$remote"; sdb -s "$p" pull "$remote" received;
+            cmp send received; sha256sum send received;
+            sdb -s "$p" shell rm -f "$remote"; cd; rm -r "$dir"; sdb disconnect "$p"'}
+        run_step sdb [string map [list PORT $port "\n" " "] $probe]
+    }
+    run_step env {tizen-dev-check}
+    run_step package {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/sample-output"'}
+    run_step rust {su -s /bin/bash dev -c 'cd && cargo new --bin --vcs none rust-smoke && cd rust-smoke && cargo run --offline'}
+    run_step rust_arm {su -s /bin/bash dev -c 'cd "$HOME/rust-smoke" && . /etc/profile.d/tizen-cargo-arm.sh && cargo run --offline --target arm-unknown-linux-gnueabi && readelf -A target/arm-unknown-linux-gnueabi/debug/rust-smoke | grep -E "Tag_CPU_arch: v7$"'}
+    run_step cross_rpm {su -s /bin/bash dev -c 'cd && tizen-cross-check "$HOME/cross-result"'}
+    run_step arm_cmake {su -s /bin/bash dev -c 'cd && cmake -S /usr/share/tizen-dev/examples/cross-rpm -B cmake-arm -G Ninja --toolchain /usr/share/tizen-dev/cmake/armv7l.cmake && cmake --build cmake-arm && ctest --test-dir cmake-arm --no-tests=error --output-on-failure'}
+    run_step ui_rpm {su -s /bin/bash dev -c 'cd /usr/share/tizen-dev/examples/efl-counter && ./build-rpm.sh x86_64 "$HOME/ui-rpms" && ./build-rpm.sh armv7l "$HOME/ui-rpms"'}
+    run_step ui_tpk {su -s /bin/bash dev -c '/usr/share/tizen-dev/examples/efl-counter/build.sh "$HOME/ui-tpk"'}
+    run_step rust_tpk {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/debug/rust-smoke"'}
+    run_step rust_arm_tpk {su -s /bin/bash dev -c 'cd && /usr/share/tizen-dev/examples/native-tpk/package.sh "$HOME/rust-output" "$HOME/rust-smoke/target/arm-unknown-linux-gnueabi/debug/rust-smoke"'}
+    run_step debugger {su -s /bin/bash dev -c 'cd "$HOME/rust-smoke" && gdb -nx -batch -ex run --args target/debug/rust-smoke && strace -e exit_group target/debug/rust-smoke'}
+    run_step repo {zypper -n --no-refresh install --no-recommends ed && rpm -q ed}
+    run_step network {git ls-remote --exit-code https://github.com/madler/zlib.git HEAD}
+} message]
+if {$failure} {puts stderr $message}
+shutdown
+if {$failure} {exit 1}
+boot
+set failure [catch {
+    run_step persistence {su -s /bin/bash dev -c 'cd && ./rust-smoke/target/debug/rust-smoke && sha256sum rust-output/*.tpk'}
+} message]
+shutdown
+if {$failure} {puts stderr $message; exit 1}

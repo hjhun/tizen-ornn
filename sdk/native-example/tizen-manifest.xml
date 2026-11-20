@@ -1,0 +1,4 @@
+<manifest xmlns="http://tizen.org/ns/packages" package="org.example.tizendev" version="1.0.0" api-version="10.0">
+  <profile name="common"/>
+  <ui-application appid="org.example.tizendev" exec="tizenprobe" type="capp"><label>TizenDev</label></ui-application>
+</manifest>

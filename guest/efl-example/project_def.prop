@@ -1,0 +1,3 @@
+APPNAME = tizen-ui
+type = app
+profile = tizen-10.0

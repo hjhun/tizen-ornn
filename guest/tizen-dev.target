@@ -1,0 +1,6 @@
+[Unit]
+Description=Tizen x86_64 development console
+DefaultDependencies=no
+Requires=multi-user.target tizen-dev-console.service user@5001.service
+After=multi-user.target tizen-dev-console.service user@5001.service
+AllowIsolate=yes

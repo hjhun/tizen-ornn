@@ -1,0 +1,11 @@
+[Unit]
+Description=Tizen developer D-Bus session
+Requires=tizen-headed-runtime.service
+After=tizen-headed-runtime.service
+Before=tizen-ui-demo.service
+
+[Service]
+User=dev
+Group=dev
+SmackProcessLabel=User::Shell
+ExecStart=/usr/bin/dbus-daemon --session --nofork --nopidfile --address=unix:path=/run/tizen-dev-ui/bus

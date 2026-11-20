@@ -1,0 +1,212 @@
+#!/usr/bin/python3
+"""Incrementally build a Tizen CMake checkout using its RPM configuration."""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import rpm
+import subprocess
+import sys
+import tempfile
+
+
+CAPTURE = "tizen_build_capture_cmake"
+STATE = ".tizen-build.json"
+LOCK = ".tizen-build.lock"
+
+
+def project_spec(explicit):
+    if explicit:
+        spec = explicit.resolve(strict=True)
+        return (spec.parent.parent if spec.parent.name == "packaging" else spec.parent), spec
+    cwd = Path.cwd()
+    for root in (cwd, *cwd.parents):
+        specs = sorted((*root.glob("*.spec"), *root.glob("packaging/*.spec")))
+        if len(specs) > 1:
+            raise ValueError("multiple spec files; select one with --spec: " +
+                             ", ".join(str(s.relative_to(root)) for s in specs))
+        if specs:
+            return (root.parent if root.name == "packaging" else root), specs[0]
+        if (root / ".git").exists():
+            break
+    raise ValueError("no RPM spec found; run in the checkout or pass --spec PATH")
+
+
+def capture_recipe(spec, root):
+    # Use the RPM parser for macros, includes and native target conditionals.
+    # Its parsed text omits the config.guess maintenance loop Tizen inserts in
+    # the RPM build tree. That loop must not modify a developer's checkout.
+    rpm.addMacro("__cmake", CAPTURE)
+    rpm.addMacro("_sourcedir", str(spec.parent))
+    os.chdir(root)
+    try:
+        parsed = rpm.spec(str(spec))
+    except (ValueError, rpm.error) as exc:
+        raise ValueError(f"could not parse {spec}: {exc}") from exc
+    build = re.search(r"^%build[^\n]*\n(.*?)(?=^%[a-zA-Z]|\Z)", parsed.parsed, re.M | re.S)
+    if not build:
+        raise ValueError("spec has no %build section")
+    lines = build[1].replace("\\\n", " ").splitlines()
+    command = re.compile(r"^\s*(?:" + CAPTURE + r"|(?:/usr/bin/)?cmake)(?=\s|$)")
+    calls = []
+    for i, line in enumerate(lines):
+        match = command.match(line)
+        if match and not re.match(r"\s+(?:--build|--install|-E|-P)\b", line[match.end():]):
+            calls.append(i)
+            lines[i] = CAPTURE + line[match.end():]
+    if len(calls) != 1:
+        raise ValueError("expected one top-level %cmake or cmake configure command in %build")
+    for line in lines[:calls[0]]:
+        if not re.match(r"^\s*(?:$|#|(?:export\s+)?[A-Za-z_]\w*\+?=|export\s+\w+)", line):
+            raise ValueError("unsupported step before %cmake: " + line.strip())
+
+    env = os.environ.copy()
+    flags = rpm.expandMacro("%{optflags}")
+    env.update(RPM_PACKAGE_NAME=rpm.expandMacro("%{name}"),
+               RPM_PACKAGE_VERSION=rpm.expandMacro("%{version}"),
+               RPM_PACKAGE_RELEASE=rpm.expandMacro("%{release}"), RPM_SOURCE_DIR=str(spec.parent),
+               RPM_ARCH=rpm.expandMacro("%{_arch}"), RPM_OS=rpm.expandMacro("%{_os}"))
+    env.update(RPM_OPT_FLAGS=flags, CFLAGS=flags, CXXFLAGS=flags, FFLAGS=flags)
+    with tempfile.TemporaryFile() as output:
+        fd = output.fileno()
+        dump = "import json,os,sys; json.dump([sys.argv[1:], dict(os.environ)], sys.stdout)"
+        capture = f"""{CAPTURE}() {{
+    /usr/bin/python3 -c '{dump}' "$@" >&{fd}
+    exit 0
+}}
+"""
+        subprocess.run(["/bin/bash", "-e", "-c", capture + "\n".join(lines[:calls[0]+1])],
+                       cwd=root, env=env, pass_fds=(fd,), check=True)
+        output.seek(0)
+        try:
+            args, environment = json.load(output)
+        except json.JSONDecodeError as exc:
+            raise ValueError("%cmake was not reached") from exc
+    return configure_options(args, root), environment
+
+
+def configure_options(args, root):
+    options = []
+    sources = []
+    it = iter(args)
+    for arg in it:
+        if arg == "-D":
+            arg += next(it, "")
+        if arg.startswith("-D") and "=" in arg:
+            options.append(arg)
+        elif arg.startswith("-W"):
+            options.append(arg)
+        elif not arg.startswith("-"):
+            sources.append((root / arg).resolve())
+        else:
+            raise ValueError("unsupported %cmake option: " + arg)
+    if sources and sources != [root]:
+        raise ValueError("expected a single %cmake invocation for the checkout root")
+    return options
+
+
+def cache_key(options, env):
+    # CMake imports compiler flags from the environment only on first configure.
+    base = os.environ
+    keys = {"CC", "CXX", "FC", "CPP", "CFLAGS", "CXXFLAGS", "FFLAGS", "FCFLAGS",
+            "LDFLAGS", "CPPFLAGS", "PATH"}
+    keys.update(k for k in env if k.startswith(("CMAKE_", "PKG_CONFIG")))
+    keys.update(k for k in set(env) | set(base) if env.get(k) != base.get(k))
+    keys -= {"PWD", "OLDPWD", "SHLVL", "_"}
+    data = json.dumps([options, {k: env.get(k) for k in sorted(keys)}], sort_keys=True)
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def write_state(path, state):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(state) + "\n")
+    temporary.replace(path)
+
+
+def build_tests(build, env):
+    # The spec may disable RPATH. Ask CMake which shared libraries it actually
+    # produced, including libraries with custom LIBRARY_OUTPUT_DIRECTORY.
+    reply = build / ".cmake/api/v1/reply"
+    index = json.loads(max(reply.glob("index-*.json")).read_text())
+    model = json.loads((reply / index["reply"]["codemodel-v2"]["jsonFile"]).read_text())
+    libdirs = []
+    for target in model["configurations"][0]["targets"]:
+        detail = json.loads((reply / target["jsonFile"]).read_text())
+        if detail["type"] == "SHARED_LIBRARY":
+            for artifact in detail.get("artifacts", []):
+                directory = str((build / artifact["path"]).parent)
+                if directory not in libdirs:
+                    libdirs.append(directory)
+    if env.get("LD_LIBRARY_PATH"):
+        libdirs.append(env["LD_LIBRARY_PATH"])
+    if libdirs:
+        env = dict(env, LD_LIBRARY_PATH=os.pathsep.join(libdirs))
+    subprocess.run(["ctest", "--test-dir", str(build), "--output-on-failure",
+                    "--no-tests=error"], env=env, check=True)
+
+
+def execute(args):
+    if os.geteuid() == 0:
+        raise ValueError("run as the development user, for example 'su - owner'")
+    if args.jobs < 1:
+        raise ValueError("job count must be positive")
+    root, spec = project_spec(args.spec)
+    if not (root / "CMakeLists.txt").is_file():
+        raise ValueError("no CMakeLists.txt at the checkout root " + str(root))
+    build = (args.build_dir or root.with_name(root.name + "-build")).resolve()
+    if build == root or root in build.parents or build in root.parents:
+        raise ValueError("choose a separate out-of-tree build directory")
+    options, env = capture_recipe(spec, root)
+    key = cache_key(options, env)
+    build.mkdir(parents=True, exist_ok=True)
+    with (build / LOCK).open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        metadata = build / STATE
+        identity = {"source": str(root), "spec": str(spec)}
+        state = {}
+        if metadata.exists():
+            state = json.loads(metadata.read_text())
+            if any(state.get(k) != v for k, v in identity.items()):
+                raise ValueError("build directory belongs to a different checkout/spec")
+        elif any(p.name != LOCK for p in build.iterdir()):
+            raise ValueError("existing directory is not a tizen-build build tree: " + str(build))
+        print(f"Spec: {spec}\nBuild: {build}", flush=True)
+        if key != state.get("key") or not (build / "CMakeCache.txt").is_file():
+            write_state(metadata, identity)
+            query = build / ".cmake/api/v1/query/codemodel-v2"
+            query.parent.mkdir(parents=True, exist_ok=True)
+            query.touch()
+            subprocess.run(["cmake", "--fresh", "-S", str(root), "-B", str(build),
+                            "-G", "Ninja", *options], env=env, check=True)
+            write_state(metadata, dict(identity, key=key))
+        subprocess.run(["cmake", "--build", str(build), "--parallel", str(args.jobs)],
+                       env=env, check=True)
+        if args.action == "test":
+            build_tests(build, env)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, epilog="Uses one checkout-root %cmake or cmake invocation and its "
+        "shell variable assignments from a trusted spec. 'test' runs the project's "
+        "registered CTest tests. RPM packaging stages use rpmbuild separately.")
+    parser.add_argument("action", nargs="?", choices=["build", "test"], default="build")
+    parser.add_argument("--spec", type=Path, help="select a spec for this checkout")
+    parser.add_argument("--build-dir", type=Path, help="default: ../<checkout>-build")
+    parser.add_argument("-j", "--jobs", type=int, default=os.environ.get("JOBS", os.cpu_count() or 1))
+    try:
+        execute(parser.parse_args())
+    except subprocess.CalledProcessError as exc:
+        return exc.returncode if exc.returncode > 0 else 128 - exc.returncode
+    except (OSError, ValueError, KeyError, rpm.error) as exc:
+        print(f"tizen-build: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

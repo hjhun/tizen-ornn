@@ -1,0 +1,13 @@
+[Unit]
+Description=Prepare the Tizen developer's graphical runtime directory
+DefaultDependencies=no
+Requires=tizen-dev-setup.service
+After=tizen-dev-setup.service
+Before=tizen-headed-bus.service tizen-ui-demo.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+SmackProcessLabel=System::Privileged
+ExecStart=/usr/local/libexec/tizen-headed-runtime

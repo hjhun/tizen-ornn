@@ -1,0 +1,5 @@
+#!/bin/sh
+# Rebuild libzypp's cache from this image's authenticated, immutable snapshot.
+# The live repo definitions keep the official HTTPS destinations for payloads.
+set -eu
+exec zypper --non-interactive --reposd-dir /usr/share/tizen-snapshot/repos.d refresh --force

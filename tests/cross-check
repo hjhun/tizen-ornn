@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# With a path argument, retain both RPMs, extracted executables, and build logs.
+set -euo pipefail
+if [[ $# == 0 ]]; then
+    builddir=$(rpm --eval '%{_topdir}')
+    mkdir -p "$builddir"
+    work=$(mktemp -d "$builddir/.tizen-cross-check.XXXXXXXX")
+    trap 'rm -rf -- "$work"' EXIT
+else
+    mkdir -- "$1"
+    work=$(cd -- "$1" && pwd -P)
+fi
+samples=/usr/share/tizen-dev/examples/cross-rpm
+for arch in x86_64 armv7l; do
+    top="$work/$arch"
+    mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,payload}
+    cp "$samples"/probe.* "$top/SOURCES/"
+    cp "$samples"/tizen-cross-probe.spec "$top/SPECS/"
+    if ! tizen-rpmbuild "$arch" --define "_topdir $top" \
+            -bb "$top/SPECS/tizen-cross-probe.spec" > "$top/build.log" 2>&1; then
+        cat "$top/build.log" >&2
+        exit 1
+    fi
+    rpmfile="$top/RPMS/$arch/tizen-cross-probe-1.0-1.$arch.rpm"
+    test "$(rpm -qp --queryformat '%{ARCH}' "$rpmfile")" = "$arch"
+    rpm -K "$rpmfile"
+    (cd "$top/payload"; rpm2cpio "$rpmfile" | cpio --quiet -id)
+    for executable in "$top"/payload/usr/bin/{probe-c,probe-cxx}; do
+        if [[ $arch == armv7l ]]; then
+            readelf -h "$executable" | grep -E 'Machine:.*ARM'
+            readelf -h "$executable" | grep -E 'Flags:.*soft-float ABI'
+            readelf -l "$executable" | grep -F '/lib/ld-linux.so.3'
+            readelf -A "$executable" | grep -E 'Tag_CPU_arch: v7$'
+            result=$(qemu-arm -L /opt/tizen/sysroots/armv7l "$executable")
+            [[ $result == *'pointer bits 32' ]]
+        else
+            readelf -h "$executable" | grep -E 'Machine:.*X86-64'
+            result=$("$executable")
+            [[ $result == *'pointer bits 64' ]]
+        fi
+        echo "$arch $(basename "$executable") $result"
+    done
+done

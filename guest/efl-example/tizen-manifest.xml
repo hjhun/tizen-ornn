@@ -1,0 +1,6 @@
+<manifest xmlns="http://tizen.org/ns/packages" package="org.example.tizencounter" version="1.0.0" api-version="10.0">
+  <profile name="common"/>
+  <ui-application appid="org.example.tizencounter" exec="tizen-ui" type="capp">
+    <label>Tizen UI counter</label>
+  </ui-application>
+</manifest>

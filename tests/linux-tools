@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Run inside Tizen, from an executable, writable development workspace.
+set -euo pipefail
+parent=$(cd -- "${1:-$PWD}" && pwd -P)
+work=$(mktemp -d "$parent/.linux-tools.XXXXXXXX")
+trap 'rm -rf -- "$work"' EXIT
+cd "$work"
+
+for tool in gcc g++ make cmake ninja pkg-config git gdb strace ssh scp sftp \
+    ssh-keygen curl meson autoconf autoreconf automake libtoolize m4 ip ping; do
+    command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }
+done
+
+cat > main.c <<'C'
+#include <stdio.h>
+int main(void) {
+    puts("hello from Tizen");
+    return 0;
+}
+C
+cat > meson.build <<'MESON'
+project('native-check', 'c')
+probe = executable('native-check', 'main.c')
+test('run native executable', probe)
+MESON
+meson setup build --wrap-mode=nodownload
+meson compile -C build
+meson test -C build --print-errorlogs
+
+mkdir autotools
+cp main.c autotools/
+(
+    cd autotools
+    cat > configure.ac <<'AC'
+AC_INIT([native-check], [1.0])
+AM_INIT_AUTOMAKE([foreign])
+AC_PROG_CC
+LT_INIT
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
+AC
+    cat > Makefile.am <<'AM'
+noinst_PROGRAMS = native-check
+native_check_SOURCES = main.c
+TESTS = native-check
+AM
+    autoreconf -fi
+    ./configure --quiet
+    make -s check
+    test "$(./native-check)" = 'hello from Tizen'
+)
+
+printf 'before\n' > original
+sed 's/before/after/' original > expected
+if diff -u --label original --label original original expected > change.patch; then
+    exit 1
+else
+    [[ $? == 1 ]]
+fi
+patch original < change.patch
+cmp original expected
+tar -czf files.tar.gz original
+mkdir files
+tar -xzf files.tar.gz -C files
+test "$(find files -type f | xargs grep -h after | awk '{print $1}')" = after
+rsync -a files/ copy/
+cmp files/original copy/original
+test "$(curl --silent --show-error --fail "file://$work/copy/original")" = after
+test "$(printf '{"ok":true}\n' | jq -r '.ok')" = true
+ssh -V
+ssh -G -F /dev/null localhost > ssh-config
+grep -q '^hostname localhost$' ssh-config
+ssh-keygen -q -t ed25519 -N '' -f temporary-key
+ssh-keygen -lf temporary-key.pub
+readelf -h build/native-check | grep -F 'X86-64'
+gdb -q -nx -batch -ex 'info address main' build/native-check
+strace -o trace -e trace=write ./build/native-check
+grep -q 'hello from Tizen' trace
+printf 'Native Linux development tools passed.\n'

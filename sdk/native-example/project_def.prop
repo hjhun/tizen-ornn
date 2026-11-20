@@ -1,0 +1,3 @@
+APPNAME = tizenprobe
+type = app
+profile = tizen-10.0

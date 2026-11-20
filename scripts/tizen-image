@@ -1,0 +1,194 @@
+#!/usr/bin/python3
+"""Build the Tizen developer VM from an official dated 10.1 emulator image."""
+import argparse
+import fcntl
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+
+PROJECT = Path(__file__).resolve().parent.parent
+SERVER = "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"
+PROFILE = "tizen-headed-emulator64-wayland"
+DATED = r"\d{8}\.\d{6}"
+RELEASE = rf"tizen-10\.1-unified_{DATED}"
+DEFAULT = "tizen-10.1-unified_20261119.053314"
+
+
+def read_url(url):
+    return subprocess.check_output(
+        ["curl", "-fLsS", "--retry", "2", "--proto", "=https", "--proto-redir", "=https", url]
+    )
+
+
+def archive_url(release):
+    return (f"{SERVER}Tizen-10.1-Unified/{release}/images/emulator/{PROFILE}/"
+            f"{release}_{PROFILE}.tar.gz")
+
+
+def parse_release(value):
+    match = re.search(RELEASE, value)
+    if not match or value not in (match[0], archive_url(match[0])):
+        raise argparse.ArgumentTypeError("expected a dated 10.1 Unified ID or its official headed-emulator64 archive URL")
+    return match[0]
+
+
+def checksum(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def repositories(build_xml, release):
+    build = ET.fromstring(build_xml)
+    base_name = build.findtext("base_id", "")
+    base_root = SERVER + "Tizen-10.1-Base/"
+    if (build.findtext("id") != release or not re.fullmatch(rf"tizen-10\.1-base_{DATED}", base_name)
+            or build.find("base_id").get("url", "").replace("http://", "https://", 1) != base_root):
+        raise ValueError("unexpected Unified or Base release in build.xml")
+    unified = f"{SERVER}Tizen-10.1-Unified/{release}/"
+    repos = {}
+    for target, arch in [("emulator", "x86_64"), ("standard", "armv7l")]:
+        node = build.find(f"buildtargets/buildtarget[@name='{target}']")
+        expected = f"repos/{target}/packages"
+        if (node is None or arch not in [a.text for a in node.findall("archs/arch")]
+                or node.findtext("repo[@type='binary']") != expected):
+            raise ValueError(f"build.xml lacks the expected {target} repository for {arch}")
+        repos["tizen-" + target] = unified + expected + "/"
+    repos["tizen-base"] = f"{base_root}{base_name}/repos/standard/packages/"
+    return repos
+
+
+def package_index(url):
+    md = read_url(url + "repodata/repomd.xml")
+    primary = ET.fromstring(md).find("{*}data[@type='primary']")
+    if primary is None:
+        raise ValueError(f"repository has no primary index: {url}")
+    digest = primary.findtext("{*}checksum[@type='sha256']")
+    name = f"repodata/{digest}-primary.xml.gz"
+    if not digest or not re.fullmatch("[0-9a-f]{64}", digest) or primary.find("{*}location").get("href") != name:
+        raise ValueError(f"expected SHA-256 pinned primary.xml.gz in {url}")
+    data = read_url(url + name)
+    if checksum(data) != digest:
+        raise ValueError(f"primary index checksum failed for {url}")
+    packages = {}
+    for pkg in ET.fromstring(gzip.decompress(data)):
+        arch = pkg.findtext("{*}arch")
+        pkgname = pkg.findtext("{*}name")
+        if arch != "armv7l" and (arch, pkgname) != ("x86_64", "rust"):
+            continue
+        href = pkg.find("{*}location").get("href")
+        sha = pkg.findtext("{*}checksum[@type='sha256']")
+        if not sha or not re.fullmatch("[0-9a-f]{64}", sha) or not re.fullmatch(arch + r"/[\w.+~-]+\.rpm", href):
+            raise ValueError(f"unexpected package record in {url}: {href}")
+        key = (arch, pkgname)
+        record = [sha, url + href, pkg.find("{*}version").get("ver")]
+        if key in packages and packages[key] != record:
+            raise ValueError(f"ambiguous package {key} in {url}")
+        packages[key] = record
+    return {"url": url, "repomd": checksum(md), "primary": digest}, packages
+
+
+def make_lock(release):
+    url = archive_url(release)
+    folder, archive = url.rsplit("/", 1)
+    image_xml = archive.removesuffix(".tar.gz") + ".xml"
+    sums = {}
+    for line in read_url(folder + "/SHA256SUMS").decode().splitlines():
+        match = re.fullmatch(r"([a-f0-9]{64}) [ *](\S+)", line)
+        if match:
+            digest, name = match.groups()
+            if name in sums:
+                raise ValueError(f"duplicate published checksum for {name}")
+            sums[name] = digest
+    image_bytes = read_url(folder + "/" + image_xml)
+    if archive not in sums or checksum(image_bytes) != sums.get(image_xml):
+        raise ValueError(f"image or partition manifest checksum missing or invalid in {folder}")
+    image = ET.fromstring(image_bytes)
+    partitions = {(p.get("mountpoint"), p.get("name"), p.get("fstype")) for p in image.findall("partition")}
+    expected = {("/", "emulator-rootfs.img", "ext4"), ("/opt", "emulator-sysdata.img", "ext4")}
+    if image.get("arch") != "x86_64" or partitions != expected:
+        raise ValueError("this recipe requires x86_64 with ext4 emulator-rootfs and emulator-sysdata")
+    build_xml = read_url(f"{SERVER}Tizen-10.1-Unified/{release}/build.xml")
+    repos = {}
+    indexes = {}
+    for alias, base in repositories(build_xml, release).items():
+        repos[alias], indexes[alias] = package_index(base)
+
+    def package(alias, arch, name):
+        try:
+            return indexes[alias][arch, name]
+        except KeyError:
+            raise ValueError(f"{release} lacks {name}.{arch} in {alias}; review the required sysroot packages") from None
+
+    cross = set()
+    for manifest in ["cross/sysroot.sha256", "cross/efl.sha256"]:
+        for line in (PROJECT / manifest).read_text().splitlines():
+            old_url = line.split()[1]
+            alias = "tizen-base" if "/Tizen-10.1-Base/" in old_url else "tizen-standard"
+            name = old_url.rsplit("/", 1)[1].rsplit("-", 2)[0]
+            sha, new_url, _ = package(alias, "armv7l", name)
+            cross.add((sha, new_url))
+    sha, rust_url, version = package("tizen-standard", "armv7l", "rust-std-static")
+    native = next((indexes[r]["x86_64", "rust"] for r in ("tizen-emulator", "tizen-base")
+                   if ("x86_64", "rust") in indexes[r]), None)
+    if native is None or native[2] != version:
+        raise ValueError("ARM rust-std-static and the native Rust compiler must have matching versions")
+    return {"format": 1, "release": release, "archive": {"url": url, "sha256": sums[archive]},
+            "partitions_sha256": sums[image_xml], "build_xml_sha256": checksum(build_xml), "repos": repos, "cross": [list(row) for row in sorted(cross)],
+            "rust": {"url": rust_url, "sha256": sha, "version": version}}
+
+
+def build(args):
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    with (out / ".snapshot-input.lock").open("a") as guard:
+        fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        path = out / "snapshot.lock.json"
+        if not path.exists() and any(p != Path(guard.name) for p in out.iterdir()):
+            raise ValueError(f"choose a fresh output directory; {out} contains other files")
+        lock = make_lock(args.snapshot)
+        if args.sha256 and args.sha256.lower() != lock["archive"]["sha256"]:
+            raise ValueError("the supplied SHA-256 differs from the published archive checksum")
+        if args.archive:
+            archive = args.archive.resolve(strict=True)
+            with archive.open("rb") as src:
+                if hashlib.file_digest(src, "sha256").hexdigest() != lock["archive"]["sha256"]:
+                    raise ValueError(f"archive checksum mismatch: {archive}")
+        if path.exists():
+            if lock != json.loads(path.read_text()):
+                raise ValueError("the selected snapshot or its locked inputs changed; choose a fresh output directory")
+        else:
+            with tempfile.NamedTemporaryFile(mode="w", dir=out, delete=False) as tmp:
+                json.dump(lock, tmp, indent=2, sort_keys=True)
+                tmp.write("\n")
+            os.chmod(tmp.name, 0o644)
+            os.replace(tmp.name, path)
+        print(f"{path}\n{args.snapshot}  {lock['archive']['sha256']}", flush=True)
+        if args.lock_only:
+            return
+        env = dict(os.environ, TIZEN_OUT=str(out), TIZEN_SNAPSHOT_LOCK=str(path))
+        env.pop("TIZEN_SOURCE_ARCHIVE", None)
+        if args.archive:
+            env["TIZEN_SOURCE_ARCHIVE"] = str(archive)
+        subprocess.run([PROJECT / "scripts/build-image.sh"], env=env, check=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--snapshot", type=parse_release, default=DEFAULT, help="dated Unified ID or its official archive URL")
+    parser.add_argument("--out", type=Path, required=True, help="fresh output directory, or a previous run with the same lock")
+    parser.add_argument("--archive", type=Path, help="use a downloaded copy of the official source image")
+    parser.add_argument("--sha256", help="also require this independently supplied archive checksum")
+    parser.add_argument("--lock-only", action="store_true", help="resolve and check inputs without running the filesystem/kernel build")
+    args = parser.parse_args()
+    if not args.lock_only and os.geteuid() != 0:
+        parser.exit(1, "tizen-image: run the build with sudo, or use --lock-only\n")
+    try:
+        build(args)
+    except (OSError, ValueError, subprocess.CalledProcessError, ET.ParseError) as err:
+        parser.exit(1, f"tizen-image: {err}\n")

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# The guest must never present an unlabelled development session.
+mountpoint -q /sys/fs/smackfs || mount -t smackfs smackfs /sys/fs/smackfs
+test -f /sys/fs/smackfs/load2
+smackctl apply
+ip link set lo up
+for path in /sys/class/net/*; do
+    name=${path##*/}
+    if [ "$name" != lo ]; then
+        ip link set "$name" up
+        ip address replace 10.0.2.15/24 dev "$name"
+        ip route replace default via 10.0.2.2 dev "$name"
+        break
+    fi
+done
+echo 'TizenDev local serial console ready'

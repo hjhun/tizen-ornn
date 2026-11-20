@@ -1,0 +1,6 @@
+[Unit]
+Description=Tizen graphical development session
+DefaultDependencies=no
+Requires=tizen-dev.target tizen-ui-demo.service
+After=tizen-dev.target tizen-ui-demo.service
+AllowIsolate=yes

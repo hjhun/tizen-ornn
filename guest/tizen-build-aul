@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Build the current aul-1 working tree using Tizen's native RPM spec.
+set -euo pipefail
+repo=$(git -C "${1:-.}" rev-parse --show-toplevel)
+top=${2:-/home/owner/workspace/aul-rpmbuild}
+mkdir -p "$top"
+top=$(cd "$top" && pwd -P)
+repo=$(cd "$repo" && pwd -P)
+case "$top/" in
+    "$repo/"*) echo "Choose an RPM output directory outside $repo." >&2; exit 2 ;;
+esac
+cd "$repo"
+spec=packaging/aul.spec
+name=$(awk '$1 == "Name:" {print $2; exit}' "$spec")
+version=$(awk '$1 == "Version:" {print $2; exit}' "$spec")
+[[ $name == aul && $version =~ ^[0-9]+(\.[0-9]+)+$ ]]
+mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SRPMS,tmp}
+# Include current edits and new, unignored files. Omit deleted paths and .git.
+git ls-files -co --exclude-standard -z |
+    while IFS= read -r -d '' item; do
+        if [[ -e $item || -L $item ]]; then printf '%s\0' "$item"; fi
+    done |
+    tar --null --no-recursion --transform "s|^|$name-$version/|" \
+        -czf "$top/SOURCES/$name-$version.tar.gz" -T -
+cp packaging/*.manifest "$top/SOURCES/"
+jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN)}
+[[ $jobs =~ ^[1-9][0-9]*$ ]]
+tizen-rpmbuild x86_64 --define "_topdir $top" --define "_tmppath $top/tmp" \
+    --define "_smp_mflags -j$jobs" -bb "$spec"

@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+if [ "$#" -eq 0 ]; then
+    echo 'Usage: tizen-ui-run PROGRAM [ARGS...]' >&2
+    exit 2
+fi
+export XDG_RUNTIME_DIR=/run/tizen-dev-ui WAYLAND_DISPLAY=/run/wayland-0
+if [ ! -w "$XDG_RUNTIME_DIR" ] || [ ! -S "$WAYLAND_DISPLAY" ]; then
+    echo 'Start the VM with --gui and run this command as dev.' >&2
+    exit 1
+fi
+# The Tizen client must allocate SHM in a private, writable runtime directory.
+# The compositor owns its Wayland socket in /run.
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+export ELM_ENGINE=wayland_shm EVAS_WAYLAND_USE_SHMBUF=1 EVAS_WAYLAND_SHM_DISABLE_DMABUF=1
+export ELM_PROFILE=common ELM_DISPLAY=wl
+exec "$@"

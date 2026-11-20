@@ -1,0 +1,22 @@
+#!/bin/sh
+# Keep the SDK binaries shared and the CLI data directory private to each user.
+set -eu
+sdk=/opt/tizen-sdk
+ncli=$sdk/tools/ide
+state=${XDG_DATA_HOME:-"$HOME/.local/share"}/tizen-sdk
+workspace=$(pwd -P)
+mkdir -p "$state/cli/logs" "$state/profile"
+cd "$state"
+if [ ! -e profile/profiles.xml ]; then
+    (set -C; umask 077
+     printf '%s\n' '<profiles version="3.1"/>' >profile/profiles.xml) || \
+        test -e profile/profiles.xml
+fi
+if [ "$#" -gt 0 ]; then
+    set -- "$@" --current-workspace-path "$workspace"
+fi
+exec "$sdk/jdk/bin/java" \
+    -Dlog4j.configurationFile="$ncli/conf-ncli/log4j-progress.xml" \
+    -Djava.library.path="$ncli/lib-ncli/spawner" \
+    -cp "$ncli/conf-ncli:$ncli/lib-ncli/*:$sdk/library/sdk-utils-core.jar" \
+    org.tizen.ncli.ide.shell.Main "$@"

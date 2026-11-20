@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+sysroot=/opt/tizen/sysroots/armv7l
+triple=armv7l-tizen-linux-gnueabi
+gccdir="$sysroot/usr/lib/gcc/$triple/14.2.0"
+tool=${0##*/}
+tool=${tool#tizen-armv7l-}
+case "$tool" in
+    pkg-config)
+        export PKG_CONFIG_SYSROOT_DIR="$sysroot"
+        export PKG_CONFIG_LIBDIR="$sysroot/usr/lib/pkgconfig:$sysroot/usr/share/pkgconfig"
+        unset PKG_CONFIG_PATH
+        exec /usr/bin/pkg-config "$@"
+        ;;
+    g++|c++)
+        set -- -nostdinc++ -isystem "$gccdir/include/c++" \
+            -isystem "$gccdir/include/c++/$triple" \
+            -isystem "$gccdir/include/c++/backward" "$@"
+        tool=g++
+        ;;
+    cc|gcc) tool=gcc ;;
+    *) echo "Unsupported ARM tool $tool" >&2; exit 2 ;;
+esac
+exec "/usr/bin/$triple-$tool" --sysroot="$sysroot" \
+    -B"$gccdir/" -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp \
+    -Wl,-rpath-link,"$sysroot/usr/lib:$sysroot/usr/lib/hal:$sysroot/lib" "$@"

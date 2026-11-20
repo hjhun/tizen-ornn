@@ -1,0 +1,13 @@
+[Unit]
+Description=Tizen Elementary development example
+Requires=display-manager.service tizen-headed-bus.service
+After=display-manager.service tizen-headed-bus.service
+
+[Service]
+Type=simple
+User=dev
+Group=dev
+SmackProcessLabel=User::Shell
+WorkingDirectory=/home/dev
+Environment=HOME=/home/dev
+ExecStart=/usr/local/bin/tizen-ui-run /usr/local/libexec/tizen-ui-counter

@@ -1,0 +1,14 @@
+[Unit]
+Description=Load Tizen SMACK policy and configure the QEMU user network
+DefaultDependencies=no
+Before=security-manager-rules-loader.service tizen-dev-console.service
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+SmackProcessLabel=System::Privileged
+ExecStart=/usr/local/libexec/tizen-dev-setup
+StandardOutput=journal+console
+StandardError=journal+console
