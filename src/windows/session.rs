@@ -1,4 +1,4 @@
-// The VM owns the QEMU pipe. Viewer processes can disconnect without closing it.
+// The VM owns the QEMU serial connection. Viewer processes can disconnect without closing it.
 use super::console;
 use sha2::{Digest, Sha256};
 use std::{
@@ -91,7 +91,11 @@ impl Listener {
                     let count = match count {
                         Ok(0) => break,
                         Ok(n) => n,
-                        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
+                        // Windows QEMU can reset its serial socket during poweroff.
+                        // The worker checks the actual QEMU exit status after EOF.
+                        Err(e) if matches!(e.kind(),
+                            io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+                        ) => break,
                         Err(e) => return Err(e),
                     };
                     history.extend(&buf[..count]);
