@@ -1,6 +1,6 @@
 [package]
 name = "tizen-ornn"
-version = "10.1.16"
+version = "10.1.17"
 edition = "2024"
 default-run = "tizen-ornn"
 

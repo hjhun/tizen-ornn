@@ -2,6 +2,16 @@
 
 Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Ubuntu supports x86_64 and ARMv7 guests, image updates, package management and host directory sharing.
 
+## Downloads
+
+| Host | Release files | First step |
+| --- | --- | --- |
+| Windows x64 | [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip) | Extract the entire archive, install QEMU and open `tizen-ornn-gui.exe` or use the CLI in PowerShell. |
+| Ubuntu 24.04 amd64, terminal | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) | Install the package, then run `tizen-ornn build`. |
+| Ubuntu 24.04 amd64, desktop | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) and [GUI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-gui_amd64.deb) | Install both packages from the same release and open `tizen-ornn-gui`. |
+
+Each [release](https://github.com/hjhun/tizen-ornn/releases) includes a `SHA256SUMS` file. Compare the checksum of your download using `sha256sum <filename>` on Ubuntu or `Get-FileHash <filename> -Algorithm SHA256` in PowerShell.
+
 ## Install and start
 
 ### Ubuntu 24.04 x86_64
