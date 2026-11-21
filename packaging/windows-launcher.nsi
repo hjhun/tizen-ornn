@@ -32,8 +32,9 @@ launch:
   ClearErrors
   Exec '"$1\tizen-ornn-gui.exe"'
   IfErrors failed
-  Quit
+  Goto done
 failed:
   MessageBox MB_ICONSTOP "Could not open Tizen Ornn. Check available disk space and write access to $0."
   SetErrorLevel 1
+done:
 SectionEnd

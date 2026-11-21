@@ -113,7 +113,8 @@ jobs:
           if (Test-Path $installed) { throw 'Expected a fresh bundle directory' }
           foreach ($attempt in 1..2) {
             $launch = Start-Process "$downloads/tizen-ornn-windows-x64.exe" -WorkingDirectory $downloads -PassThru
-            if (!$launch.WaitForExit(90000) -or $launch.ExitCode -ne 0) { throw 'Standalone launcher failed' }
+            if (!$launch.WaitForExit(90000)) { throw 'Standalone launcher timed out' }
+            if ($launch.ExitCode -ne 0) { throw "Standalone launcher exited with $($launch.ExitCode)" }
             $gui = $null
             try {
               for ($i = 0; $i -lt 60; $i++) {
