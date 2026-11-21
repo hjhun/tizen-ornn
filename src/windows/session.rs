@@ -12,7 +12,7 @@ use std::{
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions},
-    sync::{broadcast, mpsc, watch},
+    sync::{mpsc, watch},
 };
 
 fn descriptor(image: &Path) -> io::Result<PathBuf> {
@@ -71,9 +71,8 @@ impl Listener {
         size: watch::Sender<Option<(u16, u16)>>,
     ) -> io::Result<()> {
         let (mut reader, mut writer) = tokio::io::split(pipe);
-        let (output, _) = broadcast::channel::<Vec<u8>>(64);
+        let (output, _) = watch::channel((0u64, VecDeque::<u8>::new()));
         let (input, mut keys) = mpsc::channel::<Vec<u8>>(16);
-        let mut history = VecDeque::new();
         let mut buf = [0u8; 8192];
         // A busy guest may stop reading input while its output pipe is full.
         // Keep draining the display even when a viewer's paste is backpressured.
@@ -98,16 +97,17 @@ impl Listener {
                         ) => break,
                         Err(e) => return Err(e),
                     };
-                    history.extend(&buf[..count]);
-                    history.drain(..history.len().saturating_sub(16384));
-                    let _ = output.send(buf[..count].to_vec());
+                    output.send_modify(|(end, history)| {
+                        *end += count as u64;
+                        history.extend(&buf[..count]);
+                        history.drain(..history.len().saturating_sub(65536));
+                    });
                 }
                 connected = self.server.connect() => {
                     connected?;
                     let next = ServerOptions::new().reject_remote_clients(true).create(&self.name)?;
                     let client = std::mem::replace(&mut self.server, next);
-                    let replay = history.iter().copied().collect();
-                    tokio::spawn(viewer(client, replay, output.subscribe(), input.clone(), size.clone()));
+                    tokio::spawn(viewer(client, output.subscribe(), input.clone(), size.clone()));
                 }
             }
         }
@@ -117,16 +117,27 @@ impl Listener {
 
 async fn viewer(
     client: NamedPipeServer,
-    history: Vec<u8>,
-    mut output: broadcast::Receiver<Vec<u8>>,
+    mut output: watch::Receiver<(u64, VecDeque<u8>)>,
     input: mpsc::Sender<Vec<u8>>,
     size: watch::Sender<Option<(u16, u16)>>,
 ) -> io::Result<()> {
     let (mut reader, mut writer) = tokio::io::split(client);
     let display = async {
-        writer.write_all(&history).await?;
-        while let Ok(bytes) = output.recv().await {
+        // QEMU may deliver the boot log a byte at a time. Keep a cursor in
+        // the byte history so a slow console can catch up across many reads.
+        let mut cursor = 0;
+        loop {
+            let bytes: Vec<u8> = {
+                let state = output.borrow_and_update();
+                let (end, history) = &*state;
+                let pending = (end - cursor).min(history.len() as u64) as usize;
+                cursor = *end;
+                history.range(history.len() - pending..).copied().collect()
+            };
             writer.write_all(&bytes).await?;
+            if output.changed().await.is_err() {
+                break;
+            }
         }
         Ok(())
     };
