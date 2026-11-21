@@ -1,19 +1,61 @@
 # Tizen Ornn
 
-Tizen Ornn builds and runs a writable Tizen 10.1 development VM for x86_64 Ubuntu and Ubuntu on WSL2. QEMU boots Tizen's systemd services with SMACK and Linux 6.12.41 from the Tizen RPi4 kernel tree. Use a terminal for platform development or open a window for EFL applications.
+Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Ubuntu supports x86_64 and ARMv7 guests, image updates, package management and host directory sharing.
 
 ## Install and start
 
-Run these commands in an **Ubuntu 24.04 x86_64** terminal. On Windows, open Ubuntu in WSL2.
+### Ubuntu 24.04 x86_64
+
+Install the CLI for terminal use:
 
 ```sh
 curl -fLO https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb
 sudo apt install ./tizen-ornn_amd64.deb
 tizen-ornn build
-tizen-ornn run
+tizen-ornn run --headless
 ```
 
-APT installs the host CLI and its dependencies. Run `build` and `run` as your normal user. The first build requests sudo to mount the image, downloads the dated Tizen snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse development disk. The VM uses host space as its disk fills, up to the guest filesystem's capacity. Keep the default image store, `~/.local/share/tizen-ornn`, on a Linux filesystem. Set `TIZEN_ORNN_HOME` to choose another location. [Host package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) · [Tizen SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
+For the **desktop launcher**, install the GUI package alongside the matching CLI:
+
+```sh
+curl -fLO https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-gui_amd64.deb
+sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
+tizen-ornn-gui
+```
+
+Select an image and click **Open guest terminal**. On Ubuntu this opens the system terminal and attaches to the managed console. **Build image…** opens the builder in a terminal for progress and sudo prompts. The desktop launcher and the guest display are separate: `tizen-ornn run --gui` opens the guest's graphical display.
+
+Run the CLI as your normal user. The first build downloads the dated snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse disk. Set `TIZEN_ORNN_HOME` to select another image store on a Linux filesystem. [SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
+
+### Windows x64 (native)
+
+1. Install [64-bit QEMU for Windows](https://www.qemu.org/download/#windows) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
+2. Download and extract the complete [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip). Keep both executables and the `builder` folder together.
+3. Start `tizen-ornn-gui.exe`, enter an image name, and choose **Build image…**. After the build finishes, select the image and click **Open guest terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
+
+The same operations work from PowerShell:
+
+```powershell
+.\tizen-ornn.exe build --name default
+.\tizen-ornn.exe images
+.\tizen-ornn.exe run --headless
+.\tizen-ornn.exe run --image-dir 'D:\Tizen Images\my-image'
+```
+
+The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the project's snapshot and RPM build recipe inside a temporary QEMU VM. Windows requires neither a WSL distribution nor a pre-existing Tizen disk. The build requires network access, 4 GiB of guest RAM and disk space for a sparse 64 GiB scratch disk and a 16 GiB output disk. Allow extra time for QEMU software emulation. The completed guest disk is independent of the builder. Images live under `%LOCALAPPDATA%\Tizen Ornn\images`; set `TIZEN_ORNN_HOME` to place images and the download cache on another drive.
+
+A Windows guest terminal stays attached to its QEMU process. Power off from the guest before closing it. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
+
+### Build the host tools with Cargo
+
+Use a current stable Rust toolchain. Run the following in the source checkout on Ubuntu or Windows:
+
+```sh
+cargo build --locked --release --bin tizen-ornn
+cargo build --locked --release --features desktop --bin tizen-ornn-gui
+```
+
+Cargo writes the executables to `target/release`. For Windows image creation the release ZIP supplies the matching Ubuntu recipe package and boot kernel in `builder/`. On Ubuntu, `scripts/package-cli.sh dist --desktop` builds both Debian packages. The installed Ubuntu CLI uses the project's Python and shell helpers for snapshot, disk and guest operations.
 
 ### Upgrade from tizen-vm
 
@@ -52,7 +94,7 @@ A source checkout normally keeps images under `out/`. When the installed CLI sha
 
 If HTTPS fails while downloading the image or installing guest tools, check the CA store of the system making the connection. [HTTPS and private CA setup](docs/https-certificates.md)
 
-## Daily use
+## Daily use on Ubuntu
 
 | From | Command | Result |
 |---|---|---|

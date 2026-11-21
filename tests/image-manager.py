@@ -4,6 +4,8 @@ from contextlib import ExitStack
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 import json
+import os
+from types import SimpleNamespace
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 root = Path(__file__).resolve().parents[1]
-loader = SourceFileLoader('image_manager', str(root / 'tizen-ornn'))
+loader = SourceFileLoader('image_manager', str(root / 'scripts/linux-backend'))
 manager = module_from_spec(spec_from_loader(loader.name, loader))
 loader.exec_module(manager)
 source = 'https://mirror.example/Tizen-10.1/'
@@ -32,6 +34,22 @@ class ImageSelection(unittest.TestCase):
         self.stack.enter_context(patch.object(manager, 'requested_image', return_value=(release, source)))
         self.builder = self.stack.enter_context(patch.object(manager, 'build_image', side_effect=self.build))
         self.copy = self.stack.enter_context(patch.object(manager, 'run_as_root'))
+
+    def invoke(self):
+        # Exercise the compiled parser, then apply its request to the fixture
+        # backend in-process so locks, prompts and selected disks are observable.
+        default = root / ('target/release/tizen-ornn' if (root / 'Cargo.toml').is_file() else 'tizen-ornn')
+        binary = Path(os.environ.get('TIZEN_ORNN_TEST_CLI', default))
+        directory = self.home / 'parser'
+        backend = directory / 'scripts/linux-backend'
+        if not backend.exists():
+            backend.parent.mkdir(parents=True)
+            (directory / 'tizen-ornn').write_bytes(binary.read_bytes())
+            (directory / 'tizen-ornn').chmod(0o755)
+            backend.write_text('#!/usr/bin/python3\nimport sys\nprint(sys.argv[1])\n')
+            backend.chmod(0o755)
+        output = subprocess.check_output([directory / 'tizen-ornn', *manager.sys.argv[1:]])
+        manager.execute(SimpleNamespace(**json.loads(output)))
 
     def build(self, stage, version):
         for name in ('bzImage', 'tizen-rootfs.ext4', '.image-ready'):
@@ -169,7 +187,7 @@ class ImageSelection(unittest.TestCase):
             with self.subTest(args=args), patch.object(manager.sys, 'argv', ['tizen-ornn', *args]), \
                     patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run, self.assertRaises(SystemExit):
                 try:
-                    manager.main()
+                    self.invoke()
                 finally:
                     helper = str(manager.SCRIPTS / expected[0])
                     run.assert_called_once_with(helper, [helper, *expected[1:]])
@@ -179,7 +197,7 @@ class ImageSelection(unittest.TestCase):
                 patch('sys.stdin.isatty', return_value=True), \
                 patch('sys.stdout.isatty', return_value=True), \
                 patch('builtins.input', side_effect=answers):
-            manager.main()
+            self.invoke()
 
     def test_update_menu_migrates_selected_source(self):
         previous = self.update()
@@ -219,12 +237,12 @@ class ImageSelection(unittest.TestCase):
 
     def test_build_reuses_existing_disk_and_run_selects_it(self):
         with patch.object(manager.sys, 'argv', ['tizen-ornn', 'build']):
-            manager.main()
+            self.invoke()
         self.builder.assert_not_called()
         with patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', ['tizen-ornn', 'run', '--gui']), \
                 patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run, self.assertRaises(SystemExit):
             try:
-                manager.main()
+                self.invoke()
             finally:
                 self.assertEqual(manager.os.environ['TIZEN_OUT'], str(self.old))
                 self.assertEqual(run.call_args.args[1][-1], '--gui')
@@ -237,7 +255,7 @@ class ImageSelection(unittest.TestCase):
                             patch.object(manager.sys, 'argv', ['tizen-ornn', *args]), \
                             patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
                         with self.assertRaises(SystemExit):
-                            manager.main()
+                            self.invoke()
                         script = manager.SCRIPTS / 'run-vm.sh'
                         run.assert_called_once_with(script, [str(script), *expected])
 
@@ -248,7 +266,7 @@ class ImageSelection(unittest.TestCase):
             with self.subTest(verb=verb), patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', argv), \
                     patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
                 with self.assertRaises(SystemExit):
-                    manager.main()
+                    self.invoke()
                 self.assertEqual(run.call_args.args[1], [str(manager.SCRIPTS / 'run-vm.sh'), '--gui', '--host-browser', option, folder])
 
     def test_user_config_persists_partial_changes_and_validates_before_replacing(self):

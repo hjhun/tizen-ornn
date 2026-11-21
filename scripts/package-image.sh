@@ -33,10 +33,16 @@ stage=$(mktemp -d "$dest/.bundle.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 base=$stage/$bundle
 mkdir -p "$base/out"
-for item in README.md tizen-ornn config scripts kernel guest tests packaging sdk cross docs; do
+for item in README.md config scripts kernel guest tests packaging sdk cross docs; do
     cp -a "$project/$item" "$base/"
 done
 find "$base" -type d -name __pycache__ -prune -exec rm -rf {} +
+if [[ -f "$project/Cargo.toml" ]]; then
+    cargo build --manifest-path "$project/Cargo.toml" --locked --release --bin tizen-ornn
+    install -m755 "${CARGO_TARGET_DIR:-$project/target}/release/tizen-ornn" "$base/tizen-ornn"
+else
+    install -m755 "$project/tizen-ornn" "$base/tizen-ornn"
+fi
 # The launcher uses the release kernel for features missing from older disks.
 # A host package already includes this pair. A checkout uses its kernel build.
 if [[ ! -f $base/kernel/kernel.sha256 ]]; then

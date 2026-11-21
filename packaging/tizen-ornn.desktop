@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Tizen Ornn
+Exec=tizen-ornn-gui
+Terminal=false
+Categories=Development;Emulator;

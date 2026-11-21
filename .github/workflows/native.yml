@@ -1,0 +1,79 @@
+name: Native host tools
+on:
+  workflow_dispatch:
+  push:
+    paths: ['Cargo.*', 'src/**', 'tests/windows-console.ps1', '.github/workflows/native.yml']
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a disposable serial test filesystem
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p fixture root/{bin,dev,proc,sys,usr/lib/systemd}
+          apt-get download busybox-static
+          dpkg-deb -x ./busybox-static*.deb busybox
+          cp "$(find busybox -type f -name busybox -print -quit)" root/bin/busybox
+          cat > root/usr/lib/systemd/systemd <<'INIT'
+          #!/bin/busybox sh
+          echo ORNN_SERIAL_READY
+          read -r input
+          case "$input" in ornn-console-check*) echo ORNN_SERIAL_OK ;; esac
+          /bin/busybox poweroff -f
+          INIT
+          chmod +x root/usr/lib/systemd/systemd
+          truncate -s 32M fixture/tizen-rootfs.ext4
+          mkfs.ext4 -q -d root fixture/tizen-rootfs.ext4
+          curl -fsSL https://github.com/hjhun/tizen-ornn/releases/download/10.1-r15/bzImage -o fixture/bzImage
+          (cd fixture && grep ' bzImage$' ../kernel/r6.sha256 | sha256sum -c -)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serial-fixture
+          path: fixture
+          retention-days: 1
+  windows:
+    runs-on: windows-2022
+    needs: fixture
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: serial-fixture
+          path: test image
+      - run: cargo build --locked --release --features desktop
+      - name: Exercise native CLI, window creation and guest serial I/O
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = (Resolve-Path target/release/tizen-ornn.exe).Path
+          & $cli --version
+          if ($LASTEXITCODE) { throw 'CLI failed' }
+          & $cli images
+          if ($LASTEXITCODE) { throw 'Image discovery failed' }
+          $gui = Start-Process target/release/tizen-ornn-gui.exe -PassThru
+          try {
+            for ($i=0; $i -lt 60; $i++) {
+              $gui.Refresh()
+              if ($gui.MainWindowTitle -eq 'Tizen Ornn') { break }
+              if ($gui.HasExited) { throw "GUI exited: $($gui.ExitCode)" }
+              Start-Sleep 1
+            }
+            if ($gui.MainWindowTitle -ne 'Tizen Ornn') { throw 'GUI window missing' }
+          } finally { if (!$gui.HasExited) { $gui.Kill() } }
+          $setup = "$env:RUNNER_TEMP/qemu.exe"
+          curl.exe -fLsS --retry 2 https://qemu.weilnetz.de/w64/qemu-w64-setup-20260811.exe -o $setup
+          if ((Get-FileHash $setup -Algorithm SHA512).Hash -ne '5bcf9eed634e8575a37b74f445af41a2fe4106da512d0c30c368301d4c105037fdfab40a5287367a28a957624cddebbc8c07e16c88ab6634f554cdf3d16bf543') { throw 'QEMU checksum mismatch' }
+          $env:TIZEN_ORNN_QEMU_DIR = "$env:RUNNER_TEMP/qemu"
+          7z x -y $setup "-o$env:TIZEN_ORNN_QEMU_DIR" | Out-Null
+          if ($LASTEXITCODE) { throw 'QEMU extraction failed' }
+          ./tests/windows-console.ps1 -Cli $cli -Image (Resolve-Path 'test image')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-host-tools
+          path: target/release/tizen-ornn*.exe
+          retention-days: 3
