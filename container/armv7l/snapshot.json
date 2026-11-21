@@ -1,0 +1,19 @@
+{
+  "release": "tizen-10.1-unified_20261119.053314",
+  "archive": {
+    "url": "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/tizen-10.1-unified_20261119.053314/images/standard/tizen-headless-armv7l/tizen-10.1-unified_20261119.053314_tizen-headless-armv7l.tar.gz",
+    "sha256": "286b7755c7c8cc82629193528dcd97fea70852c7da79d2e7e00c40914b96ce90"
+  },
+  "repos": {
+    "tizen-standard": {
+      "primary": "55ff4b1bc59d0c3ff0e999845d170eb0729178c03307c1669050e11718b4f0b3",
+      "repomd": "0b15690448fc4450c5bdb04873d0f50e12714b2c694c5d5b0bb0dcae316806d6",
+      "url": "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/tizen-10.1-unified_20261119.053314/repos/standard/packages/"
+    },
+    "tizen-base": {
+      "primary": "f43ac7e9c9e146fe916d771aec7720fb4b29beb95c720a87d4afdd9f45b609aa",
+      "repomd": "f031627bfbf35b8b071783f36e97a31b450229b7371704772be12c7276b4aa13",
+      "url": "https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Base/tizen-10.1-base_20261118.084133/repos/standard/packages/"
+    }
+  }
+}

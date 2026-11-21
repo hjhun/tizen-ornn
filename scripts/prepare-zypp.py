@@ -8,11 +8,13 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 import snapshot_rpms as bootstrap
-PINS = {alias: bootstrap.LOCK["repos"][alias]["repomd"] for alias in bootstrap.REPOS}
+LOCK = bootstrap.read_lock()
+REPOS = bootstrap.repository_indexes(LOCK, ("tizen-emulator", "tizen-base"))
+PINS = {alias: LOCK["repos"][alias]["repomd"] for alias in REPOS}
 root = Path(sys.argv[1])
 destination = root / "usr/share/tizen-snapshot"
 destination.mkdir(parents=True, exist_ok=True)
-(destination / "snapshot.lock.json").write_text(json.dumps(bootstrap.LOCK, indent=2, sort_keys=True) + "\n")
+(destination / "snapshot.lock.json").write_text(json.dumps(LOCK, indent=2, sort_keys=True) + "\n")
 seed = destination / "repos.d"
 seed.mkdir(exist_ok=True)
 live = root / "etc/zypp/repos.d"
@@ -24,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix="tizen-index-sign-") as home:
     subprocess.run(gpg + ["--quick-generate-key", "Tizen developer image snapshot index", "rsa3072", "sign", "0"], check=True)
     key = subprocess.check_output(gpg + ["--armor", "--export"])
     (destination / "snapshot-index.asc").write_bytes(key)
-    for alias, (url, _) in bootstrap.REPOS.items():
+    for alias, (url, _) in REPOS.items():
         folder = destination / alias / "repodata"
         folder.mkdir(parents=True, exist_ok=True)
         index = folder / "repomd.xml"

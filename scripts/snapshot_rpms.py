@@ -16,14 +16,16 @@ import xml.etree.ElementTree as ET
 
 from snapshot_lock import read_lock
 
-LOCK = read_lock()
-REPOS = {alias: (LOCK["repos"][alias]["url"], LOCK["repos"][alias]["primary"])
-         for alias in ("tizen-emulator", "tizen-base")}
 TOOLS = """bash coreutils diffutils file util-linux shadow-utils iproute2 toybox-symlinks-dhcp
 rpm rpm-build smack ca-certificates ca-certificates-tizen zypper vim gdb strace
 gcc gcc-c++ cpp glibc-devel libstdc++-devel glib2-devel cmake ninja make pkg-config
 rust rust-devel cargo curl libcurl-devel libexpat-devel libopenssl3-devel zlib-devel
 pcre2-devel perl gettext-tools""".split()
+
+
+def repository_indexes(lock, aliases):
+    return {alias: (lock["repos"][alias]["url"], lock["repos"][alias]["primary"])
+            for alias in aliases}
 
 
 def sha256(path):
@@ -47,17 +49,17 @@ def fetch(url, digest, path):
         temp.unlink(missing_ok=True)
 
 
-def get_index(cache):
+def get_index(cache, repos, arch):
     packages = {}
     providers = defaultdict(list)
-    for alias, (baseurl, digest) in REPOS.items():
+    for alias, (baseurl, digest) in repos.items():
         path = cache / "meta" / (alias + ".xml.gz")
         fetch(baseurl + f"repodata/{digest}-primary.xml.gz", digest, path)
         with gzip.open(path) as data:
             root = ET.parse(data).getroot()
         for node in root:
             name = node.findtext("{*}name")
-            if node.findtext("{*}arch") not in ("x86_64", "noarch") or name in packages:
+            if node.findtext("{*}arch") not in (arch, "noarch") or name in packages:
                 continue
             fmt = node.find("{*}format")
             location = node.find("{*}location").get("href")
@@ -72,19 +74,11 @@ def get_index(cache):
     return packages, providers
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("root", type=Path)
-    parser.add_argument("cache", type=Path)
-    parser.add_argument("manifest", type=Path)
-    args = parser.parse_args()
-    installed = set(subprocess.check_output(
-        ["chroot", str(args.root), "/bin/rpm", "-qa", "--qf", "%{NAME}\\n"], text=True
-    ).splitlines())
+def stage_packages(installed, repos, arch, tools, cache, manifest):
     if "filesystem" not in installed:
         raise ValueError("Expected the snapshot's initialized native RPM database")
-    packages, providers = get_index(args.cache)
-    pending = deque(TOOLS)
+    packages, providers = get_index(cache, repos, arch)
+    pending = deque(tools)
     selected = set()
     while pending:
         name = pending.popleft()
@@ -106,13 +100,26 @@ def main():
     def download(name):
         _, url, digest = packages[name]
         filename = url.rsplit("/", 1)[1]
-        fetch(url, digest, args.cache / "rpms" / filename)
+        fetch(url, digest, cache / "rpms" / filename)
         return filename
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         filenames = list(pool.map(download, sorted(selected)))
-    args.manifest.write_text("".join(name + "\n" for name in filenames))
+    manifest.write_text("".join(name + "\n" for name in filenames))
     print(f"{len(installed)} installed packages; {len(filenames)} additional verified RPMs")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("root", type=Path)
+    parser.add_argument("cache", type=Path)
+    parser.add_argument("manifest", type=Path)
+    args = parser.parse_args()
+    installed = set(subprocess.check_output(
+        ["chroot", str(args.root), "/bin/rpm", "-qa", "--qf", "%{NAME}\\n"], text=True
+    ).splitlines())
+    repos = repository_indexes(read_lock(), ("tizen-emulator", "tizen-base"))
+    stage_packages(installed, repos, "x86_64", TOOLS, args.cache, args.manifest)
 
 
 if __name__ == "__main__":

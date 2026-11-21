@@ -1,0 +1,10 @@
+ARG BASE
+FROM ${BASE}
+COPY ornn /usr/local/bin/ornn
+# The Ubuntu container kernel does not apply the device SMACK RPM plugin.
+RUN /bin/bash -ec 'rpms=(/mnt/rpms/*.rpm); rpm --noplugins -U --test "${rpms[@]}"; rpm --noplugins -U "${rpms[@]}"; rpm -q gcc gcc-c++ rpm-build glib2-devel'
+RUN chmod 1777 /tmp && install -d -m 0755 -o 5001 -g 100 /home/owner /workspace
+ENV HOME=/home/owner PATH=/usr/local/bin:/usr/bin:/bin
+USER 5001:100
+WORKDIR /workspace
+CMD ["/bin/bash"]

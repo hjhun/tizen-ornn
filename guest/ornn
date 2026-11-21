@@ -1,0 +1,52 @@
+#!/bin/bash
+# Native RPM build for projects providing a spec and its declared sources.
+set -euo pipefail
+usage() { echo 'Usage: ornn build [--spec FILE] [--out DIR]'; }
+case ${1:-} in
+    -h|--help) usage; exit 0 ;;
+    build) shift ;;
+    *) usage >&2; exit 2 ;;
+esac
+root=$PWD
+out=$root/RPMS
+spec=
+while (( $# )); do
+    case $1 in
+        --spec|--out)
+            [[ -n ${2:-} ]] || { usage >&2; exit 2; }
+            if [[ $1 == --spec ]]; then spec=$2; else out=$2; fi
+            shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage >&2; exit 2 ;;
+    esac
+done
+if [[ -z $spec ]]; then
+    shopt -s nullglob
+    candidates=("$root"/*.spec "$root"/packaging/*.spec)
+    if (( ${#candidates[@]} != 1 )); then
+        echo 'Expected one RPM spec in the checkout root or packaging/. Use --spec FILE.' >&2
+        exit 2
+    fi
+    spec=${candidates[0]}
+fi
+spec=$(readlink -e -- "$spec")
+mkdir -p -- "$out"
+out=$(readlink -e -- "$out")
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+arch=$(rpm -q --qf '%{ARCH}' filesystem)
+rpmbuild --target "$arch" --define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")" -bb "$spec"
+# Publish only packages from this successful invocation, retaining subpackages.
+shopt -s nullglob
+artifacts=("$work"/RPMS/*/*.rpm)
+(( ${#artifacts[@]} )) || { echo 'The spec produced no binary RPMs.' >&2; exit 1; }
+for rpm in "${artifacts[@]}"; do
+    destination=$out/${rpm##*/RPMS/}
+    mkdir -p -- "$(dirname -- "$destination")"
+    pending=$(mktemp -- "$destination.XXXXXXXX")
+    if ! install -m 0644 -- "$rpm" "$pending" || ! mv -fT -- "$pending" "$destination"; then
+        rm -f -- "$pending"
+        exit 1
+    fi
+    printf '%s\n' "$destination"
+done

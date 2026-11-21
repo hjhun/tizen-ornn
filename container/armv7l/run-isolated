@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Execute the ARM userspace without modifying the host binfmt registration.
+set -euo pipefail
+if (( $# == 0 )); then echo "Usage: $0 COMMAND [ARGS...]" >&2; exit 2; fi
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-vm/armv7l-emulator
+mkdir -p "$cache"
+exec 9>"$cache/.lock"
+flock 9
+if [[ ! -d $cache/helpers ]]; then
+    work=$(mktemp -d "$cache/setup.XXXXXXXX")
+    trap 'rm -rf -- "$work"' EXIT
+    (
+        cd "$work"
+        apt-get download qemu-user-static:amd64 proot:amd64 libtalloc2:amd64
+        mkdir helpers
+        for deb in *.deb; do dpkg-deb -x "$deb" root; done
+        cp root/usr/bin/proot helpers/
+        cp -L root/usr/bin/qemu-arm-static helpers/qemu-arm
+        cp -L root/usr/lib/x86_64-linux-gnu/libtalloc.so.2 helpers/
+        cp -L /lib/x86_64-linux-gnu/{ld-linux-x86-64.so.2,libc.so.6} helpers/
+        mv helpers "$cache/helpers"
+    )
+    rm -rf -- "$work"
+    trap - EXIT
+fi
+# Ubuntu 24.04 PRoot cannot translate relative statx paths. Return ENOSYS
+# for that call so glibc uses the supported fallback. Keep the host Podman
+# profile for all other calls, including any local restrictions.
+profile=$(podman info --format json | python3 -c 'import json, sys; print(json.load(sys.stdin)["host"]["security"]["seccompProfilePath"])')
+python3 - "$profile" "$cache/seccomp.json" <<'PYTHON'
+import errno
+import json
+from pathlib import Path
+import sys
+
+profile = json.loads(Path(sys.argv[1]).read_text())
+for rule in profile["syscalls"]:
+    if "statx" in rule["names"]:
+        rule["names"].remove("statx")
+profile["syscalls"] = [rule for rule in profile["syscalls"] if rule["names"]]
+profile["syscalls"].append({"names": ["statx"], "action": "SCMP_ACT_ERRNO",
+                            "errnoRet": errno.ENOSYS})
+dest = Path(sys.argv[2])
+tmp = dest.with_suffix(".tmp")
+tmp.write_text(json.dumps(profile))
+tmp.replace(dest)
+PYTHON
+exec 9>&-
+exec podman run --rm --pull=never --platform linux/arm/v7 --network none \
+    --security-opt "seccomp=$cache/seccomp.json" --userns keep-id \
+    --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/workspace:rw" \
+    -v "$cache/helpers:/helpers:ro" --entrypoint /helpers/ld-linux-x86-64.so.2 \
+    "${ORNN_IMAGE:-localhost/tizen-ornn:armv7l}" --library-path /helpers \
+    /helpers/proot -q /helpers/qemu-arm "$@"

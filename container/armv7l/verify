@@ -1,0 +1,22 @@
+#!/bin/bash
+# Run inside the image, with tests/cross-rpm mounted read-only at /src.
+set -euo pipefail
+cd "${1:-/src}"
+tmp=$(mktemp -d)
+trap 'rm -rf -- "$tmp"' EXIT
+grep -E '^ID="?tizen"?$' /etc/os-release
+test "$(id -u)" != 0
+test "$(gcc -dumpmachine)" = armv7l-tizen-linux-gnueabi
+ornn build --out "$tmp/out"
+package="$tmp/out/armv7l/tizen-cross-probe-1.0-1.armv7l.rpm"
+test "$(rpm -qp --qf '%{ARCH}' "$package")" = armv7l
+rpm -K "$package"
+cd "$tmp"
+rpm2cpio "$package" | cpio --quiet -id
+for elf in usr/bin/probe-c usr/bin/probe-cxx; do
+    readelf -h "$elf" | grep -E 'Machine:.*ARM'
+    readelf -A "$elf" | grep -E 'Tag_CPU_arch: v7$'
+    result=$("$elf")
+    echo "$result"
+    [[ $result == *'pointer bits 32' ]]
+done

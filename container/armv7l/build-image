@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Build a native Tizen ARMv7 RPM builder with Podman on an Ubuntu host.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd -P)
+project=$(cd "$here/../.." && pwd -P)
+tag=${1:-localhost/tizen-ornn:armv7l}
+if (( $# > 1 )); then echo "Usage: $0 [LOCAL_IMAGE_TAG]" >&2; exit 2; fi
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-vm/armv7l-container
+mkdir -p "$cache"
+work=$(mktemp -d "$cache/build.XXXXXXXX")
+base="localhost/ornn-base:${work##*.}"
+cleanup() {
+    podman image rm "$base" >/dev/null 2>&1 || true
+    rm -rf -- "$work"
+}
+trap cleanup EXIT
+python3 - "$here" "$project" "$cache/rootfs.tar.gz" <<'PY'
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(sys.argv[2]) / 'scripts'))
+from snapshot_rpms import fetch
+archive = json.loads((Path(sys.argv[1]) / 'snapshot.json').read_text())['archive']
+fetch(archive['url'], archive['sha256'], Path(sys.argv[3]))
+PY
+tar -xzSf "$cache/rootfs.tar.gz" -C "$work" rootfs.img system-data.img
+mkdir "$work/root" "$work/context" "$work/rpms"
+# Only the two read-only loop mounts need host root. The mount namespace dies
+# with this process, and the resulting tar is written by the invoking user.
+priv=()
+if (( EUID )); then priv=(sudo); fi
+"${priv[@]}" unshare --mount --propagation private -- bash -ec '
+    work=$1
+    mount -o loop,ro,noload "$work/rootfs.img" "$work/root"
+    mount -o loop,ro,noload "$work/system-data.img" "$work/root/opt"
+    tar --numeric-owner --exclude="./dev/*" --exclude="./lost+found" \
+        --exclude="./opt/lost+found" -C "$work/root" -cf - .
+' bash "$work" | podman import --os linux --arch arm --variant v7 - "$base"
+
+podman run --rm --platform linux/arm/v7 --network none "$base" \
+    /bin/rpm -qa --qf '%{NAME}\n' > "$work/installed"
+"$here/stage-rpms" "$cache" "$work/installed" "$work/packages"
+while IFS= read -r rpm; do ln "$cache/rpms/$rpm" "$work/rpms/$rpm"; done < "$work/packages"
+cp "$project/guest/ornn" "$here/Containerfile" "$work/context/"
+podman build --platform linux/arm/v7 --format oci --pull=never --network none \
+    --build-arg "BASE=$base" -v "$work/rpms:/mnt/rpms:ro" -t "$tag" "$work/context"

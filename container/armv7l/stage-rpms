@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Download the toolchain delta for the official ARMv7 headless rootfs."""
+import json
+from pathlib import Path
+import sys
+
+here = Path(__file__).resolve().parent
+sys.path.insert(0, str(here.parents[1] / 'scripts'))
+from snapshot_rpms import repository_indexes, stage_packages
+
+cache, installed, manifest = map(Path, sys.argv[1:])
+lock = json.loads((here / 'snapshot.json').read_text())
+repos = repository_indexes(lock, ('tizen-standard', 'tizen-base'))
+tools = 'rpm-build cpp file diffutils gcc gcc-c++ glibc-devel libstdc++-devel glib2-devel pkg-config cpio coreutils findutils make'.split()
+stage_packages(set(installed.read_text().splitlines()), repos, 'armv7l', tools, cache, manifest)
