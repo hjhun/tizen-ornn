@@ -6,7 +6,8 @@ Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen develo
 
 | Host | Release files | First step |
 | --- | --- | --- |
-| Windows x64 | [Download the Windows launcher (.exe)](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.exe) | Double-click the file to open Tizen Ornn. Install QEMU before building or running a VM. |
+| Windows x64 desktop | [Portable EXE](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64-portable.exe) | Double-click in a writable folder. QEMU is included. |
+| Ubuntu 24.04 amd64 desktop | [Portable GUI](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-ubuntu-amd64-portable.run) | In a writable folder, run `chmod +x tizen-ornn-ubuntu-amd64-portable.run`, then `./tizen-ornn-ubuntu-amd64-portable.run`. |
 | Ubuntu 24.04 amd64, terminal | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) | Install the package, then run `tizen-ornn build`. |
 | Ubuntu 24.04 amd64, desktop | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) and [GUI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-gui_amd64.deb) | Install both packages from the same release and open `tizen-ornn-gui`. |
 
@@ -33,15 +34,21 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-Select an image and click **Open guest terminal**. On Ubuntu this opens the system terminal and attaches to the managed console. **Build image…** opens the builder in a terminal for progress and sudo prompts. The desktop launcher and the guest display are separate: `tizen-ornn run --gui` opens the guest's graphical display.
+Select an image and click **Open tizen terminal**. On Ubuntu this opens the system terminal and attaches to the managed console. **Build image…** opens the builder in a terminal for progress and sudo prompts. The desktop launcher and the guest display are separate: `tizen-ornn run --gui` opens the guest's graphical display.
 
 Run the CLI as your normal user. The first build downloads the dated snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse disk. Set `TIZEN_ORNN_HOME` to select another image store on a Linux filesystem. [SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
+
+### Portable GUI on Windows and Ubuntu
+
+Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
+
+Both launchers unpack their runtime and keep the setting in `Tizen Ornn Portable` beside the downloaded file. Relative work directories resolve inside that folder. Move it along with the launcher to preserve settings. Ubuntu guest operations use the host terminal and the project's Ubuntu system dependencies.
 
 ### Windows x64 (native)
 
 1. Download [tizen-ornn-windows-x64.exe](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.exe) and double-click it. The launcher opens the GUI and keeps its CLI and image recipe under `%LOCALAPPDATA%\Tizen Ornn\tools` for subsequent runs. This step requires only the one file and runs as the current user.
 2. To create or start a VM, install [64-bit QEMU for Windows](https://www.qemu.org/download/#windows) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
-3. Enter an image name and choose **Build image…**. After the build finishes, select the image and click **Open guest terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
+3. Enter an image name and choose **Build image…**. After the build finishes, select the image and click **Open tizen terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
 
 For a portable CLI directory, extract the complete [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip) and open PowerShell in the extracted folder.
 

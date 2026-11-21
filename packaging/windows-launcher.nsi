@@ -4,6 +4,7 @@ RequestExecutionLevel user
 SilentInstall silent
 SetCompressor /SOLID lzma
 Name "Tizen Ornn"
+Icon "art\tizen-ornn.ico"
 OutFile "${PAYLOAD}\tizen-ornn-windows-x64.exe"
 
 Section
@@ -18,6 +19,7 @@ Section
   SetOutPath "$2"
   IfErrors failed
   File "..\LICENSE"
+  File /oname=Barlow-OFL.txt "art\fonts\OFL.txt"
   File "${PAYLOAD}\tizen-ornn.exe"
   File "${PAYLOAD}\tizen-ornn-gui.exe"
   SetOutPath "$2\builder"

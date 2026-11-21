@@ -1,6 +1,6 @@
 [package]
 name = "tizen-ornn"
-version = "10.1.17"
+version = "10.1.18"
 license = "Apache-2.0"
 edition = "2024"
 default-run = "tizen-ornn"
@@ -9,6 +9,7 @@ default-run = "tizen-ornn"
 desktop = ["dep:eframe","dep:wgpu"]
 
 [dependencies]
+tempfile = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4.5", features = ["derive"] }
@@ -21,7 +22,6 @@ path = "src/bin/desktop.rs"
 required-features = ["desktop"]
 
 [target.'cfg(windows)'.dependencies]
-tempfile = "3"
 sha2 = "0.10"
 eframe = { version = "0.31", optional = true, default-features = false, features = ["default_fonts", "wgpu"] }
 wgpu = { version = "24", optional = true, default-features = false, features = ["dx12"] }

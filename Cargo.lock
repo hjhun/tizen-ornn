@@ -2586,7 +2586,7 @@ dependencies = [
 
 [[package]]
 name = "tizen-ornn"
-version = "10.1.17"
+version = "10.1.18"
 dependencies = [
  "clap",
  "eframe",

@@ -2,5 +2,7 @@
 Type=Application
 Name=Tizen Ornn
 Exec=tizen-ornn-gui
+Icon=tizen-ornn
+StartupWMClass=tizen-ornn
 Terminal=false
 Categories=Development;Emulator;

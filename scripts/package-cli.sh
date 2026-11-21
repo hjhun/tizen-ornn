@@ -53,8 +53,11 @@ if [[ ${2:-} == --desktop ]]; then
     mkdir -p "$gui/DEBIAN"
     install -Dm755 "$binary_dir/tizen-ornn-gui" "$gui/usr/lib/tizen-ornn/tizen-ornn-gui"
     install -Dm644 "$project/LICENSE" "$gui/usr/share/doc/tizen-ornn-gui/LICENSE"
+    install -Dm644 "$project/packaging/art/fonts/OFL.txt" "$gui/usr/share/doc/tizen-ornn-gui/Barlow-OFL.txt"
     mkdir -p "$gui/usr/bin"
     ln -s ../lib/tizen-ornn/tizen-ornn-gui "$gui/usr/bin/tizen-ornn-gui"
+    install -Dm644 "$project/packaging/art/tizen-ornn.png" \
+        "$gui/usr/share/icons/hicolor/256x256/apps/tizen-ornn.png"
     install -Dm644 "$project/packaging/tizen-ornn.desktop" \
         "$gui/usr/share/applications/tizen-ornn.desktop"
     cat > "$gui/DEBIAN/control" <<CONTROL
