@@ -83,7 +83,7 @@ rpm -Uvh ./tizen-build-1.0-1.noarch.rpm
 
 ## 화면에서 UI 앱 개발
 
-`./scripts/run-vm.sh --gui`로 시작하면 Tizen의 Enlightenment/Wayland 창에 Elementary 카운터 예제가 나타납니다. **Add one** 버튼을 눌러 값을 올릴 수 있습니다. 자신의 코드로 바꿀 때에는 게스트의 직렬 콘솔에서 예제를 정지하고 개발 계정으로 다시 빌드합니다.
+`./scripts/run-vm.sh --gui`로 시작하면 Tizen의 Enlightenment/Wayland 세션에서 Flutter 홈 화면과 Elementary 카운터 예제가 실행됩니다. **Add one** 버튼을 눌러 값을 올릴 수 있습니다. 자신의 코드로 바꿀 때에는 게스트의 직렬 콘솔에서 예제를 정지하고 개발 계정으로 다시 빌드합니다.
 
 ```sh
 # 게스트 root
@@ -96,7 +96,7 @@ gcc -std=gnu11 main.c -o tizen-ui $(pkg-config --cflags --libs elementary)
 tizen-ui-run "$PWD/tizen-ui"
 ```
 
-이 경로는 Tizen의 Wayland 공유 메모리 버퍼로 그립니다. 스냅샷 기본 Flutter 홈 화면(`org.tizen.homescreen`)은 현재 EGL 디스플레이 초기화에 실패합니다. GUI 모드에서 Tizen의 `starter`는 이 홈 앱 실행을 재시도합니다. 아래 EFL 예제의 렌더링과 입력은 확인했습니다. `tizen-ui-run`은 일반 사용자에게 쓰기 권한이 있는 런타임 디렉터리와 게스트의 Wayland 소켓을 설정합니다.
+이 경로는 Tizen의 Wayland 공유 메모리 버퍼로 그립니다. Flutter 홈 화면(`org.tizen.homescreen`)은 기본 GUI 모드에서 virtio GPU의 멀티샘플 EGL 설정으로 렌더링합니다. `tizen-ui-run`은 일반 사용자에게 쓰기 권한이 있는 런타임 디렉터리와 게스트의 Wayland 소켓을 설정합니다.
 
 같은 예제 디렉터리에서 `./build.sh "$HOME/ui"`를 실행하면 실행 파일과 공식 CLI가 서명한 `org.example.tizencounter-1.0.0-x86_64.tpk`가 함께 생성됩니다. TPK의 ELF와 원래 파일이 일치하는지 빌드 스크립트가 검사합니다. 플랫폼의 패키지 관리 경로를 사용하려면 root 콘솔에서 `pkgcmd -i -t tpk -p /home/tizen/ui/org.example.tizencounter-1.0.0-x86_64.tpk`를 실행하고 `pkginfo --app org.example.tizencounter`로 등록을 조회합니다.
 

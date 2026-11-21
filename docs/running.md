@@ -2,13 +2,17 @@
 
 From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. For a graphical guest, use `tizen-vm --gui` on the first start. The window needs WSLg or a Linux desktop. CPU, memory and display settings take effect when the VM boots.
 
-GUI boots select the image's Mesa software renderer for platform applications.
-Enlightenment uses the same Mesa backend for composition, and the EFL
-demo can still use Wayland shared memory. On an existing guest using the emulator audio HAL, run
+GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
+This provides the multisampled EGL surface used by the Flutter home screen.
+The host needs an OpenGL-capable SDL display. On hosts without one, start
+with `TIZEN_GUI_GL=0 tizen-vm --gui` to use guest software rendering for
+EFL and .NET development. The Flutter home screen requires the default
+3D mode on this snapshot.
+
+On an existing guest using the emulator audio HAL, run
 `tizen-vm install patchelf` on the host before restarting with `--gui`.
 Fresh images include this dependency. PulseAudio uses a boot-local copy of
 the emulator HAL linked to libm so the Volume app can query its volume range.
-
 
 | Action | Result |
 | --- | --- |

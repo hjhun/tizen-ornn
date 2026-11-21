@@ -94,8 +94,13 @@ target=tizen-dev.target
 display=(-display none)
 if (( gui )); then
     target=tizen-dev-gui.target
-    display=(-display sdl,gl=off -name Tizen-Dev
-        -device virtio-gpu-pci,xres=1024,yres=768
+    case ${TIZEN_GUI_GL:-1} in
+        1) gpu=virtio-gpu-gl-pci; gl=on ;;
+        0) gpu=virtio-gpu-pci; gl=off ;;
+        *) echo 'TIZEN_GUI_GL must be 1 or 0' >&2; exit 2 ;;
+    esac
+    display=(-display "sdl,gl=$gl" -name Tizen-Dev
+        -device "$gpu,xres=1024,yres=768"
         -device virtio-keyboard-pci -device virtio-tablet-pci)
 fi
 prefix=$("$project/scripts/vm-runtime" "$disk")
@@ -103,6 +108,9 @@ args=(-device virtio-serial-pci,id=guestbus
     -chardev "socket,id=packages,path=$prefix.packages,server=on,wait=off"
     -device virtserialport,bus=guestbus.0,chardev=packages,name=org.tizen.vm.packages)
 if (( gui )); then
+    if [[ $gl == off ]]; then
+        args+=(-fw_cfg name=opt/tizen-vm/software-renderer,string=1)
+    fi
     args+=(-fw_cfg "name=opt/tizen-vm/graphics,file=${project//,/,,}/guest/tizen-vm-graphics")
 fi
 network_data=

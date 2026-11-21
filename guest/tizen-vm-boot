@@ -7,6 +7,10 @@ mount -t proc -o nosuid,nodev,noexec proc /proc
 mount -t tmpfs -o nosuid,nodev,noexec,mode=0755 tmpfs /run
 # Match systemd's native Tizen /run before udev creates its device records.
 chsmack -a System::Run -t /run
+# udevadm runs as System and needs the guest policy to traverse System::Run.
+dropin=/run/systemd/system/systemd-udev-trigger.service.d
+mkdir -p "$dropin"
+printf '[Unit]\nAfter=tizen-dev-setup.service\n' > "$dropin/tizen-vm-policy.conf"
 
 if [ -r "$config/graphics/raw" ]; then
     /bin/sh "$config/graphics/raw"

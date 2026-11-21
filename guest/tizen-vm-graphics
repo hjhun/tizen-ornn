@@ -10,8 +10,11 @@ for unit in user@ boot-animation display-manager; do
     cat > "$dir/tizen-vm-graphics.conf" <<'UNIT'
 [Service]
 BindReadOnlyPaths=/hal/lib64/driver:/usr/lib64/driver
-Environment=LIBGL_ALWAYS_SOFTWARE=1
 UNIT
+    if [ ! -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/software-renderer/raw ]; then
+        continue
+    fi
+    echo 'Environment=LIBGL_ALWAYS_SOFTWARE=1' >> "$dir/tizen-vm-graphics.conf"
     if [ "$unit" = display-manager ]; then
         # Evas otherwise rejects softpipe and attempts the hardware GBM path.
         echo 'Environment=EVAS_GL_NO_BLACKLIST=1' >> "$dir/tizen-vm-graphics.conf"

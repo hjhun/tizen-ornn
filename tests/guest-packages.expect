@@ -11,7 +11,11 @@ if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" 
 set disk [file normalize $env(TIZEN_DISK)]
 if {[catch {exec flock -n $disk true}]} {error "The disposable guest is already running."}
 if {$argv ni {{} --gui}} {error "Usage: guest-packages.expect [--gui]"}
-if {$argv eq "--gui" && ![info exists env(TIZEN_QMP)]} {error "Supply a temporary TIZEN_QMP socket for --gui."}
+if {$argv eq "--gui"} {
+    if {![info exists env(TIZEN_QMP)]} {error "Supply a temporary TIZEN_QMP socket for --gui."}
+    # QMP screendump needs a CPU-readable surface for the counter pixel test.
+    set env(TIZEN_GUI_GL) 0
+}
 set client [list $root/scripts/guest-command $disk install]
 log_user 0
 if {[info exists env(TIZEN_TEST_LOG)]} {log_file -a $env(TIZEN_TEST_LOG)}
