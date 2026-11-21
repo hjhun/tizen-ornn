@@ -18,7 +18,7 @@ root=$stage/package
 app=$root/usr/lib/tizen-ornn
 mkdir -p "$root"/{DEBIAN,usr/bin,etc/tizen-ornn} "$app"
 (cd "$project" && tar --exclude=__pycache__ --exclude='*.pyc' -cf - \
-    README.md config cross docs guest kernel packaging scripts sdk tests) |
+    LICENSE README.md config cross docs guest kernel packaging scripts sdk tests) |
     tar -xf - -C "$app"
 install -m755 "$binary_dir/tizen-ornn" "$app/tizen-ornn"
 install -m644 "$kernel_dir"/{bzImage,kernel.config,kernel.sha256} "$app/kernel/"
@@ -52,6 +52,7 @@ if [[ ${2:-} == --desktop ]]; then
     gui=$stage/desktop
     mkdir -p "$gui/DEBIAN"
     install -Dm755 "$binary_dir/tizen-ornn-gui" "$gui/usr/lib/tizen-ornn/tizen-ornn-gui"
+    install -Dm644 "$project/LICENSE" "$gui/usr/share/doc/tizen-ornn-gui/LICENSE"
     mkdir -p "$gui/usr/bin"
     ln -s ../lib/tizen-ornn/tizen-ornn-gui "$gui/usr/bin/tizen-ornn-gui"
     install -Dm644 "$project/packaging/tizen-ornn.desktop" \

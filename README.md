@@ -178,3 +178,10 @@ tizen-ornn config --repository https://mirror.example.org/snapshots/TIZEN/Tizen-
 ```
 
 The repository must provide the same `Tizen-10.1-Unified/` and `Tizen-10.1-Base/` layout as the official server. Per-user settings live in `~/.config/tizen-ornn/image.toml`. The system default is `/etc/tizen-ornn/image.toml`. Set `TIZEN_IMAGE_CONFIG=/absolute/path/to/image.toml` for a one-off configuration. Tizen Studio SDK packages and the prebuilt project kernel have separately pinned sources. [Snapshot builder (Korean)](docs/snapshot-build.md) · [RPM repository details](docs/snapshot-packages.md) · [Guest verification results (Korean)](docs/verification.md)
+
+## License
+
+Tizen Ornn is distributed under the [Apache License, Version 2.0](LICENSE).
+Components with their own license notices are distributed under those terms.
+These include the Linux kernel, QEMU, Rust dependencies and Tizen packages.
+See the [kernel copyright and source information](kernel/copyright) for the bundled kernel.

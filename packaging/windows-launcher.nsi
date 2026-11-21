@@ -17,6 +17,7 @@ Section
   Delete "$2"
   SetOutPath "$2"
   IfErrors failed
+  File "..\LICENSE"
   File "${PAYLOAD}\tizen-ornn.exe"
   File "${PAYLOAD}\tizen-ornn-gui.exe"
   SetOutPath "$2\builder"

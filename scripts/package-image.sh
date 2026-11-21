@@ -33,7 +33,7 @@ stage=$(mktemp -d "$dest/.bundle.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 base=$stage/$bundle
 mkdir -p "$base/out"
-for item in README.md config scripts kernel guest tests packaging sdk cross docs; do
+for item in LICENSE README.md config scripts kernel guest tests packaging sdk cross docs; do
     cp -a "$project/$item" "$base/"
 done
 find "$base" -type d -name __pycache__ -prune -exec rm -rf {} +
