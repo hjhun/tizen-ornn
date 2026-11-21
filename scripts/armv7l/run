@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+out=${1:?supply ARM image directory}
+qemu=${TIZEN_ARM_QEMU:-qemu-system-arm}
+if ! command -v "$qemu" >/dev/null && [[ -x $out/cache/qemu/usr/bin/qemu-system-arm ]]; then
+    qemu=$out/cache/qemu/usr/bin/qemu-system-arm
+fi
+[[ -s $out/zImage && -s $out/disk/hal.img ]] || { echo 'Prepare the ARMv7 headed VM with tizen-vm --arch armv7l build.' >&2; exit 1; }
+exec 9>"$out/build.lock"
+flock -n -x 9 || { echo 'The ARMv7 VM is already running or building.' >&2; exit 1; }
+args=()
+for img in rootfs system-data user hal; do
+    path=$out/disk/$img.img
+    args+=(-drive "if=none,format=raw,id=$img,file=${path//,/,,}" -device "virtio-blk-device,drive=$img")
+done
+if [[ -n ${TIZEN_QMP:-} ]]; then args+=(-qmp "unix:${TIZEN_QMP//,/,,},server=on,wait=off"); fi
+exec "$qemu" -machine virt -cpu cortex-a15 -accel tcg -m "${TIZEN_RAM:-1536}" -smp "${TIZEN_CPUS:-2}" \
+    -kernel "$out/zImage" -append 'root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target' \
+    "${args[@]}" -display "${TIZEN_ARM_DISPLAY:-sdl}" -device virtio-gpu-device \
+    -device virtio-keyboard-device -device virtio-tablet-device -device virtio-rng-device \
+    -netdev user,id=net -device virtio-net-device,netdev=net -serial stdio -monitor none -no-reboot

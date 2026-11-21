@@ -25,7 +25,7 @@ realpath "$store/current"
 ls -lh "$store/current"/tizen-rootfs.*
 ```
 
-To delete a stopped VM disk, list managed images with `tizen-vm delete`, then run `tizen-vm delete IMAGE_DIRECTORY_NAME`. Confirm by typing the name again, or use `--yes` in automation. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
+In a terminal, `tizen-vm delete` lets you pick a managed disk and asks you to type its name before deletion. Enter picks the first menu entry and q cancels. With redirected input or output, this command lists the disks. For automation, use `tizen-vm delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
 
 For Windows File Explorer, resolve the Linux symlinks in WSL2 first and paste the printed path into the address bar.
 
@@ -41,7 +41,8 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 
 | From | Command | Result |
 |---|---|---|
-| Host | `tizen-vm run` or `tizen-vm` | Start the selected VM with a graphical window or reconnect to its console |
+| Host | `tizen-vm` | In a terminal, choose an installed image by number when several are ready. Enter accepts the first image and q cancels. A single image opens directly. |
+| Host | `tizen-vm run` | Start the currently selected x86_64 VM or reconnect to its console |
 | Host | `tizen-vm run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
 | Host | `tizen-vm run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
 | Host | `tizen-vm run --share-ro "$PWD"` | Open the same directory read-only |
@@ -71,6 +72,7 @@ cargo run --offline
 ```
 
 In a Tizen CMake project such as `aul-1`, run `tizen-build test` in the source directory. It reads CMake options from the RPM spec, builds incrementally and runs CTest. The image also supports x86_64 and ARMv7 ELF/RPM builds, TPK packaging and SDB connections. Guest root can use `zypper` directly. [Native, cross and app build examples (Korean)](docs/development.md)
+For a standalone ARMv7 RPM builder on Ubuntu or Windows with WSL2, see [Build with ornn in an ARMv7 container (Korean)](docs/armv7l-container.md).
 
 For a coding assistant, use `tizen-vm install agy`, `gemini`, `claude` or `codex` on the host. Then run `tizen-ai-shell` inside the VM and launch the installed CLI from your project. The image includes Node.js, npm, ripgrep, bubblewrap and socat. Sign in with your own provider account. [AI tool setup and verification](docs/ai-tools.md)
 
@@ -82,6 +84,8 @@ For a coding assistant, use `tizen-vm install agy`, `gemini`, `claude` or `codex
 | `tizen-vm update --packages ed` | Limit the RPM transaction to a named package and its required dependencies |
 | `tizen-vm update --image` or `tizen-vm update` | Build a replacement system and migrate the previous disk's persistent files after guest shutdown |
 | `tizen-vm rollback` | Switch back to the previous disk after guest shutdown |
+
+In a terminal, both update modes offer a numbered choice when multiple updatable x86_64 images are installed. Image updates use the chosen stopped disk as the migration source. Package updates require the chosen guest to be running. Noninteractive updates use the active image. ARMv7 update support is pending.
 
 An image update merges the previous disk's `/opt/usr`, `/home` and `/root` into the new image, including owner projects and the AI tool home. Existing file contents, ownership, links and SMACK attributes are carried across. The new image supplies the system RPMs, package database and directories such as `/etc` and `/usr`. Reinstall any additional system RPMs you need. The previous disk remains available with its original system and data. Edits made after switching belong to the disk on which they were made.
 

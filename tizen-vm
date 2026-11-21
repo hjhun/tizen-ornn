@@ -79,6 +79,67 @@ def active_image(home):
     return None
 
 
+def launch_choices(home):
+    """Return complete installed images, with the current selection first."""
+    try:
+        current = active_image(home)
+    except (ValueError, FileNotFoundError):
+        current = None
+    candidates = [current, home / 'current', home / 'dev']
+    images = home / 'images'
+    if images.is_dir() and not images.is_symlink():
+        candidates.extend(path for path in sorted(images.iterdir())
+                          if not path.name.startswith('.') and not path.is_symlink())
+    choices = []
+    seen = set()
+    for path in candidates:
+        if path is None or not path.is_dir():
+            continue
+        try:
+            disk = disk_at(path).resolve()
+        except ValueError:
+            continue
+        if disk not in seen:
+            choices.append(('x86_64', path.resolve()))
+            seen.add(disk)
+    arm = home / 'armv7l-headed'
+    files = [arm / 'zImage', *(arm / 'disk' / (name + '.img')
+                               for name in ARM_PARTITIONS)]
+    if all(path.is_file() and path.stat().st_size for path in files):
+        choices.append(('armv7l', arm))
+    return choices
+
+
+def update_choices(home):
+    choices = [item for item in launch_choices(home) if item[0] == 'x86_64']
+    if (home / 'armv7l-headed' / 'disk').is_dir():
+        if not choices:
+            raise ValueError('ARMv7 image and package updates are not supported yet.')
+        print('armv7l-headed: image and package updates are not supported yet.')
+    return choices
+
+
+def choose_image(choices, action, prompt_single=False):
+    if len(choices) == 1 and not prompt_single:
+        return choices[0]
+    print(f'Select a Tizen VM image to {action}:')
+    for index, (arch, image) in enumerate(choices, 1):
+        print(f'  {index}. {arch}  {image.name}')
+    while True:
+        try:
+            answer = input('Image [1], q to cancel: ').strip()
+        except EOFError:
+            return None
+        if answer.lower() == 'q':
+            return None
+        if not answer:
+            return choices[0]
+        for index, choice in enumerate(choices, 1):
+            if answer == str(index):
+                return choice
+        print(f'Enter a number from 1 to {len(choices)}.')
+
+
 @contextmanager
 def lock_file(path, description, create=False):
     with path.open('a' if create else 'rb') as handle:
@@ -237,17 +298,75 @@ def prepare(home, active, snapshot):
         print(f'Previous disk retained at {active}. Run tizen-vm rollback to use it.')
 
 
+ARM_PARTITIONS = ('rootfs', 'system-data', 'user', 'hal')
+
+
+def deletable_images(home, arch):
+    images = home / 'images'
+    choices = []
+    if arch != 'armv7l' and images.is_dir() and not images.is_symlink():
+        for path in sorted(images.iterdir()):
+            if path.name.startswith('.') or path.is_symlink() or not path.is_dir():
+                continue
+            try:
+                disk_at(path)
+            except ValueError:
+                continue
+            choices.append(('x86_64', path))
+    arm = home / 'armv7l-headed'
+    directory = arm / 'disk'
+    if (arch != 'x86_64' and not arm.is_symlink() and not directory.is_symlink()
+            and all((directory / f'{part}.img').is_file() for part in ARM_PARTITIONS)):
+        choices.append(('armv7l', arm))
+    return choices
+
+
+def confirm_delete(path, name, yes):
+    if yes:
+        return
+    try:
+        if sys.stdin.isatty() and input(f'Delete {path}? Type {name} to confirm: ') == name:
+            return
+    except EOFError:
+        pass
+    raise ValueError('Deletion cancelled. For non-interactive use specify --yes.')
+
+
+def check_disk_unused(images, disk):
+    loops = subprocess.check_output(['losetup', '-j', disk], text=True)
+    if loops.strip() or os.path.ismount(disk.parent) or os.path.ismount(disk):
+        raise ValueError('The image is mounted or attached to a loop device.')
+    for overlay in images.glob('*/tizen-rootfs.qcow2'):
+        if overlay == disk:
+            continue
+        info = subprocess.check_output(['qemu-img', 'info', '-U', '--output=json',
+                                        '--backing-chain', str(overlay)], text=True)
+        for layer in json.loads(info):
+            backing = layer.get('full-backing-filename')
+            if backing and Path(backing).resolve() == disk:
+                raise ValueError(f'{overlay} uses this disk as a backing image.')
+
+
+def delete_arm(home, image, yes):
+    directory = image / 'disk'
+    parts = [directory / f'{part}.img' for part in ARM_PARTITIONS]
+    with lock_file(image / 'build.lock', 'ARMv7 image is in use.', create=True):
+        if (image.is_symlink() or directory.is_symlink() or os.path.ismount(directory)
+                or set(directory.iterdir()) != set(parts)):
+            raise ValueError(f'Unexpected ARM partition directory: {directory}')
+        for part in parts:
+            if part.is_symlink() or not part.is_file():
+                raise ValueError(f'Expected a regular partition: {part}')
+            check_disk_unused(home / 'images', part)
+        confirm_delete(directory, image.name, yes)
+        # Detach the entire partition set before removing any individual file.
+        with tempfile.TemporaryDirectory(dir=image, prefix='.deleting-') as tmp:
+            directory.rename(Path(tmp) / 'disk')
+    print(f'Deleted {directory}')
+
+
 def delete_image(home, active, name, yes):
     images = home / 'images'
-    if name is None:
-        if images.is_dir() and not images.is_symlink():
-            for path in sorted(images.iterdir()):
-                if path.name.startswith('.') or path.is_symlink() or not path.is_dir():
-                    continue
-                if any((path / filename).is_file() for filename in
-                       ('tizen-rootfs.ext4', 'tizen-rootfs.qcow2')):
-                    print(path.name, '(selected)' if path == active else '')
-        return
     if name.startswith('.') or Path(name).name != name or images.is_symlink():
         raise ValueError('Use one image directory name from the managed images directory.')
     image = images / name
@@ -266,21 +385,8 @@ def delete_image(home, active, name, yes):
             if candidate.is_dir():
                 previous = candidate.resolve()
     with stopped(image):
-        loops = subprocess.check_output(['losetup', '-j', disk], text=True)
-        if loops.strip() or os.path.ismount(image) or os.path.ismount(disk):
-            raise ValueError('The image is mounted or attached to a loop device.')
-        for overlay in images.glob('*/tizen-rootfs.qcow2'):
-            if overlay == disk:
-                continue
-            info = subprocess.check_output(['qemu-img', 'info', '-U', '--output=json',
-                                            '--backing-chain', str(overlay)], text=True)
-            for layer in json.loads(info):
-                backing = layer.get('full-backing-filename')
-                if backing and Path(backing).resolve() == disk:
-                    raise ValueError(f'{overlay} uses this disk as a backing image.')
-        if not yes:
-            if not sys.stdin.isatty() or input(f'Delete {disk}? Type {name} to confirm: ') != name:
-                raise ValueError('Deletion cancelled. For non-interactive use specify --yes.')
+        check_disk_unused(images, disk)
+        confirm_delete(disk, name, yes)
         if active == image:
             if previous and previous != image:
                 disk_at(previous)
@@ -320,6 +426,8 @@ def main():
     options.add_argument('--gui', action='store_true', help='start with a graphical window (default)')
     options.add_argument('--headless', action='store_true', help='start with the console only')
     parser = argparse.ArgumentParser(description=__doc__, parents=[display])
+    parser.add_argument('--arch', choices=['x86_64', 'armv7l'], default=None,
+                        help='guest architecture (ARMv7 uses the headed development image)')
     version = (ROOT / 'config/version').read_text().strip()
     parser.add_argument('--version', action='version', version=f'%(prog)s {version}')
     commands = parser.add_subparsers(dest='command')
@@ -343,7 +451,7 @@ def main():
     update.add_argument('--snapshot', metavar='ID', help='select a specific dated snapshot')
     update.add_argument('names', nargs='*', metavar='RPM', help='limit --packages to these installed RPMs')
     delete = commands.add_parser('delete', help='delete a stopped managed disk by image directory name')
-    delete.add_argument('image', nargs='?', help='image directory name; omit to list managed disks')
+    delete.add_argument('image', nargs='?', help='image directory name; omit to choose interactively or list in a pipeline')
     delete.add_argument('--yes', action='store_true', help='skip the interactive confirmation')
     commands.add_parser('rollback', help='switch back to the previous stopped disk')
     args = parser.parse_args()
@@ -354,6 +462,23 @@ def main():
         parser.error('--gui and --headless are mutually exclusive')
     if (gui or headless) and args.command not in (None, 'run', 'start'):
         parser.error('--gui and --headless apply only to run/start')
+    picked = None
+    if (len(sys.argv) == 1 and sys.stdin.isatty() and sys.stdout.isatty()
+            and not any(os.environ.get(key) for key in ('TIZEN_OUT', 'TIZEN_DISK', 'TIZEN_KERNEL'))):
+        choices = launch_choices(data_home().resolve())
+        if choices:
+            choice = choose_image(choices, 'launch')
+            if choice is None:
+                return
+            args.arch, picked = choice
+    if args.arch == 'armv7l' and args.command != 'delete':
+        if headless or args.command not in (None, 'run', 'start', 'build'):
+            parser.error('ARMv7 currently supports build and graphical run/start')
+        if any(getattr(args, key, False) for key in ('share', 'share_ro', 'host_browser', 'no_host_network')):
+            parser.error('these host integration options currently require x86_64')
+        arm_home = data_home() / 'armv7l-headed'
+        tool = SCRIPTS / 'armv7l' / ('build-image' if args.command == 'build' else 'run')
+        os.execv(tool, [str(tool), str(arm_home)])
     if args.command == 'config':
         configure(args.repository, args.snapshot)
         return
@@ -362,7 +487,10 @@ def main():
     if explicit and Path(explicit).expanduser().resolve() == home:
         explicit = None
     if args.command in (None, 'start', 'run'):
-        image = Path(explicit) if explicit else active_image(home)
+        image = picked or (Path(explicit) if explicit else active_image(home))
+        if picked is not None:
+            # A one-time menu choice can differ from the update/rollback target.
+            os.environ['TIZEN_DISK'] = str(disk_at(picked))
         if image is None and 'TIZEN_DISK' not in os.environ:
             raise ValueError('No image installed. Run tizen-vm build.')
         if not explicit and 'TIZEN_DISK' not in os.environ:
@@ -396,8 +524,16 @@ def main():
         parser.error('choose either TIZEN_OUT or TIZEN_VM_HOME to manage images')
     if args.command == 'update' and args.names and not args.packages:
         parser.error('use update --packages with RPM names')
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
     if args.command in ('install', 'update') and args.packages:
         active = active_image(home)
+        if args.command == 'update' and interactive:
+            choices = update_choices(home)
+            if choices:
+                choice = choose_image(choices, 'update packages in', (home / 'armv7l-headed/disk').is_dir())
+                if choice is None:
+                    return
+                active = choice[1]
         if active is None:
             raise ValueError('No image installed. Run tizen-vm build, then tizen-vm run.')
         disk = str(disk_at(active))
@@ -411,13 +547,41 @@ def main():
     with lock_file(home / '.tizen-management.lock', 'Another image installation or switch is in progress.', create=True):
         active = active_image(home)
         if args.command == 'delete':
-            delete_image(home, active, args.image, args.yes)
+            choices = deletable_images(home, args.arch)
+            if args.image is None:
+                if not interactive or not choices:
+                    for arch, path in choices:
+                        print(path.name, '(selected)' if path == active else '')
+                    if interactive and not choices:
+                        print('No managed disks to delete.')
+                    return
+                choice = choose_image(choices, 'delete')
+                if choice is None:
+                    return
+            else:
+                matches = [item for item in choices if item[1].name == args.image]
+                if len(matches) != 1:
+                    raise ValueError('Expected one managed image with that name. Use --arch to disambiguate.')
+                choice = matches[0]
+            arch, path = choice
+            yes = args.yes and args.image is not None
+            if arch == 'armv7l':
+                delete_arm(home, path, yes)
+            else:
+                delete_image(home, active, path.name, yes)
         elif args.command == 'rollback':
             rollback(home, active)
         elif args.command in ('install', 'build') and active:
             dependencies(build=False)
             print(f'Existing image ready: {active}')
         elif args.command == 'update':
+            if interactive:
+                choices = update_choices(home)
+                if choices:
+                    choice = choose_image(choices, 'update', (home / 'armv7l-headed/disk').is_dir())
+                    if choice is None:
+                        return
+                    active = choice[1]
             prepare(home, active, args.snapshot or 'latest')
         else:
             prepare(home, active, None)

@@ -174,6 +174,49 @@ class ImageSelection(unittest.TestCase):
                     helper = str(manager.SCRIPTS / expected[0])
                     run.assert_called_once_with(helper, [helper, *expected[1:]])
 
+    def interactive(self, args, answers):
+        with patch.object(manager.sys, 'argv', ['tizen-vm', *args]), \
+                patch('sys.stdin.isatty', return_value=True), \
+                patch('sys.stdout.isatty', return_value=True), \
+                patch('builtins.input', side_effect=answers):
+            manager.main()
+
+    def test_update_menu_migrates_selected_source(self):
+        previous = self.update()
+        self.interactive(['update'], ['2'])
+        self.assertEqual(self.copy.call_args.args[0][-2], manager.disk_at(self.old))
+        current = manager.active_image(self.home)
+        self.assertNotEqual(current, previous)
+        self.assertTrue(manager.disk_at(previous).is_file())
+        manager.rollback(self.home, current)
+        self.assertEqual(manager.active_image(self.home), self.old)
+
+    def test_package_menu_dispatches_selected_disk_and_can_cancel(self):
+        self.update()
+        with patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
+            self.interactive(['update', '--packages'], ['q'])
+            run.assert_not_called()
+            with self.assertRaises(SystemExit):
+                self.interactive(['update', '--packages', 'ed'], ['2'])
+            self.assertEqual(run.call_args.args[1][1:], [str(manager.disk_at(self.old)), 'ed'])
+
+    def test_delete_menu_cancels_or_confirms_selected_arm_partitions(self):
+        current = self.update()
+        arm = self.home / 'armv7l-headed'
+        disk = arm / 'disk'
+        disk.mkdir(parents=True)
+        for name in manager.ARM_PARTITIONS:
+            (disk / f'{name}.img').touch()
+        self.interactive(['delete'], ['q'])
+        with self.assertRaisesRegex(ValueError, 'cancelled'):
+            self.interactive(['delete', '--yes'], ['2', 'wrong'])
+        self.assertEqual(len(list(disk.iterdir())), 4)
+        with manager.lock_file(arm / 'build.lock', 'busy'), self.assertRaisesRegex(ValueError, 'in use'):
+            self.interactive(['delete'], ['2'])
+        self.interactive(['delete'], ['2', arm.name])
+        self.assertFalse(disk.exists())
+        self.assertTrue(manager.disk_at(current).exists())
+
     def test_build_reuses_existing_disk_and_run_selects_it(self):
         with patch.object(manager.sys, 'argv', ['tizen-vm', 'build']):
             manager.main()

@@ -1,0 +1,45 @@
+#!/bin/bash
+# Prepare the writable Tizen headed partitions for a QEMU virt board.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+out=$(realpath -m -- "${1:?supply ARM image directory}")
+mkdir -p "$out/cache"
+exec 9>"$out/build.lock"
+flock -n 9 || { echo 'ARM image is being prepared or used.' >&2; exit 1; }
+if [[ ! -d $out/disk ]]; then
+    stage=$(mktemp -d "$out/.partitions.XXXXXXXX")
+    trap 'rm -rf -- "$stage"' EXIT
+    release=tizen-10.1-unified_20261119.053314
+    base=https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/$release/images/standard
+    fetch() {
+        local name=$1 digest=$2 dest=$out/cache/$3.tar.gz
+        if ! (echo "$digest  $dest" | sha256sum --status -c -); then
+            curl -fLSs --retry 2 "$base/$name/${release}_$name.tar.gz" -o "$stage/download"
+            echo "$digest  $stage/download" | sha256sum -c -
+            mv -- "$stage/download" "$dest"
+        fi
+    }
+    fetch tizen-headed-armv7l a8c9b5c7f34cdd0234bc2688c693321f4ff5e3b3ae15e7be0c1baea42ea160e1 headed
+    fetch tizen-armv7l-generic-hal 8333444fe788c2157a42b83e648d8dbf4de58d38cbb51545dc9ca38a5b72d26f hal
+    tar -xSzf "$out/cache/headed.tar.gz" -C "$stage" rootfs.img system-data.img user.img
+    tar -xSzf "$out/cache/hal.tar.gz" -C "$stage" hal.img
+    # The board ramdisk normally mounts these before systemd starts. QEMU
+    # boots a direct kernel. Use the original filesystem labels and types.
+    cat > "$stage/fstab" <<'FSTAB'
+LABEL=rootfs / ext4 defaults 0 0
+LABEL=system-data /opt ext4 defaults 0 0
+LABEL=user /opt/usr f2fs defaults 0 0
+LABEL=hal /hal ext4 defaults 0 0
+FSTAB
+    debugfs -w -R "write $stage/fstab /etc/fstab" "$stage/rootfs.img"
+    debugfs -R 'cat /etc/fstab' "$stage/rootfs.img" | cmp - "$stage/fstab"
+    rm -- "$stage/fstab"
+    for img in rootfs system-data; do
+        truncate -s "+${TIZEN_ARM_DISK_GROW:-2G}" "$stage/$img.img"
+        resize2fs "$stage/$img.img"
+    done
+    mv -T "$stage" "$out/disk"
+    trap - EXIT
+fi
+if [[ ${2:-} == --disks-only ]]; then exit 0; fi
+if [[ ! -s $out/zImage ]]; then "$here/build-kernel" "$out"; fi

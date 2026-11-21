@@ -81,6 +81,10 @@ if [[ ! -f $work/src/.tizen-source-$revision ]]; then
     mv "$stage/src" "$work/src"
 fi
 
+if [[ ${1:-} == --source-only ]]; then
+    exit 0
+fi
+
 # On Ubuntu a private libelf-dev extraction suffices for the host objtool.
 if ! printf '#include <gelf.h>\n' | ${HOSTCC:-cc} -E -x c - >/dev/null 2>&1; then
     multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH)

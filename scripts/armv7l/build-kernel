@@ -1,0 +1,43 @@
+#!/bin/bash
+# Compile a QEMU virt kernel from the project's pinned Tizen source.
+set -euo pipefail
+project=$(cd "$(dirname "$0")/../.." && pwd)
+out=$(realpath -m -- "${1:?supply ARM image directory}")
+mkdir -p "$out"
+source_cache=${TIZEN_KERNEL_CACHE:-$out/source-cache}
+TIZEN_OUT="$source_cache" TIZEN_PREBUILT_KERNEL=0 "$project/scripts/build-kernel.sh" --source-only
+src=$source_cache/work/kernel-6.12.41/src
+build=$out/kernel-build
+mkdir -p "$build"
+# Keep shared filesystem, security, systemd and virtio requirements. Strip PC
+# hardware selections and add the ARM virt board's boot devices below.
+sed -E '/^CONFIG_(64BIT|HYPERVISOR_GUEST|PARAVIRT|KVM_GUEST|ACPI|PCI.*|VIRTIO_PCI|SERIAL_8250.*|RTC_DRV_CMOS|UNWINDER_FRAME_POINTER|USB_PCI|USB_XHCI_PCI)=/d' \
+    "$project/kernel/qemu-x86_64.config" > "$build/virt.config"
+cat >> "$build/virt.config" <<'CONFIG'
+CONFIG_MMU=y
+CONFIG_ARCH_MULTI_V7=y
+CONFIG_ARCH_VIRT=y
+CONFIG_AEABI=y
+CONFIG_VFP=y
+CONFIG_NEON=y
+CONFIG_KERNEL_GZIP=y
+CONFIG_SERIAL_AMBA_PL011=y
+CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_RTC_DRV_PL031=y
+CONFIG_HIGHMEM=y
+CONFIG_F2FS_FS=y
+CONFIG_F2FS_FS_XATTR=y
+CONFIG_F2FS_FS_SECURITY=y
+CONFIG_ARM_LPAE=y
+CONFIG_DEPRECATED_PARAM_STRUCT=y
+CONFIG
+kmake=(make -C "$src" O="$build" ARCH=arm CROSS_COMPILE="${CROSS_COMPILE:-arm-linux-gnueabihf-}")
+"${kmake[@]}" KCONFIG_ALLCONFIG="$build/virt.config" allnoconfig
+for option in ARCH_VIRT AEABI VFP SERIAL_AMBA_PL011_CONSOLE VIRTIO_MMIO VIRTIO_BLK DRM_VIRTIO_GPU EXT4_FS EXT4_FS_SECURITY SECURITY_SMACK; do
+    grep -qx "CONFIG_$option=y" "$build/.config" || { echo "Missing CONFIG_$option" >&2; exit 1; }
+done
+if [[ ${2:-} == --config-only ]]; then exit 0; fi
+"${kmake[@]}" -j"${JOBS:-4}" zImage
+install -m 0644 "$build/arch/arm/boot/zImage" "$out/zImage.new"
+mv -T "$out/zImage.new" "$out/zImage"
