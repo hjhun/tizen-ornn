@@ -46,6 +46,14 @@ The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the pro
 
 A Windows guest terminal stays attached to its QEMU process. Power off from the guest before closing it. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
 
+### Guest development account
+
+The x86_64 development console logs in as `tizen`. New images give this account
+`root` (GID 0) as a supplementary group. Run `id` in the guest terminal to
+check the active login. For operations requiring UID 0, use `su -`. To apply
+the new account setup to an existing managed Ubuntu image, shut down its guest
+and run `tizen-ornn update --image`.
+
 ### Build the host tools with Cargo
 
 Use a current stable Rust toolchain. Run the following in the source checkout on Ubuntu or Windows:

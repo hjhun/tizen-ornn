@@ -6,6 +6,7 @@ use std::{
 };
 use tizen_ornn::Image;
 mod build;
+mod console;
 
 fn home() -> io::Result<PathBuf> {
     let dir = env::var_os("TIZEN_ORNN_HOME")
@@ -91,6 +92,8 @@ fn boot(image: &Path, graphics: bool) -> io::Result<()> {
         "pc",
         "-accel",
         "tcg,thread=multi",
+        "-cpu",
+        "max",
         "-m",
         "3072",
         "-smp",
@@ -109,8 +112,6 @@ fn boot(image: &Path, graphics: bool) -> io::Result<()> {
         "virtio-net-pci,netdev=net,romfile=",
         "-device",
         "virtio-rng-pci",
-        "-chardev",
-        "stdio,id=console,signal=off",
     ]);
     let console = if image.join(".tizen-virtio-console").is_file() {
         cmd.args([
@@ -143,7 +144,7 @@ fn boot(image: &Path, graphics: bool) -> io::Result<()> {
         "tizen-dev.target"
     };
     cmd.args(["-append",&format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} init=/usr/lib/systemd/systemd systemd.unit={target} net.ifnames=0 tizen.console_size=30x100")]);
-    checked(&mut cmd, "QEMU")
+    console::run(&mut cmd)
 }
 
 pub fn execute(cli: Cli) -> io::Result<()> {

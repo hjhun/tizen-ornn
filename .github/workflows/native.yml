@@ -109,6 +109,7 @@ jobs:
           if ($images.Count -ne 1) { throw 'Image discovery failed after build' }
           & "$env:TIZEN_ORNN_QEMU_DIR/qemu-img.exe" check "$($images[0].path)/tizen-rootfs.qcow2"
           if ($LASTEXITCODE) { throw 'New disk is inconsistent' }
+          ./tests/windows-console.ps1 -Development -Cli (Resolve-Path target/release/tizen-ornn.exe) -Image $images[0].path
       - uses: actions/upload-artifact@v4
         with:
           name: windows-host-tools

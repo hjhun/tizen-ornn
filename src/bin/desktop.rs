@@ -187,10 +187,8 @@ impl eframe::App for Launcher {
                 false
             }
         });
-        if finished {
-            if let Err(e) = self.refresh() {
-                self.status = e;
-            }
+        if finished && let Err(e) = self.refresh() {
+            self.status = e;
         }
         if !self.processes.is_empty() {
             ctx.request_repaint_after(Duration::from_secs(1));

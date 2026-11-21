@@ -1,33 +1,49 @@
-# Test a serial round trip through the Windows CLI, QEMU and the fixture kernel.
-param([Parameter(Mandatory)] [string] $Cli, [Parameter(Mandatory)] [string] $Image)
+# Drive the serial console of a fixture or a freshly provisioned development VM.
+param([Parameter(Mandatory)] [string] $Cli, [Parameter(Mandatory)] [string] $Image,
+      [switch] $Development)
 $ErrorActionPreference = 'Stop'
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = $Cli
-$info.Arguments = 'run --headless --image-dir "' + $Image + '"'
+$info.ArgumentList.Add('run')
+$info.ArgumentList.Add('--headless')
+$info.ArgumentList.Add('--image-dir')
+$info.ArgumentList.Add($Image)
 $info.UseShellExecute = $false
 $info.RedirectStandardInput = $true
 $info.RedirectStandardOutput = $true
 $proc = [System.Diagnostics.Process]::Start($info)
-$timer = [Diagnostics.Stopwatch]::StartNew()
-$answered = $false
-$tail = [System.Collections.Generic.Queue[string]]::new()
-try {
-    while ($timer.Elapsed.TotalSeconds -lt 150) {
-        $read = $proc.StandardOutput.ReadLineAsync()
-        if (-not $read.Wait([Math]::Max(1, 150000 - [int]$timer.ElapsedMilliseconds))) { break }
-        $line = $read.Result
-        if ($null -eq $line) { break }
-        $tail.Enqueue($line)
-        if ($tail.Count -gt 40) { [void]$tail.Dequeue() }
-        if ($line.Trim() -eq 'ORNN_SERIAL_READY') {
-            $proc.StandardInput.WriteLine('ornn-console-check')
-            $proc.StandardInput.Flush()
-        }
-        if ($line.Trim() -eq 'ORNN_SERIAL_OK') { $answered = $true; break }
+
+function Wait-Console([string] $Pattern) {
+    $buffer = [char[]]::new(4096)
+    $tail = ''
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while ($timer.Elapsed.TotalSeconds -lt 180) {
+        $read = $proc.StandardOutput.ReadAsync($buffer, 0, $buffer.Length)
+        if (-not $read.Wait([Math]::Max(1, 180000 - [int]$timer.ElapsedMilliseconds))) { break }
+        if ($read.Result -eq 0) { break }
+        $tail += [string]::new($buffer, 0, $read.Result)
+        if ($tail -match $Pattern) { return }
+        if ($tail.Length -gt 12000) { $tail = $tail.Substring($tail.Length - 12000) }
     }
-    if (-not $answered -or -not $proc.WaitForExit(20000) -or $proc.ExitCode -ne 0) {
-        Write-Host ($tail -join [Environment]::NewLine)
-        throw "Guest console failed: answered=$answered exited=$($proc.HasExited) code=$($proc.ExitCode)"
+    throw "Missing console output matching $Pattern. Last guest output: $tail"
+}
+function Send-Console([string] $Command) {
+    $proc.StandardInput.Write($Command + [char]13)
+    $proc.StandardInput.Flush()
+}
+try {
+    if ($Development) {
+        Wait-Console 'tizen@[^\r\n]*\$ '
+        Send-Console 'id; test "$(id -un)" = tizen && test "$(id -u)" != 0 && id -G | tr " " "\n" | grep -qx 0 && rpm -q git >/dev/null && printf "ORNN_%s_OK\n" ROOTGROUP'
+        Wait-Console '(?m)^ORNN_ROOTGROUP_OK\r?$'
+        Send-Console 'su -c "sync; systemctl --force poweroff"'
+    } else {
+        Wait-Console 'ORNN_SERIAL_READY'
+        Send-Console 'ornn-console-check'
+        Wait-Console '(?m)^ORNN_SERIAL_OK\r?$'
+    }
+    if (-not $proc.WaitForExit(30000) -or $proc.ExitCode -ne 0) {
+        throw "Guest shutdown failed: exited=$($proc.HasExited) code=$($proc.ExitCode)"
     }
 } finally {
     if (-not $proc.HasExited) { $proc.Kill($true) }
