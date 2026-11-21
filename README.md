@@ -41,11 +41,11 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 
 | From | Command | Result |
 |---|---|---|
-| Host | `tizen-vm run` or `tizen-vm` | Start the selected VM or reconnect to its console |
+| Host | `tizen-vm run` or `tizen-vm` | Start the selected VM with a graphical window or reconnect to its console |
 | Host | `tizen-vm run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
 | Host | `tizen-vm run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
 | Host | `tizen-vm run --share-ro "$PWD"` | Open the same directory read-only |
-| Host | `tizen-vm run --gui` | Start with a window for UI apps on WSLg or a Linux desktop |
+| Host | `tizen-vm --headless` | Start with a console only |
 | Guest console | Ctrl+C | Interrupt the foreground command, including a running dlog viewer |
 | Top-level guest shell | `exit` | Return to the host while keeping the VM, shell and jobs running |
 | Host | `tizen-vm shutdown` | Shut down the selected VM and wait for its disk to be released |

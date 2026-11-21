@@ -315,17 +315,19 @@ def main():
         os.setgid(account.pw_gid)
         os.setuid(account.pw_uid)
         os.environ.update(HOME=account.pw_dir, USER=account.pw_name, LOGNAME=account.pw_name)
-    parser = argparse.ArgumentParser(description=__doc__)
+    display = argparse.ArgumentParser(add_help=False, argument_default=argparse.SUPPRESS)
+    options = display.add_mutually_exclusive_group()
+    options.add_argument('--gui', action='store_true', help='start with a graphical window (default)')
+    options.add_argument('--headless', action='store_true', help='start with the console only')
+    parser = argparse.ArgumentParser(description=__doc__, parents=[display])
     version = (ROOT / 'config/version').read_text().strip()
     parser.add_argument('--version', action='version', version=f'%(prog)s {version}')
-    parser.add_argument('--gui', action='store_true', help='start a graphical guest')
     commands = parser.add_subparsers(dest='command')
     config = commands.add_parser('config', help='show or set the snapshot source')
     config.add_argument('--repository', metavar='HTTPS_URL', help='set the snapshot tree in your configuration')
     config.add_argument('--snapshot', metavar='ID', help='set the default dated snapshot for new images')
     commands.add_parser('build', help='build the configured image or reuse the installed disk')
-    start = commands.add_parser('run', aliases=['start'], help='start or reattach to the selected VM (default)')
-    start.add_argument('--gui', dest='gui', action='store_true', default=argparse.SUPPRESS)
+    start = commands.add_parser('run', aliases=['start'], parents=[display], help='start or reattach to the selected VM (default)')
     start.add_argument('--no-host-network', action='store_true', help='skip importing host proxy and DNS search settings')
     start.add_argument('--host-browser', action='store_true', help='let the guest open HTTPS links in the host browser')
     sharing = start.add_mutually_exclusive_group()
@@ -345,9 +347,14 @@ def main():
     delete.add_argument('--yes', action='store_true', help='skip the interactive confirmation')
     commands.add_parser('rollback', help='switch back to the previous stopped disk')
     args = parser.parse_args()
+    # Options may appear on either side of the run/start subcommand.
+    gui = getattr(args, 'gui', False)
+    headless = getattr(args, 'headless', False)
+    if gui and headless:
+        parser.error('--gui and --headless are mutually exclusive')
+    if (gui or headless) and args.command not in (None, 'run', 'start'):
+        parser.error('--gui and --headless apply only to run/start')
     if args.command == 'config':
-        if args.gui:
-            parser.error('--gui applies to run')
         configure(args.repository, args.snapshot)
         return
     home = data_home().resolve()
@@ -363,7 +370,7 @@ def main():
         os.environ['TIZEN_OUT'] = str(image or home)
         run = SCRIPTS / 'run-vm.sh'
         command = [str(run)]
-        if args.gui:
+        if not headless:
             command.append('--gui')
         if getattr(args, 'host_browser', False):
             command.append('--host-browser')
@@ -374,8 +381,6 @@ def main():
         elif getattr(args, 'share_ro', None) is not None:
             command.extend(['--share-ro', args.share_ro])
         os.execv(run, command)
-    if args.gui:
-        parser.error('--gui applies to run')
     if args.command == 'shutdown':
         disk = os.environ.get('TIZEN_DISK')
         if not disk:

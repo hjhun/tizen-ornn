@@ -1,6 +1,6 @@
 # Running the VM and managing storage
 
-From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. For a graphical guest, use `tizen-vm --gui` on the first start. The window needs WSLg or a Linux desktop. CPU, memory and display settings take effect when the VM boots.
+From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-vm --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-vm shutdown` first. CPU, memory and display settings take effect when the VM boots.
 
 GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
 This provides the multisampled EGL surface used by the Flutter home screen.

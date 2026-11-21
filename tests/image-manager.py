@@ -186,6 +186,18 @@ class ImageSelection(unittest.TestCase):
                 self.assertEqual(manager.os.environ['TIZEN_OUT'], str(self.old))
                 self.assertEqual(run.call_args.args[1][-1], '--gui')
 
+    def test_display_mode_for_new_boot(self):
+        for verb in ([], ['run'], ['start']):
+            for flag, expected in (([], ['--gui']), (['--gui'], ['--gui']), (['--headless'], [])):
+                for args in (verb + flag, flag + verb):
+                    with self.subTest(args=args), patch.dict(manager.os.environ), \
+                            patch.object(manager.sys, 'argv', ['tizen-vm', *args]), \
+                            patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
+                        with self.assertRaises(SystemExit):
+                            manager.main()
+                        script = manager.SCRIPTS / 'run-vm.sh'
+                        run.assert_called_once_with(script, [str(script), *expected])
+
     def test_run_and_start_forward_share_paths_as_one_argument(self):
         folder = './project with spaces,commas'
         for verb, option in [('run', '--share'), ('start', '--share-ro')]:
