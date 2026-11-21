@@ -99,7 +99,7 @@ if (( gui )); then
         0) gpu=virtio-gpu-pci; gl=off ;;
         *) echo 'TIZEN_GUI_GL must be 1 or 0' >&2; exit 2 ;;
     esac
-    display=(-display "sdl,gl=$gl" -name Tizen-Dev
+    display=(-display "sdl,gl=$gl,show-cursor=on" -name Tizen-Dev
         -device "$gpu,xres=1024,yres=768"
         -device virtio-keyboard-pci -device virtio-tablet-pci)
 fi
