@@ -34,7 +34,7 @@ chroot "$root" /usr/bin/zypper --non-interactive --no-refresh install \
     --force --from tizen-dev-local git=2.56.1-1
 chroot "$root" /usr/bin/rpm -q git
 chroot "$root" /usr/bin/git --version
-# Direct output is reliable on the guest's serial terminal. Developers can
-# select a different pager in their own Git configuration.
-chroot "$root" /usr/bin/git config --system core.pager cat
+# The snapshot supplies more with util-linux. Git invokes it on a terminal.
+test -x "$root/usr/bin/more"
+chroot "$root" /usr/bin/git config --system core.pager more
 INSTALL
