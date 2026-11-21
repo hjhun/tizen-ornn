@@ -1,6 +1,11 @@
 name: Native host tools
 on:
   workflow_dispatch:
+    inputs:
+      provision:
+        description: Build a fresh Tizen disk from the official snapshot on Windows
+        type: boolean
+        default: false
   push:
     paths: ['Cargo.*', 'src/**', 'tests/windows-console.ps1', '.github/workflows/native.yml']
 permissions:
@@ -35,10 +40,25 @@ jobs:
           name: serial-fixture
           path: fixture
           retention-days: 1
+      - name: Package the matching recipe for a full Windows build
+        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
+        run: |
+          mkdir -p kernel-input builder
+          cp fixture/bzImage kernel-input/
+          curl -fsSL https://github.com/hjhun/tizen-ornn/releases/download/10.1-r15/kernel.config -o kernel-input/kernel.config
+          cp kernel/r6.sha256 kernel-input/kernel.sha256
+          TIZEN_ORNN_KERNEL_DIR="$PWD/kernel-input" scripts/package-cli.sh builder
+          cp fixture/bzImage builder/
+      - uses: actions/upload-artifact@v4
+        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
+        with:
+          name: windows-builder-inputs
+          path: builder
+          retention-days: 1
   windows:
     runs-on: windows-2022
     needs: fixture
-    timeout-minutes: 25
+    timeout-minutes: ${{ (inputs.provision || github.ref_name == 'verify/native-host-r16') && 300 || 25 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -72,6 +92,23 @@ jobs:
           7z x -y $setup "-o$env:TIZEN_ORNN_QEMU_DIR" | Out-Null
           if ($LASTEXITCODE) { throw 'QEMU extraction failed' }
           ./tests/windows-console.ps1 -Cli $cli -Image (Resolve-Path 'test image')
+      - uses: actions/download-artifact@v4
+        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
+        with:
+          name: windows-builder-inputs
+          path: target/release/builder
+      - name: Build a new Windows guest and verify the independent disk
+        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
+        shell: pwsh
+        run: |
+          $env:TIZEN_ORNN_QEMU_DIR = "$env:RUNNER_TEMP/qemu"
+          $env:TIZEN_ORNN_HOME = "$env:RUNNER_TEMP/Ornn images"
+          ./target/release/tizen-ornn.exe build --name first-boot
+          if ($LASTEXITCODE) { throw 'Guest build failed' }
+          $images = ./target/release/tizen-ornn.exe images | ConvertFrom-Json
+          if ($images.Count -ne 1) { throw 'Image discovery failed after build' }
+          & "$env:TIZEN_ORNN_QEMU_DIR/qemu-img.exe" check "$($images[0].path)/tizen-rootfs.qcow2"
+          if ($LASTEXITCODE) { throw 'New disk is inconsistent' }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-host-tools

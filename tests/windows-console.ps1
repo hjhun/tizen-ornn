@@ -10,20 +10,24 @@ $info.RedirectStandardOutput = $true
 $proc = [System.Diagnostics.Process]::Start($info)
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $answered = $false
+$tail = [System.Collections.Generic.Queue[string]]::new()
 try {
     while ($timer.Elapsed.TotalSeconds -lt 150) {
         $read = $proc.StandardOutput.ReadLineAsync()
         if (-not $read.Wait([Math]::Max(1, 150000 - [int]$timer.ElapsedMilliseconds))) { break }
         $line = $read.Result
         if ($null -eq $line) { break }
-        if ($line -eq 'ORNN_SERIAL_READY') {
+        $tail.Enqueue($line)
+        if ($tail.Count -gt 40) { [void]$tail.Dequeue() }
+        if ($line.Trim() -eq 'ORNN_SERIAL_READY') {
             $proc.StandardInput.WriteLine('ornn-console-check')
             $proc.StandardInput.Flush()
         }
-        if ($line -eq 'ORNN_SERIAL_OK') { $answered = $true; break }
+        if ($line.Trim() -eq 'ORNN_SERIAL_OK') { $answered = $true; break }
     }
     if (-not $answered -or -not $proc.WaitForExit(20000) -or $proc.ExitCode -ne 0) {
-        throw 'Windows guest console round trip or shutdown failed'
+        Write-Host ($tail -join [Environment]::NewLine)
+        throw "Guest console failed: answered=$answered exited=$($proc.HasExited) code=$($proc.ExitCode)"
     }
 } finally {
     if (-not $proc.HasExited) { $proc.Kill($true) }

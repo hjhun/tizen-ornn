@@ -125,20 +125,17 @@ pub(super) fn create(home: &Path, name: &str) -> io::Result<()> {
             .unwrap(),
     )?;
     let cache = home.join("cache");
-    let base = builder_file(&cache, "ubuntu-24.04-server-cloudimg-amd64.img", CLOUD_SHA)?
-        .canonicalize()?;
+    let base = builder_file(&cache, "ubuntu-24.04-server-cloudimg-amd64.img", CLOUD_SHA)?;
     let linux = builder_file(
         &cache,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-vmlinuz-generic",
         "41ba36d860aa0b0cd995f4ca8856d80249b244577e704929b55be13fbd1ebd2f",
-    )?
-    .canonicalize()?;
+    )?;
     let initrd = builder_file(
         &cache,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-initrd-generic",
         "bf276ffc12872256080890698b42db0dc9c5a469c896d8b59af6bc4e723cd186",
-    )?
-    .canonicalize()?;
+    )?;
     let work = tempfile::Builder::new()
         .prefix(".build-")
         .tempdir_in(&images)?;

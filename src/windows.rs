@@ -8,10 +8,11 @@ use tizen_ornn::Image;
 mod build;
 
 fn home() -> io::Result<PathBuf> {
-    env::var_os("TIZEN_ORNN_HOME")
+    let dir = env::var_os("TIZEN_ORNN_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Tizen Ornn")))
-        .ok_or_else(|| io::Error::other("Set TIZEN_ORNN_HOME to a writable directory."))
+        .ok_or_else(|| io::Error::other("Set TIZEN_ORNN_HOME to a writable directory."))?;
+    std::path::absolute(dir)
 }
 
 fn qemu(tool: &str) -> io::Result<Command> {

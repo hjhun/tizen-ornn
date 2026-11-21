@@ -10,7 +10,7 @@ Install the CLI for terminal use:
 
 ```sh
 curl -fLO https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb
-sudo apt install ./tizen-ornn_amd64.deb
+sudo apt install --no-install-recommends ./tizen-ornn_amd64.deb
 tizen-ornn build
 tizen-ornn run --headless
 ```

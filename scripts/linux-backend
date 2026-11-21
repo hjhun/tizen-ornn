@@ -181,9 +181,11 @@ def run_as_root(cmd):
     subprocess.run([*prefix, *cmd], check=True)
 
 
-def dependencies(build):
+def dependencies(build, gui=False):
     runtime, tools, kernel_tools = (ROOT / 'config/host-packages').read_text().splitlines()
     packages = runtime.split()
+    if gui:
+        packages.append('qemu-system-gui')
     # The portable host-tools extraction used by the launcher also supplies QEMU.
     private = ROOT / 'out/host-tools/usr'
     if all((private / name).is_file() for name in
@@ -472,6 +474,7 @@ def execute(args):
         run = SCRIPTS / 'run-vm.sh'
         command = [str(run)]
         if not headless:
+            dependencies(build=False, gui=True)
             command.append('--gui')
         if getattr(args, 'host_browser', False):
             command.append('--host-browser')
