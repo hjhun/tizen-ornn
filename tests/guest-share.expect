@@ -74,7 +74,7 @@ set failed [catch {
         unset spawn_id
     }
     set env(TERM) xterm-256color
-    foreach launcher [list [list $root/scripts/run-vm.sh --foreground] [list $root/tizen-vm run]] {
+    foreach launcher [list [list $root/scripts/run-vm.sh --foreground] [list $root/tizen-ornn run]] {
         spawn -noecho {*}$launcher --no-host-network --share $share
         expect {
             -ex "guest startup failed while applying host settings" {}

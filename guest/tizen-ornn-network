@@ -7,10 +7,10 @@ import shlex
 import subprocess
 import tempfile
 
-FIRMWARE = Path("/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/network-data/raw")
-RUN = Path("/run/tizen-vm-network")
-LOGIN = Path("/etc/profile.d/zz-tizen-vm-network.sh")
-HOOK = 'if [ -r /run/tizen-vm-network/login.sh ]; then\n    . /run/tizen-vm-network/login.sh\nfi\n'
+FIRMWARE = Path("/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/network-data/raw")
+RUN = Path("/run/tizen-ornn-network")
+LOGIN = Path("/etc/profile.d/zz-tizen-ornn-network.sh")
+HOOK = 'if [ -r /run/tizen-ornn-network/login.sh ]; then\n    . /run/tizen-ornn-network/login.sh\nfi\n'
 PROXIES = {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
 
 
@@ -41,7 +41,7 @@ def proxy_environment(values):
             temp.unlink()
     directory = Path("/run/systemd/system.conf.d")
     directory.mkdir(exist_ok=True, parents=True)
-    conf = directory / "70-tizen-vm-network.conf"
+    conf = directory / "70-tizen-ornn-network.conf"
     lines = ["[Manager]"]
     for key, value in env.items():
         escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")

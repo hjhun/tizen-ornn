@@ -19,7 +19,7 @@ exec 9>"$NPM_CONFIG_PREFIX/.tizen-ai-install.lock"
 flock -x 9
 if [[ $name == agy ]]; then
     # Use the same Linux AMD64 manifest and SHA-512 as Google's installer.
-    tools=$(getent passwd owner | cut -d: -f6)/.tizen-vm-tools
+    tools=$(getent passwd owner | cut -d: -f6)/.tizen-ornn-tools
     stage=$(mktemp -d "$tools/.agy.XXXXXXXX")
     trap 'rm -rf -- "$stage"' EXIT
     curl_opts=(--fail --location --silent --show-error --retry 2 --proto '=https' --proto-redir '=https')

@@ -2,11 +2,11 @@
 set -eu
 base=$HOME/dev-setup
 # Tizen's platform loader admits native Python extensions under /usr.
-venv=/usr/local/lib/tizen-vm/graphify-0.9.40
+venv=/usr/local/lib/tizen-ornn/graphify-0.9.40
 mkdir -p "$base/cli/bin" "$base/skills/graphify"
 if ! "$venv/bin/python" -Ic 'import tree_sitter, tree_sitter_cpp; from importlib.metadata import version; assert version("graphifyy") == "0.9.40"' 2>/dev/null; then
     su - root -c 'set -e
-        venv=/usr/local/lib/tizen-vm/graphify-0.9.40
+        venv=/usr/local/lib/tizen-ornn/graphify-0.9.40
         python3 -m venv --without-pip "$venv"
         python3 -m pip --python "$venv/bin/python" install --disable-pip-version-check graphifyy==0.9.40'
 fi

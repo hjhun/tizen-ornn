@@ -1,16 +1,16 @@
 # Running the VM and managing storage
 
-From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-vm --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-vm shutdown` first. CPU, memory and display settings take effect when the VM boots.
+From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. CPU, memory and display settings take effect when the VM boots.
 
 GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
 This provides the multisampled EGL surface used by the Flutter home screen.
 The host needs an OpenGL-capable SDL display. On hosts without one, start
-with `TIZEN_GUI_GL=0 tizen-vm --gui` to use guest software rendering for
+with `TIZEN_GUI_GL=0 tizen-ornn --gui` to use guest software rendering for
 EFL and .NET development. The Flutter home screen requires the default
 3D mode on this snapshot.
 
 On an existing guest using the emulator audio HAL, run
-`tizen-vm install patchelf` on the host before restarting with `--gui`.
+`tizen-ornn install patchelf` on the host before restarting with `--gui`.
 Fresh images include this dependency. PulseAudio uses a boot-local copy of
 the emulator HAL linked to libm so the Volume app can query its volume range.
 
@@ -20,21 +20,21 @@ the emulator HAL linked to libm so the Volume app can query its volume range.
 | Press Ctrl+D once at the empty top-level prompt | The shell stays open. |
 | Type `exit` in a nested shell or after `su - owner` | Return to the parent shell. |
 | Type `exit` at the top-level serial shell | Detach all viewers. The VM, shell and background jobs continue running. |
-| Close the host terminal | Other viewers remain connected. Run `tizen-vm` to reconnect. |
-| Run `tizen-vm shutdown` on the host | Shut down the selected guest, including a detached session. |
+| Close the host terminal | Other viewers remain connected. Run `tizen-ornn` to reconnect. |
+| Run `tizen-ornn shutdown` on the host | Shut down the selected guest, including a detached session. |
 | Run `systemctl poweroff` as guest root | Shut down the VM and release its disk. |
 
-Images built with R11 use a virtio console (`/dev/hvc0`) for interactive output, including full-screen applications such as Herdr and Codex. Older images and kernels without known built-in virtio console support use the UART (`/dev/ttyS0`). For an existing installation, install the updated host package, shut down the VM and run `tizen-vm update --image` to rebuild and migrate it. Run `tty` in the guest login shell to see the active transport.
+Images built with R11 use a virtio console (`/dev/hvc0`) for interactive output, including full-screen applications such as Herdr and Codex. Older images and kernels without known built-in virtio console support use the UART (`/dev/ttyS0`). For an existing installation, install the updated host package, shut down the VM and run `tizen-ornn update --image` to rebuild and migrate it. Run `tty` in the guest login shell to see the active transport.
 
 At startup the serial console takes the host terminal’s rows and columns, with a 24 by 80 fallback. The managed console follows the effective tmux pane size when you resize a terminal, adjust a Herdr split, or reattach. All viewers share that size. Updates resume automatically when the guest control channel becomes available.
 
-Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-vm update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
+Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-ornn update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
 
 The serial console logs in as the ordinary Unix user `tizen` with the `System::Privileged` SMACK label. Run `su -` for a passwordless root login. From root, `su - owner` selects the platform owner's `User::Shell` label. Use `id` and `cat /proc/$$/attr/current` to inspect the login.
 
-The tizen account has its development tools under `~/dev-setup`. Owner uses `~/workspace/.ai-home/.local/bin` for the same tools installed by `tizen-vm install`. Each account can customize its interactive Bash shell in `~/.bashrc`. In a Git worktree the prompt shows the branch in green when clean, red with local changes and cyan when clean and ahead of its upstream.
+The tizen account has its development tools under `~/dev-setup`. Owner uses `~/workspace/.ai-home/.local/bin` for the same tools installed by `tizen-ornn install`. Each account can customize its interactive Bash shell in `~/.bashrc`. In a Git worktree the prompt shows the branch in green when clean, red with local changes and cyan when clean and ahead of its upstream.
 
-The host shutdown command requires an image with the poweroff operation. On an older image, run `systemctl poweroff` at the guest console, then use the updated host CLI to run `tizen-vm update --image`.
+The host shutdown command requires an image with the poweroff operation. On an older image, run `systemctl poweroff` at the guest console, then use the updated host CLI to run `tizen-ornn update --image`.
 
 ## Launch from a checkout
 
@@ -49,29 +49,29 @@ For serial automation such as Expect, use `./scripts/run-vm.sh --foreground`. Th
 
 ## Install packages while developing
 
-In a second host terminal, run `tizen-vm install ed` to install a Tizen RPM or `tizen-vm update --packages ed` to update it from the configured snapshot. The commands stream guest output to that terminal and return the guest operation's exit status. The serial console keeps its foreground process. A private virtio port connects the host user to the guest service. The guest must be running. Older images gain this service through `tizen-vm update --image` after shutdown.
+In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or `tizen-ornn update --packages ed` to update it from the configured snapshot. The commands stream guest output to that terminal and return the guest operation's exit status. The serial console keeps its foreground process. A private virtio port connects the host user to the guest service. The guest must be running. Older images gain this service through `tizen-ornn update --image` after shutdown.
 
 ## Share a host directory
 
 Run the launcher as your normal Ubuntu user. On an existing R5 disk, upgrade the host CLI to R6 or later to use the bundled kernel for sharing. The project stays on the host and its files are accessible under `/home/owner/host` for this boot.
 
 ```sh
-tizen-vm run --share "$PWD"
+tizen-ornn run --share "$PWD"
 # In the guest console
 su -
 su - owner
 cd /home/owner/host
 ```
 
-To share a Windows project from WSL2, use its WSL path, for example `tizen-vm run --share "/mnt/c/Users/me/My Project"`. Use `--share-ro` to enforce read-only access on the host side. With `--share`, guest edits and deletions affect the host files immediately. The export has the access rights of the Ubuntu account launching QEMU. Guest `owner` can work in private directories without changing their host ownership. File permissions, case sensitivity and link support on Windows paths depend on the underlying filesystem and WSL mount settings.
+To share a Windows project from WSL2, use its WSL path, for example `tizen-ornn run --share "/mnt/c/Users/me/My Project"`. Use `--share-ro` to enforce read-only access on the host side. With `--share`, guest edits and deletions affect the host files immediately. The export has the access rights of the Ubuntu account launching QEMU. Guest `owner` can work in private directories without changing their host ownership. File permissions, case sensitivity and link support on Windows paths depend on the underlying filesystem and WSL mount settings.
 
-Choose one directory per boot. The guest mountpoint must be absent or empty. The launcher uses a Linux user namespace and a virtio-9p device. To check whether your Ubuntu host permits the required user mapping, run `unshare --user --map-user=5001 --map-group=100 -- true` as the user who starts the VM. The guest shuts down with a diagnostic if it cannot mount the directory. Run plain `tizen-vm` to reattach. After `systemctl poweroff`, the next launch may select a different directory or omit sharing. A full image update carries the files stored on the guest disk. Shared project files already live on the host.
+Choose one directory per boot. The guest mountpoint must be absent or empty. The launcher uses a Linux user namespace and a virtio-9p device. To check whether your Ubuntu host permits the required user mapping, run `unshare --user --map-user=5001 --map-group=100 -- true` as the user who starts the VM. The guest shuts down with a diagnostic if it cannot mount the directory. Run plain `tizen-ornn` to reattach. After `systemctl poweroff`, the next launch may select a different directory or omit sharing. A full image update carries the files stored on the guest disk. Shared project files already live on the host.
 
 ## Host networking
 
 The VM keeps its own interface and private IP. QEMU routes outbound connections over Ubuntu's network and forwards guest DNS requests through `10.0.2.3`. On startup the CLI reads the host resolver's search domains so tools can resolve short hostnames. In WSL2, DNS and VPN reachability depend on the Windows-to-WSL network configuration. [Microsoft's WSL network guide](https://learn.microsoft.com/en-us/windows/wsl/networking)
 
-The CLI takes proxy settings from the environment in the terminal that starts the VM. Lowercase names take precedence over uppercase names. In WSL2, if no proxy endpoint variable is set, the CLI reads the current Windows user's manual proxy settings through PowerShell interop. It supports one proxy for all HTTP traffic or separate HTTP, HTTPS and SOCKS endpoints. The guest receives settings at boot for login shells and systemd services, including the package service behind `tizen-vm install`.
+The CLI takes proxy settings from the environment in the terminal that starts the VM. Lowercase names take precedence over uppercase names. In WSL2, if no proxy endpoint variable is set, the CLI reads the current Windows user's manual proxy settings through PowerShell interop. It supports one proxy for all HTTP traffic or separate HTTP, HTTPS and SOCKS endpoints. The guest receives settings at boot for login shells and systemd services, including the package service behind `tizen-ornn install`.
 
 | Host setting | Guest behavior |
 |---|---|
@@ -80,13 +80,13 @@ The CLI takes proxy settings from the environment in the terminal that starts th
 | PAC, WPAD, or the Windows `<local>` bypass rule | Applications differ in how they evaluate these rules. Set explicit proxy endpoints and `no_proxy` in Ubuntu for the desired routes. |
 | Proxy URL with credentials | Only the endpoint is forwarded. Configure any required authentication in the guest through your organization's approved mechanism. |
 
-A terminal reconnect keeps the current VM's settings. To pick up a changed proxy or DNS search domain, shut down the guest and start it again. `tizen-vm run --no-host-network` keeps ordinary NAT and DNS while skipping the host proxy and search-domain import. Private CA certificates are configured separately. [HTTPS trust setup](https-certificates.md)
+A terminal reconnect keeps the current VM's settings. To pick up a changed proxy or DNS search domain, shut down the guest and start it again. `tizen-ornn run --no-host-network` keeps ordinary NAT and DNS while skipping the host proxy and search-domain import. Private CA certificates are configured separately. [HTTPS trust setup](https-certificates.md)
 
 ## Disk size
 
 The default raw disk `tizen-rootfs.ext4` is a 16 GiB sparse file. The guest retains its packages, source trees and build output across shutdowns. Use `df -h /` inside the guest to see free guest space and `du -h "$TIZEN_OUT/tizen-rootfs.ext4"` on the host to see allocated host space. Develop under `/home/owner/workspace`.
 
-For a fresh store, `TIZEN_FS_SIZE=32G tizen-vm build` creates a 32 GiB disk. Use `TIZEN_CPUS=4 TIZEN_RAM=4096 tizen-vm run` to start with four virtual CPUs and 4096 MiB of guest RAM. To grow an existing raw disk, first shut down the guest, unmount the disk on the host and back it up. Then run these commands on the host.
+For a fresh store, `TIZEN_FS_SIZE=32G tizen-ornn build` creates a 32 GiB disk. Use `TIZEN_CPUS=4 TIZEN_RAM=4096 tizen-ornn run` to start with four virtual CPUs and 4096 MiB of guest RAM. To grow an existing raw disk, first shut down the guest, unmount the disk on the host and back it up. Then run these commands on the host.
 
 ```sh
 disk="$TIZEN_OUT/tizen-rootfs.ext4"

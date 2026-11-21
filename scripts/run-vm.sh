@@ -68,8 +68,8 @@ console_size=${TIZEN_CONSOLE_SIZE:-$(stty size 2>/dev/null || :)}
 [[ $console_size =~ ^[1-9][0-9]{0,3}\ [1-9][0-9]{0,3}$ ]] || console_size='24 80'
 if (( managed )) && [[ -t 0 && -t 1 ]]; then
     export TIZEN_CONSOLE_SIZE="$console_size"
-    if [[ ! -f $out/.tizen-vm-image-revision ]]; then
-        echo "Legacy image: upgrade with tizen-vm update --image to detach by typing exit." >&2
+    if [[ ! -f $out/.tizen-ornn-image-revision && ! -f $out/.tizen-vm-image-revision ]]; then
+        echo "Legacy image: upgrade with tizen-ornn update --image to detach by typing exit." >&2
     fi
     # The pane owns the disk lock. A client can leave without releasing it.
     share_id=
@@ -83,7 +83,7 @@ fi
 exec 9<"$disk"
 flock -n -x 9 || { echo "Tizen disk is already in use: $disk" >&2; exit 1; }
 if [[ -n ${TIZEN_SELECTION_LINK:-} && -L $TIZEN_SELECTION_LINK && ! $TIZEN_SELECTION_LINK -ef $out ]]; then
-    echo 'Active image changed during startup. Run tizen-vm again.' >&2
+    echo 'Active image changed during startup. Run tizen-ornn again.' >&2
     exit 1
 fi
 if [[ -n "$(losetup -j "$disk")" ]]; then
@@ -99,7 +99,7 @@ if (( gui )); then
         0) gpu=virtio-gpu-pci; gl=off ;;
         *) echo 'TIZEN_GUI_GL must be 1 or 0' >&2; exit 2 ;;
     esac
-    display=(-display "sdl,gl=$gl,show-cursor=on" -name Tizen-Dev
+    display=(-display "sdl,gl=$gl,show-cursor=on" -name 'Tizen Ornn'
         -device "$gpu,xres=1024,yres=768"
         -device virtio-keyboard-pci -device virtio-tablet-pci)
 fi
@@ -109,9 +109,9 @@ args=(-device virtio-serial-pci,id=guestbus
     -device virtserialport,bus=guestbus.0,chardev=packages,name=org.tizen.vm.packages)
 if (( gui )); then
     if [[ $gl == off ]]; then
-        args+=(-fw_cfg name=opt/tizen-vm/software-renderer,string=1)
+        args+=(-fw_cfg name=opt/tizen-ornn/software-renderer,string=1)
     fi
-    args+=(-fw_cfg "name=opt/tizen-vm/graphics,file=${project//,/,,}/guest/tizen-vm-graphics")
+    args+=(-fw_cfg "name=opt/tizen-ornn/graphics,file=${project//,/,,}/guest/tizen-ornn-graphics")
 fi
 network_data=
 if (( host_network )); then network_data=$("$project/scripts/host-network"); fi
@@ -121,8 +121,8 @@ if [[ -n $network_data ]]; then
     exec {network_fd}<>"$network_file"
     unlink "$network_file"
     printf '%s' "$network_data" >&"$network_fd"
-    args+=(-fw_cfg "name=opt/tizen-vm/network-data,file=/proc/self/fd/$network_fd"
-           -fw_cfg "name=opt/tizen-vm/network,file=${project//,/,,}/guest/tizen-vm-network")
+    args+=(-fw_cfg "name=opt/tizen-ornn/network-data,file=/proc/self/fd/$network_fd"
+           -fw_cfg "name=opt/tizen-ornn/network,file=${project//,/,,}/guest/tizen-ornn-network")
 fi
 runner=()
 if [[ -n $share_mode ]]; then
@@ -130,7 +130,7 @@ if [[ -n $share_mode ]]; then
     if [[ $share_mode == ro ]]; then readonly_flag=on; fi
     args+=(-fsdev "local,id=hostshare,path=${share_path//,/,,},security_model=none,readonly=$readonly_flag"
            -device virtio-9p-pci,fsdev=hostshare,mount_tag=tizen-share
-           -fw_cfg "name=opt/tizen-vm/share,string=$share_mode")
+           -fw_cfg "name=opt/tizen-ornn/share,string=$share_mode")
     # Map the developer's existing host identity to Tizen owner for 9P stat
     # and access checks, including private source trees.
     runner=(unshare --user --map-user=5001 --map-group=100 --)
@@ -160,10 +160,10 @@ if (( gui )) || [[ -n $share_mode || -n $network_data ]]; then
         echo 'No compatible kernel was found for the requested guest boot options. Install the updated host package or select a compatible TIZEN_KERNEL.' >&2
         exit 1
     fi
-    args+=(-fw_cfg "name=opt/tizen-vm/boot,file=${project//,/,,}/guest/tizen-vm-boot")
+    args+=(-fw_cfg "name=opt/tizen-ornn/boot,file=${project//,/,,}/guest/tizen-ornn-boot")
     init=/bin/sh
     # A failed export must not open a shell over an ordinary guest directory.
-    init_args=' -- -c "mount -t sysfs -o nosuid,nodev,noexec sysfs /sys && /bin/sh /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/boot/raw && exec /usr/lib/systemd/systemd; echo tizen-vm: guest setup failed, powering off >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff"'
+    init_args=' -- -c "mount -t sysfs -o nosuid,nodev,noexec sysfs /sys && /bin/sh /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/boot/raw && exec /usr/lib/systemd/systemd; echo tizen-ornn: guest setup failed, powering off >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff"'
 fi
 if (( host_browser )); then
     runner=("$project/scripts/qemu-boot-status" --host-browser "${runner[@]}")

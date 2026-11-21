@@ -34,7 +34,7 @@ def request(disk, op, names, bundle):
         try:
             sock.connect(prefix + ".packages")
         except (ConnectionRefusedError, FileNotFoundError):
-            raise ValueError("Start the selected VM using tizen-vm before managing its packages.")
+            raise ValueError("Start the selected VM using tizen-ornn before managing its packages.")
 
         def send(**fields):
             sock.sendall((json.dumps(dict(fields, id=ident), separators=(",", ":")) + "\n").encode())

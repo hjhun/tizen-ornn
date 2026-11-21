@@ -1,6 +1,6 @@
 #!/usr/bin/expect -f
 # Point TIZEN_OUT and TIZEN_DISK at a managed image and its disposable overlay.
-# An optional command argument exercises an installed launcher, e.g. tizen-vm.
+# An optional command argument exercises an installed launcher, e.g. tizen-ornn.
 set timeout 90
 log_user 0
 if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" ||
@@ -10,7 +10,7 @@ if {![info exists env(TIZEN_DISK_FORMAT)] || $env(TIZEN_DISK_FORMAT) ne "qcow2" 
 }
 set disk [file normalize $env(TIZEN_DISK)]
 set key [exec stat -Lc %D-%i -- $disk]
-set sock /tmp/tizen-vm-[exec id -u]/$key.sock
+set sock /tmp/tizen-ornn-[exec id -u]/$key.sock
 set launcher $argv
 if {![llength $launcher]} {
     set launcher [list [file join [file dirname [file normalize [info script]]] .. scripts run-vm.sh]]
@@ -123,7 +123,7 @@ set failed [catch {
     wait -i $c
     set d [attach 1 {*}$share]
     command $d {test "$saved" = "$$" && kill -0 "$bg" && echo RECONNECTED-OK} RECONNECTED-OK
-    set cli [file join [file dirname [file normalize [info script]]] .. tizen-vm]
+    set cli [file join [file dirname [file normalize [info script]]] .. tizen-ornn]
     exec $cli shutdown
     finished $d
     exec flock -n $disk true

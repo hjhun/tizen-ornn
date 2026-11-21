@@ -31,7 +31,7 @@ def windows_settings():
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True, timeout=5)
         return json.loads(result.stdout.decode("utf-8-sig"))
     except (ValueError, OSError, subprocess.SubprocessError):
-        print("tizen-vm: cannot read the Windows proxy. Export proxy variables in WSL if needed.", file=sys.stderr)
+        print("tizen-ornn: cannot read the Windows proxy. Export proxy variables in WSL if needed.", file=sys.stderr)
         return {}
 
 
@@ -59,7 +59,7 @@ def windows_proxies(settings):
         if host.startswith("*."):
             host = host[1:]
         if host.lower() == "<local>" or ("*" in host and host != "*") or "?" in host:
-            print("tizen-vm: a Windows bypass pattern needs an explicit no_proxy domain in WSL.", file=sys.stderr)
+            print("tizen-ornn: a Windows bypass pattern needs an explicit no_proxy domain in WSL.", file=sys.stderr)
             continue
         bypass.append(host)
     if bypass:
@@ -77,7 +77,7 @@ def proxy_url(value, name):
                 or uri.path not in ("", "/") or uri.query or uri.fragment):
             raise ValueError
         if uri.username is not None or uri.password is not None:
-            print(f"tizen-vm: using the {name} endpoint without its host credentials; configure authentication in the guest if required.", file=sys.stderr)
+            print(f"tizen-ornn: using the {name} endpoint without its host credentials; configure authentication in the guest if required.", file=sys.stderr)
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
@@ -112,7 +112,7 @@ def settings(env, resolver):
         windows = windows_settings()
         chosen = windows_proxies(windows)
         if env.get("WSL_PAC_URL") or windows.get("pac"):
-            print("tizen-vm: PAC rules are per URL. Export static proxy and no_proxy values in WSL to reproduce them in the guest.", file=sys.stderr)
+            print("tizen-ornn: PAC rules are per URL. Export static proxy and no_proxy values in WSL to reproduce them in the guest.", file=sys.stderr)
     chosen.update({key: val for key, val in local.items() if val is not None})
     proxies = {name: proxy_url(chosen[name], name) for name in PROXIES if chosen.get(name)}
     bypass = chosen.get("no_proxy", "")
@@ -129,4 +129,4 @@ if __name__ == "__main__":
         if any(data.values()):
             print(json.dumps(data, separators=(",", ":")))
     except (OSError, ValueError) as error:
-        sys.exit(f"tizen-vm: {error}")
+        sys.exit(f"tizen-ornn: {error}")

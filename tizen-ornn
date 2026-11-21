@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install, run and update a Tizen development VM."""
+"""Tizen Ornn builds, runs and updates a Tizen development VM."""
 import argparse
 from contextlib import contextmanager, nullcontext
 import fcntl
@@ -22,16 +22,23 @@ from image_source import ImageSource, config_path, user_config
 def legacy_store():
     if os.environ.get('TIZEN_OUT'):
         return Path(os.environ['TIZEN_OUT']).expanduser().resolve()
-    if ROOT != Path('/usr/lib/tizen-vm'):
+    if ROOT != Path('/usr/lib/tizen-ornn'):
         return ROOT / 'out'
     return None
 
 
+def configured_home():
+    return os.environ.get('TIZEN_ORNN_HOME') or os.environ.get('TIZEN_VM_HOME')
+
+
 def data_home():
-    if os.environ.get('TIZEN_VM_HOME'):
-        return Path(os.environ['TIZEN_VM_HOME']).expanduser().resolve()
+    if configured_home():
+        return Path(configured_home()).expanduser().resolve()
     legacy = legacy_store()
-    xdg = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share') / 'tizen-vm'
+    xdg = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share') / 'tizen-ornn'
+    old = xdg.with_name('tizen-vm')
+    if not xdg.exists() and old.is_dir():
+        xdg = old
     if legacy is None:
         return xdg
     parent = legacy
@@ -74,7 +81,7 @@ def active_image(home):
     # Older sudo-based instructions could leave the checkout's out/ read-only.
     # Keep using that disk until the first update, then write to the user's store.
     legacy = legacy_store()
-    if not os.environ.get('TIZEN_VM_HOME') and legacy and legacy != home and legacy.is_dir():
+    if not configured_home() and legacy and legacy != home and legacy.is_dir():
         return active_image(legacy)
     return None
 
@@ -122,7 +129,7 @@ def update_choices(home):
 def choose_image(choices, action, prompt_single=False):
     if len(choices) == 1 and not prompt_single:
         return choices[0]
-    print(f'Select a Tizen VM image to {action}:')
+    print(f'Select a Tizen Ornn VM image to {action}:')
     for index, (arch, image) in enumerate(choices, 1):
         print(f'  {index}. {arch}  {image.name}')
     while True:
@@ -226,7 +233,9 @@ def configure(repository, snapshot):
 
 
 def matches(image, release, source, revision):
-    marker = image / '.tizen-vm-image-revision'
+    marker = image / '.tizen-ornn-image-revision'
+    if not marker.exists():
+        marker = image / '.tizen-vm-image-revision'
     path = image / 'snapshot.lock.json'
     if not marker.is_file() or marker.read_text().strip() != revision or not path.is_file():
         return False
@@ -295,7 +304,7 @@ def prepare(home, active, snapshot):
             select(home, target, active)
     print(f'Selected {release} in {target}')
     if active:
-        print(f'Previous disk retained at {active}. Run tizen-vm rollback to use it.')
+        print(f'Previous disk retained at {active}. Run tizen-ornn rollback to use it.')
 
 
 ARM_PARTITIONS = ('rootfs', 'system-data', 'user', 'hal')
@@ -483,7 +492,7 @@ def main():
         configure(args.repository, args.snapshot)
         return
     home = data_home().resolve()
-    explicit = os.environ.get('TIZEN_OUT') if os.environ.get('TIZEN_VM_HOME') else None
+    explicit = os.environ.get('TIZEN_OUT') if configured_home() else None
     if explicit and Path(explicit).expanduser().resolve() == home:
         explicit = None
     if args.command in (None, 'start', 'run'):
@@ -492,7 +501,7 @@ def main():
             # A one-time menu choice can differ from the update/rollback target.
             os.environ['TIZEN_DISK'] = str(disk_at(picked))
         if image is None and 'TIZEN_DISK' not in os.environ:
-            raise ValueError('No image installed. Run tizen-vm build.')
+            raise ValueError('No image installed. Run tizen-ornn build.')
         if not explicit and 'TIZEN_DISK' not in os.environ:
             os.environ['TIZEN_SELECTION_LINK'] = str(selection_link(home))
         os.environ['TIZEN_OUT'] = str(image or home)
@@ -521,7 +530,7 @@ def main():
     if os.environ.get('TIZEN_DISK') or os.environ.get('TIZEN_KERNEL'):
         parser.error('unset TIZEN_DISK and TIZEN_KERNEL to manage the selected image')
     if explicit and Path(explicit).resolve() != home:
-        parser.error('choose either TIZEN_OUT or TIZEN_VM_HOME to manage images')
+        parser.error('choose either TIZEN_OUT or TIZEN_ORNN_HOME to manage images')
     if args.command == 'update' and args.names and not args.packages:
         parser.error('use update --packages with RPM names')
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
@@ -535,7 +544,7 @@ def main():
                     return
                 active = choice[1]
         if active is None:
-            raise ValueError('No image installed. Run tizen-vm build, then tizen-vm run.')
+            raise ValueError('No image installed. Run tizen-ornn build, then tizen-ornn run.')
         disk = str(disk_at(active))
         if args.command == 'install':
             command = [str(SCRIPTS / 'guest-command'), disk, 'install', *args.packages]
@@ -591,6 +600,6 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
-        sys.exit(f'tizen-vm: {error}')
+        sys.exit(f'tizen-ornn: {error}')
     except KeyboardInterrupt:
         sys.exit(130)

@@ -2,7 +2,7 @@
 # Execute the ARM userspace without modifying the host binfmt registration.
 set -euo pipefail
 if (( $# == 0 )); then echo "Usage: $0 COMMAND [ARGS...]" >&2; exit 2; fi
-cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-vm/armv7l-emulator
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-ornn/armv7l-emulator
 mkdir -p "$cache"
 exec 9>"$cache/.lock"
 flock 9

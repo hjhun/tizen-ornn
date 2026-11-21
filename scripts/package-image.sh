@@ -33,7 +33,7 @@ stage=$(mktemp -d "$dest/.bundle.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 base=$stage/$bundle
 mkdir -p "$base/out"
-for item in README.md tizen-vm config scripts kernel guest tests packaging sdk cross docs; do
+for item in README.md tizen-ornn config scripts kernel guest tests packaging sdk cross docs; do
     cp -a "$project/$item" "$base/"
 done
 find "$base" -type d -name __pycache__ -prune -exec rm -rf {} +
@@ -47,7 +47,12 @@ fi
 (cd "$base/kernel" && sha256sum -c kernel.sha256)
 cp "$out/bzImage" "$out/kernel.config" "$base/out/"
 if [[ -f "$out/snapshot.lock.json" ]]; then cp "$out/snapshot.lock.json" "$base/out/"; fi
-if [[ -f "$out/.tizen-vm-image-revision" ]]; then cp "$out/.tizen-vm-image-revision" "$base/out/"; fi
+for marker in .tizen-ornn-image-revision .tizen-vm-image-revision; do
+    if [[ -f $out/$marker ]]; then
+        cp "$out/$marker" "$base/out/.tizen-ornn-image-revision"
+        break
+    fi
+done
 if [[ -f "$out/.tizen-virtio-console" ]]; then touch "$base/out/.tizen-virtio-console"; fi
 # A qcow2 may have a backing file. Always export a standalone raw filesystem.
 raw="$disk"

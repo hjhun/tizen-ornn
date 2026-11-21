@@ -12,7 +12,7 @@ smackctl apply
     . /etc/tizen-platform.conf
     [ -d "$TZ_SYS_CRASH" ] ||
         exec /bin/bash -e /usr/share/platform-extension/210.crash-worker-platform-extension-migration.sh
-) || echo 'tizen-vm: could not initialize the crash report directories' >&2
+) || echo 'tizen-ornn: could not initialize the crash report directories' >&2
 ip link set lo up
 for path in /sys/class/net/*; do
     name=${path##*/}

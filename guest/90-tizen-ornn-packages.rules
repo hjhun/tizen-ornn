@@ -1,0 +1,2 @@
+SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.vm.packages", OWNER="root", GROUP="root", MODE="0600", SYMLINK+="tizen-ornn-packages", TAG+="systemd", ENV{SYSTEMD_WANTS}+="tizen-guest-control.service"
+SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.vm.browser", OWNER="owner", GROUP="tizen", MODE="0660", SECLABEL{smack}="User::Shell", SYMLINK+="tizen-ornn-browser"

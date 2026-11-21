@@ -56,8 +56,8 @@ for account in root tizen owner; do
 done
 # The snapshot's Dali login hook cleans the platform owner's private cache.
 dali="$root/etc/profile.d/dali3-shader-conf.sh"
-if [[ -f $dali ]] && ! grep -q '^# tizen-vm owner cache' "$dali"; then
-    sed -i '1i# tizen-vm owner cache' "$dali"
+if [[ -f $dali ]] && ! grep -q '^# tizen-ornn owner cache' "$dali"; then
+    sed -i '1i# tizen-ornn owner cache' "$dali"
     sed -i '2i[ "$(id -un)" != tizen ] || return 0' "$dali"
 fi
 # Local development VM: permit tizen to enter the root login shell.

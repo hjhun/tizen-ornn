@@ -25,14 +25,17 @@ def user_config():
     if override:
         return Path(override).expanduser().absolute()
     directory = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    return directory / "tizen-vm/image.toml"
+    return directory / "tizen-ornn/image.toml"
 
 
 def config_path():
     user = user_config()
     if os.environ.get("TIZEN_IMAGE_CONFIG") or user.exists():
         return user
-    system = Path("/etc/tizen-vm/image.toml")
+    legacy = user.parent.parent / "tizen-vm/image.toml"
+    if legacy.is_file():
+        return legacy
+    system = Path("/etc/tizen-ornn/image.toml")
     return system if system.exists() else PROJECT / "config/image.toml"
 
 

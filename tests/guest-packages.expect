@@ -41,12 +41,12 @@ set failed [catch {
     exec python3 $root/tests/guest-channel.py $disk
     set installed [exec {*}$client ed]
     if {[string first "Installing: ed-" $installed] < 0} {error $installed}
-    if {![catch {exec {*}$client tizen-vm-nonexistent-rpm-test} msg opts] ||
+    if {![catch {exec {*}$client tizen-ornn-nonexistent-rpm-test} msg opts] ||
         [lindex [dict get $opts -errorcode] 2] != 104} {error "Missing RPM status: $msg"}
 
     send -- "resume\r"
     required [string map {START END} $start]
-    send -- {rpm -q ed; stat -c %U:%G:%a "$(readlink -f /dev/tizen-vm-packages)"; test -z "$(find /tmp -maxdepth 1 -name 'tizen-update-*' -print -quit)" && echo UPLOAD-CLEAN}
+    send -- {rpm -q ed; stat -c %U:%G:%a "$(readlink -f /dev/tizen-ornn-packages)"; test -z "$(find /tmp -maxdepth 1 -name 'tizen-update-*' -print -quit)" && echo UPLOAD-CLEAN}
     send -- "\r"
     required {ed-[0-9][^\r\n]*\.x86_64}
     required {root:root:600}

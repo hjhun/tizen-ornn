@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 ALIASES = ("tizen-emulator", "tizen-base")  # Native solver priority order.
 SHARE = Path("usr/share/tizen-snapshot")
 LIVE = Path("etc/zypp/repos.d")
-STATE = Path("/var/lib/tizen-vm/rpm-updates")
+STATE = Path("/var/lib/tizen-ornn/rpm-updates")
 NAME = r"[A-Za-z0-9][A-Za-z0-9+._-]{0,199}"
 HASH = r"[0-9a-f]{64}"
 MIB = 1024 * 1024

@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 root = Path(__file__).resolve().parents[1]
-loader = SourceFileLoader('image_manager', str(root / 'tizen-vm'))
+loader = SourceFileLoader('image_manager', str(root / 'tizen-ornn'))
 manager = module_from_spec(spec_from_loader(loader.name, loader))
 loader.exec_module(manager)
 source = 'https://mirror.example/Tizen-10.1/'
@@ -27,7 +27,7 @@ class ImageSelection(unittest.TestCase):
         self.old.mkdir()
         (self.old / 'bzImage').write_bytes(b'old kernel')
         (self.old / 'tizen-rootfs.ext4').write_bytes(b'original disk contents')
-        self.stack.enter_context(patch.dict(manager.os.environ, {'TIZEN_VM_HOME': str(self.home)}))
+        self.stack.enter_context(patch.dict(manager.os.environ, {'TIZEN_ORNN_HOME': str(self.home)}))
         self.stack.enter_context(patch.object(manager, 'dependencies'))
         self.stack.enter_context(patch.object(manager, 'requested_image', return_value=(release, source)))
         self.builder = self.stack.enter_context(patch.object(manager, 'build_image', side_effect=self.build))
@@ -36,7 +36,7 @@ class ImageSelection(unittest.TestCase):
     def build(self, stage, version):
         for name in ('bzImage', 'tizen-rootfs.ext4', '.image-ready'):
             (stage / name).touch()
-        (stage / '.tizen-vm-image-revision').write_text((root / 'config/image-revision').read_text())
+        (stage / '.tizen-ornn-image-revision').write_text((root / 'config/image-revision').read_text())
         (stage / 'snapshot.lock.json').write_text(json.dumps({
             'release': version,
             'archive': {'url': f'{source}Tizen-10.1-Unified/{version}/images/file.tar.gz'},
@@ -142,7 +142,7 @@ class ImageSelection(unittest.TestCase):
         self.copy.assert_not_called()
 
     def test_legacy_tizen_out_remains_launchable_after_managed_update(self):
-        with patch.dict(manager.os.environ, {'TIZEN_OUT': str(self.old), 'TIZEN_VM_HOME': ''}):
+        with patch.dict(manager.os.environ, {'TIZEN_OUT': str(self.old), 'TIZEN_ORNN_HOME': ''}):
             home = manager.data_home()
             self.assertEqual(home, self.old)
             self.assertEqual(manager.active_image(home), self.old)
@@ -166,7 +166,7 @@ class ImageSelection(unittest.TestCase):
             (['update', '--packages', '--snapshot', release, 'ed'], ['update-packages', disk, '--snapshot', release, 'ed']),
         ]
         for args, expected in examples:
-            with self.subTest(args=args), patch.object(manager.sys, 'argv', ['tizen-vm', *args]), \
+            with self.subTest(args=args), patch.object(manager.sys, 'argv', ['tizen-ornn', *args]), \
                     patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run, self.assertRaises(SystemExit):
                 try:
                     manager.main()
@@ -175,7 +175,7 @@ class ImageSelection(unittest.TestCase):
                     run.assert_called_once_with(helper, [helper, *expected[1:]])
 
     def interactive(self, args, answers):
-        with patch.object(manager.sys, 'argv', ['tizen-vm', *args]), \
+        with patch.object(manager.sys, 'argv', ['tizen-ornn', *args]), \
                 patch('sys.stdin.isatty', return_value=True), \
                 patch('sys.stdout.isatty', return_value=True), \
                 patch('builtins.input', side_effect=answers):
@@ -218,10 +218,10 @@ class ImageSelection(unittest.TestCase):
         self.assertTrue(manager.disk_at(current).exists())
 
     def test_build_reuses_existing_disk_and_run_selects_it(self):
-        with patch.object(manager.sys, 'argv', ['tizen-vm', 'build']):
+        with patch.object(manager.sys, 'argv', ['tizen-ornn', 'build']):
             manager.main()
         self.builder.assert_not_called()
-        with patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', ['tizen-vm', 'run', '--gui']), \
+        with patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', ['tizen-ornn', 'run', '--gui']), \
                 patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run, self.assertRaises(SystemExit):
             try:
                 manager.main()
@@ -234,7 +234,7 @@ class ImageSelection(unittest.TestCase):
             for flag, expected in (([], ['--gui']), (['--gui'], ['--gui']), (['--headless'], [])):
                 for args in (verb + flag, flag + verb):
                     with self.subTest(args=args), patch.dict(manager.os.environ), \
-                            patch.object(manager.sys, 'argv', ['tizen-vm', *args]), \
+                            patch.object(manager.sys, 'argv', ['tizen-ornn', *args]), \
                             patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
                         with self.assertRaises(SystemExit):
                             manager.main()
@@ -244,7 +244,7 @@ class ImageSelection(unittest.TestCase):
     def test_run_and_start_forward_share_paths_as_one_argument(self):
         folder = './project with spaces,commas'
         for verb, option in [('run', '--share'), ('start', '--share-ro')]:
-            argv = ['tizen-vm', verb, '--gui', '--host-browser', option, folder]
+            argv = ['tizen-ornn', verb, '--gui', '--host-browser', option, folder]
             with self.subTest(verb=verb), patch.dict(manager.os.environ), patch.object(manager.sys, 'argv', argv), \
                     patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:
                 with self.assertRaises(SystemExit):
@@ -255,7 +255,7 @@ class ImageSelection(unittest.TestCase):
         directory = self.home / 'xdg'
         with patch.dict(manager.os.environ, XDG_CONFIG_HOME=str(directory), TIZEN_IMAGE_CONFIG=''):
             manager.configure(source, release)
-            dest = directory / 'tizen-vm/image.toml'
+            dest = directory / 'tizen-ornn/image.toml'
             self.assertEqual(manager.config_path(), dest)
             prior = dest.read_bytes()
             with self.assertRaisesRegex(ValueError, 'HTTPS'):

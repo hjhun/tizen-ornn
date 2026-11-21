@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Send one HTTPS URL to the browser of the user running tizen-vm."""
+"""Send one HTTPS URL to the browser of the user running tizen-ornn."""
 import os
 from pathlib import Path
 import select
@@ -7,7 +7,7 @@ import sys
 import time
 import uuid
 
-PORT = "/dev/tizen-vm-browser"
+PORT = "/dev/tizen-ornn-browser"
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
             os.execv("/usr/bin/xdg-open", sys.argv)
         if not url.startswith("https://"):
             sys.exit("The host browser port supports HTTPS URLs only.")
-        sys.exit("Start the VM with tizen-vm run --host-browser to open HTTPS links.")
+        sys.exit("Start the VM with tizen-ornn run --host-browser to open HTTPS links.")
     if not url.isascii() or not url.isprintable() or " " in url:
         sys.exit("Invalid HTTPS URL")
     ident = uuid.uuid4().hex.encode()

@@ -47,18 +47,18 @@ if ! "${tm[@]}" has-session -t '=vm' 2>/dev/null; then
     : > "$result.log"
     new=1
 else
-    if (( host_browser )) && [[ $("${tm[@]}" show-environment -t '=vm' TIZEN_VM_HOST_BROWSER 2>/dev/null || :) != TIZEN_VM_HOST_BROWSER=1 ]]; then
+    if (( host_browser )) && [[ $("${tm[@]}" show-environment -t '=vm' TIZEN_ORNN_HOST_BROWSER 2>/dev/null || :) != TIZEN_ORNN_HOST_BROWSER=1 ]]; then
         echo 'Shut down the guest and restart with --host-browser to enable browser access.' >&2
         exit 2
     fi
     if [[ -n $share_id ]]; then
-        active_share=$("${tm[@]}" show-environment -t '=vm' TIZEN_VM_SHARE_ID 2>/dev/null || :)
-        if [[ $active_share != "TIZEN_VM_SHARE_ID=$share_id" ]]; then
+        active_share=$("${tm[@]}" show-environment -t '=vm' TIZEN_ORNN_SHARE_ID 2>/dev/null || :)
+        if [[ $active_share != "TIZEN_ORNN_SHARE_ID=$share_id" ]]; then
             echo 'The running VM has different share settings. Run systemctl poweroff in the guest to change them.' >&2
             exit 2
         fi
     fi
-    if (( ! host_network )) && [[ $("${tm[@]}" show-environment -t '=vm' TIZEN_VM_HOST_NETWORK 2>/dev/null || :) == TIZEN_VM_HOST_NETWORK=1 ]]; then
+    if (( ! host_network )) && [[ $("${tm[@]}" show-environment -t '=vm' TIZEN_ORNN_HOST_NETWORK 2>/dev/null || :) == TIZEN_ORNN_HOST_NETWORK=1 ]]; then
         echo 'The running VM started with host network import enabled. Run systemctl poweroff in the guest before changing this option.' >&2
         exit 2
     fi
@@ -67,7 +67,7 @@ fi
 exec 6<"$result" 7<"$result.log"
 status=0
 if (( new )); then
-    "${tm[@]}" new-session -d -s vm -n console -e "TIZEN_CONSOLE_SIZE=${TIZEN_CONSOLE_SIZE:-}" -e "TIZEN_VM_SHARE_ID=$share_id" -e "TIZEN_VM_HOST_NETWORK=$host_network" -e "TIZEN_VM_HOST_BROWSER=$host_browser" \
+    "${tm[@]}" new-session -d -s vm -n console -e "TIZEN_CONSOLE_SIZE=${TIZEN_CONSOLE_SIZE:-}" -e "TIZEN_ORNN_SHARE_ID=$share_id" -e "TIZEN_ORNN_HOST_NETWORK=$host_network" -e "TIZEN_ORNN_HOST_BROWSER=$host_browser" \
         -- "$self" --pane "$result" "$@" 6<&- 7<&- 8>&- || status=$?
 fi
 if (( status == 0 )); then

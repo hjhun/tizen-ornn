@@ -18,7 +18,7 @@ for dir in workspace .cargo rpmbuild .local .tizen; do
 done
 # crash-manager checks the executable path as crash_worker after dropping UID.
 # Keep binaries it needs outside the private AI home and preserve them on update.
-tools=$root$home/.tizen-vm-tools
+tools=$root$home/.tizen-ornn-tools
 crash_gid=$(chroot "$root" id -g crash_worker)
 [[ ! -L $tools ]]
 install -d -m 2750 -o "$uid" -g "$crash_gid" "$tools"

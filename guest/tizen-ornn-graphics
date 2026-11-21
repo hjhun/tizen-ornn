@@ -7,17 +7,17 @@ units=/run/systemd/system
 for unit in user@ boot-animation display-manager; do
     dir=$units/$unit.service.d
     mkdir -p "$dir"
-    cat > "$dir/tizen-vm-graphics.conf" <<'UNIT'
+    cat > "$dir/tizen-ornn-graphics.conf" <<'UNIT'
 [Service]
 BindReadOnlyPaths=/hal/lib64/driver:/usr/lib64/driver
 UNIT
-    if [ ! -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm/software-renderer/raw ]; then
+    if [ ! -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/software-renderer/raw ]; then
         continue
     fi
-    echo 'Environment=LIBGL_ALWAYS_SOFTWARE=1' >> "$dir/tizen-vm-graphics.conf"
+    echo 'Environment=LIBGL_ALWAYS_SOFTWARE=1' >> "$dir/tizen-ornn-graphics.conf"
     if [ "$unit" = display-manager ]; then
         # Evas otherwise rejects softpipe and attempts the hardware GBM path.
-        echo 'Environment=EVAS_GL_NO_BLACKLIST=1' >> "$dir/tizen-vm-graphics.conf"
+        echo 'Environment=EVAS_GL_NO_BLACKLIST=1' >> "$dir/tizen-ornn-graphics.conf"
     fi
 done
 
@@ -27,11 +27,11 @@ hal=/hal/lib64/libhal-backend-audio.so
 if [ "$(rpm -qf --qf '%{NAME}' "$hal" 2>/dev/null)" = audio-hal-emul ] &&
     ! readelf -d "$hal" | grep -Fq '[libm.so.6]'; then
     if ! command -v patchelf >/dev/null; then
-        echo 'tizen-vm: run tizen-vm install patchelf on the host and restart the GUI to enable volume management.' >&2
+        echo 'tizen-ornn: run tizen-ornn install patchelf on the host and restart the GUI to enable volume management.' >&2
         exit 0
     fi
     # Keep the RPM intact. Only the PulseAudio namespace uses this copy.
-    work=/run/tizen-vm-audio
+    work=/run/tizen-ornn-audio
     mkdir -p "$work"
     mount -t tmpfs -o nosuid,nodev,mode=0755,size=1m tmpfs "$work"
     cp "$hal" "$work/backend.so"
@@ -39,5 +39,5 @@ if [ "$(rpm -qf --qf '%{NAME}' "$hal" 2>/dev/null)" = audio-hal-emul ] &&
     chsmack -a _ "$work/backend.so"
     mkdir -p "$units/pulseaudio.service.d"
     printf '[Service]\nBindReadOnlyPaths=%s:%s\n' "$work/backend.so" "$hal" \
-        > "$units/pulseaudio.service.d/tizen-vm-audio.conf"
+        > "$units/pulseaudio.service.d/tizen-ornn-audio.conf"
 fi

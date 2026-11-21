@@ -5,7 +5,7 @@ qemu=${TIZEN_ARM_QEMU:-qemu-system-arm}
 if ! command -v "$qemu" >/dev/null && [[ -x $out/cache/qemu/usr/bin/qemu-system-arm ]]; then
     qemu=$out/cache/qemu/usr/bin/qemu-system-arm
 fi
-[[ -s $out/zImage && -s $out/disk/hal.img ]] || { echo 'Prepare the ARMv7 headed VM with tizen-vm --arch armv7l build.' >&2; exit 1; }
+[[ -s $out/zImage && -s $out/disk/hal.img ]] || { echo 'Prepare the ARMv7 headed VM with tizen-ornn --arch armv7l build.' >&2; exit 1; }
 exec 9>"$out/build.lock"
 flock -n -x 9 || { echo 'The ARMv7 VM is already running or building.' >&2; exit 1; }
 args=()

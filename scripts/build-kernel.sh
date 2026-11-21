@@ -16,7 +16,7 @@ if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 ]]; then
         cp -- "$prebuilt/bzImage" "$prebuilt/kernel.config" "$stage/"
         (cd "$stage" && sha256sum -c "$prebuilt/kernel.sha256")
     else
-        release=https://github.com/hjhun/tizen-vm/releases/download/10.1-r6
+        release=https://github.com/hjhun/tizen-ornn/releases/download/10.1-r6
         for file in bzImage kernel.config; do
             curl -fLsS --retry 2 "$release/$file" -o "$stage/$file"
         done

@@ -40,10 +40,10 @@ The snapshot metadata remains usable offline for queries. Installing an uncached
 Start the selected VM, then use a second host terminal. These commands refresh the VM's package repositories and update its installed native RPMs.
 
 ```sh
-tizen-vm update --packages ed
-tizen-vm update --packages --snapshot tizen-10.1-unified_20261119.053314
+tizen-ornn update --packages ed
+tizen-ornn update --packages --snapshot tizen-10.1-unified_20261119.053314
 ```
 
 Omitting the snapshot selects the configured mirror's latest dated Unified build and its matching Base build. Supplying RPM names limits the transaction to installed packages and their required dependencies. With no names, zypper updates all eligible installed packages. Local repositories keep their existing definitions. The source image identity, kernel and ARM cross sysroot belong to the image build. [Snapshot selection](snapshot-build.md)
 
-Some Tizen rebuilds keep the same RPM name, epoch, version, release and architecture. The updater compares the recorded package checksum against the new primary index. It explicitly reinstalls changed builds, remembers successful replacements, and keeps the old checksum for unselected installed packages. After an interrupted transaction, repeat the command to finish it. The active package snapshot is recorded in `/var/lib/tizen-vm/rpm-updates/active.json`. The original image lock remains at `/usr/share/tizen-snapshot/snapshot.lock.json`.
+Some Tizen rebuilds keep the same RPM name, epoch, version, release and architecture. The updater compares the recorded package checksum against the new primary index. It explicitly reinstalls changed builds, remembers successful replacements, and keeps the old checksum for unselected installed packages. After an interrupted transaction, repeat the command to finish it. The active package snapshot is recorded in `/var/lib/tizen-ornn/rpm-updates/active.json`. The original image lock remains at `/usr/share/tizen-snapshot/snapshot.lock.json`.

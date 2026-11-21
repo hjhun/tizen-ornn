@@ -21,4 +21,4 @@ The interactive Bash commands `claude`, `codex` and `agy` use their permission-b
 
 The installer links the coding-style and development-style skills from `~/dev-setup/skills` into `~/.agents/skills`, `~/.agent/skills`, and `~/.claude/skills`. The distributed copies contain reusable engineering rules.
 
-Graphify is installed in a dedicated Python environment under `/usr/local/lib/tizen-vm` so Tizen can load its native parsers. Its skill comes from the matching graphifyy distribution, and the Herdr skill comes from the installed Herdr binary. Both are linked alongside the two development skills. Setup leaves graph builds and project hooks under the developer's control.
+Graphify is installed in a dedicated Python environment under `/usr/local/lib/tizen-ornn` so Tizen can load its native parsers. Its skill comes from the matching graphifyy distribution, and the Herdr skill comes from the installed Herdr binary. Both are linked alongside the two development skills. Setup leaves graph builds and project hooks under the developer's control.

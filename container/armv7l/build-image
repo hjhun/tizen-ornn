@@ -5,7 +5,7 @@ here=$(cd "$(dirname "$0")" && pwd -P)
 project=$(cd "$here/../.." && pwd -P)
 tag=${1:-localhost/tizen-ornn:armv7l}
 if (( $# > 1 )); then echo "Usage: $0 [LOCAL_IMAGE_TAG]" >&2; exit 2; fi
-cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-vm/armv7l-container
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/tizen-ornn/armv7l-container
 mkdir -p "$cache"
 work=$(mktemp -d "$cache/build.XXXXXXXX")
 base="localhost/ornn-base:${work##*.}"

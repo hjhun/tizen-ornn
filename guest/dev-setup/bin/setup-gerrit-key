@@ -8,6 +8,6 @@ if [[ -e $key || -L $key || -e $key.pub || -L $key.pub ]]; then
     echo "An SSH key already exists at $key or $key.pub. Keeping it." >&2
     exit 1
 fi
-ssh-keygen -t ed25519 -a 100 -f "$key" -C "tizen-vm Gerrit"
+ssh-keygen -t ed25519 -a 100 -f "$key" -C "tizen-ornn Gerrit"
 echo "Set User in ~/.ssh/config to your Gerrit username, then register this public key under Settings > SSH Keys:"
 cat "$key.pub"

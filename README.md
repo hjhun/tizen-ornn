@@ -1,31 +1,46 @@
-# tizen-vm
+# Tizen Ornn
 
-A writable Tizen 10.1 development VM for x86_64 Ubuntu and Ubuntu on WSL2. QEMU boots Tizen's systemd services with SMACK and Linux 6.12.41 from the Tizen RPi4 kernel tree. Use a terminal for platform development or open a window for EFL applications.
+Tizen Ornn builds and runs a writable Tizen 10.1 development VM for x86_64 Ubuntu and Ubuntu on WSL2. QEMU boots Tizen's systemd services with SMACK and Linux 6.12.41 from the Tizen RPi4 kernel tree. Use a terminal for platform development or open a window for EFL applications.
 
 ## Install and start
 
 Run these commands in an **Ubuntu 24.04 x86_64** terminal. On Windows, open Ubuntu in WSL2.
 
 ```sh
-curl -fLO https://github.com/hjhun/tizen-vm/releases/latest/download/tizen-vm_amd64.deb
-sudo apt install ./tizen-vm_amd64.deb
-tizen-vm build
-tizen-vm run
+curl -fLO https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb
+sudo apt install ./tizen-ornn_amd64.deb
+tizen-ornn build
+tizen-ornn run
 ```
 
-APT installs the host CLI and its dependencies. Run `build` and `run` as your normal user. The first build requests sudo to mount the image, downloads the dated Tizen snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse development disk. The VM uses host space as its disk fills, up to the guest filesystem's capacity. Keep the default image store, `~/.local/share/tizen-vm`, on a Linux filesystem. Set `TIZEN_VM_HOME` to choose another location. [Host package](https://github.com/hjhun/tizen-vm/releases/latest/download/tizen-vm_amd64.deb) · [Tizen SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
+APT installs the host CLI and its dependencies. Run `build` and `run` as your normal user. The first build requests sudo to mount the image, downloads the dated Tizen snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse development disk. The VM uses host space as its disk fills, up to the guest filesystem's capacity. Keep the default image store, `~/.local/share/tizen-ornn`, on a Linux filesystem. Set `TIZEN_ORNN_HOME` to choose another location. [Host package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) · [Tizen SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
+
+### Upgrade from tizen-vm
+
+Shut down any running guest with the old CLI before installing the new package.
+APT replaces the old host package. Tizen Ornn reuses the existing image store
+in place when the new store does not exist. An existing `TIZEN_VM_HOME`
+override still works; `TIZEN_ORNN_HOME` takes precedence. Existing per-user
+snapshot settings are read until you save a new configuration. If you customized
+`/etc/tizen-vm/image.toml`, copy those settings to `/etc/tizen-ornn/image.toml`.
+The guest's native RPM builder is still called `ornn`.
 
 ### Find the VM disk
 
 For a standard package installation, `current` points to the selected image. Run these commands in Ubuntu to see its directory and disk file. Fresh builds use `tizen-rootfs.ext4`. A compressed image uses `tizen-rootfs.qcow2`.
 
 ```sh
-store=${TIZEN_VM_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/tizen-vm}
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+store=${TIZEN_ORNN_HOME:-${TIZEN_VM_HOME:-}}
+if [ -z "$store" ]; then
+    store=$data/tizen-ornn
+    if [ ! -e "$store" ] && [ -d "$data/tizen-vm" ]; then store=$data/tizen-vm; fi
+fi
 realpath "$store/current"
 ls -lh "$store/current"/tizen-rootfs.*
 ```
 
-In a terminal, `tizen-vm delete` lets you pick a managed disk and asks you to type its name before deletion. Enter picks the first menu entry and q cancels. With redirected input or output, this command lists the disks. For automation, use `tizen-vm delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
+In a terminal, `tizen-ornn delete` lets you pick a managed disk and asks you to type its name before deletion. Enter picks the first menu entry and q cancels. With redirected input or output, this command lists the disks. For automation, use `tizen-ornn delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
 
 For Windows File Explorer, resolve the Linux symlinks in WSL2 first and paste the printed path into the address bar.
 
@@ -41,24 +56,24 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 
 | From | Command | Result |
 |---|---|---|
-| Host | `tizen-vm` | In a terminal, choose an installed image by number when several are ready. Enter accepts the first image and q cancels. A single image opens directly. |
-| Host | `tizen-vm run` | Start the currently selected x86_64 VM or reconnect to its console |
-| Host | `tizen-vm run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
-| Host | `tizen-vm run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
-| Host | `tizen-vm run --share-ro "$PWD"` | Open the same directory read-only |
-| Host | `tizen-vm --headless` | Start with a console only |
+| Host | `tizen-ornn` | In a terminal, choose an installed image by number when several are ready. Enter accepts the first image and q cancels. A single image opens directly. |
+| Host | `tizen-ornn run` | Start the currently selected x86_64 VM or reconnect to its console |
+| Host | `tizen-ornn run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
+| Host | `tizen-ornn run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
+| Host | `tizen-ornn run --share-ro "$PWD"` | Open the same directory read-only |
+| Host | `tizen-ornn --headless` | Start with a console only |
 | Guest console | Ctrl+C | Interrupt the foreground command, including a running dlog viewer |
 | Top-level guest shell | `exit` | Return to the host while keeping the VM, shell and jobs running |
-| Host | `tizen-vm shutdown` | Shut down the selected VM and wait for its disk to be released |
+| Host | `tizen-ornn shutdown` | Shut down the selected VM and wait for its disk to be released |
 | Guest root shell | `systemctl poweroff` | Shut down the VM |
-| Another host terminal | `tizen-vm install ed` | Install a Tizen RPM and its dependencies in the running VM |
-| Another host terminal | `tizen-vm install codex` | Install the optional coding client for the guest developer |
+| Another host terminal | `tizen-ornn install ed` | Install a Tizen RPM and its dependencies in the running VM |
+| Another host terminal | `tizen-ornn install codex` | Install the optional coding client for the guest developer |
 
 Connections share the same serial console. Closing a terminal leaves the VM running while the Linux host stays up. An `exit` inside `su - owner` returns to the parent guest shell. A single Ctrl+D at an empty top-level login prompt leaves it open. Shut down the guest before changing its display mode. [Console and graphical sessions](docs/running.md)
 
 ### Use the host network and proxy
 
-The guest uses the Ubuntu host's outbound network and DNS through QEMU NAT. At boot, the CLI imports the host's DNS search domains and `http_proxy`, `https_proxy`, `all_proxy` and `no_proxy` settings. In WSL2 it also checks Windows manual proxy settings when Ubuntu has no proxy endpoint configured. Set a proxy for one boot with `https_proxy=http://proxy.example.org:3128 tizen-vm run`, or start with `tizen-vm run --no-host-network` to skip import. Power off the VM before changing boot options. [Shared directories, DNS and proxy details](docs/running.md#share-a-host-directory)
+The guest uses the Ubuntu host's outbound network and DNS through QEMU NAT. At boot, the CLI imports the host's DNS search domains and `http_proxy`, `https_proxy`, `all_proxy` and `no_proxy` settings. In WSL2 it also checks Windows manual proxy settings when Ubuntu has no proxy endpoint configured. Set a proxy for one boot with `https_proxy=http://proxy.example.org:3128 tizen-ornn run`, or start with `tizen-ornn run --no-host-network` to skip import. Power off the VM before changing boot options. [Shared directories, DNS and proxy details](docs/running.md#share-a-host-directory)
 
 ## Develop inside Tizen
 
@@ -74,16 +89,16 @@ cargo run --offline
 In a Tizen CMake project such as `aul-1`, run `tizen-build test` in the source directory. It reads CMake options from the RPM spec, builds incrementally and runs CTest. The image also supports x86_64 and ARMv7 ELF/RPM builds, TPK packaging and SDB connections. Guest root can use `zypper` directly. [Native, cross and app build examples (Korean)](docs/development.md)
 For a standalone ARMv7 RPM builder on Ubuntu or Windows with WSL2, see [Build with ornn in an ARMv7 container (Korean)](docs/armv7l-container.md).
 
-For a coding assistant, use `tizen-vm install agy`, `gemini`, `claude` or `codex` on the host. Then run `tizen-ai-shell` inside the VM and launch the installed CLI from your project. The image includes Node.js, npm, ripgrep, bubblewrap and socat. Sign in with your own provider account. [AI tool setup and verification](docs/ai-tools.md)
+For a coding assistant, use `tizen-ornn install agy`, `gemini`, `claude` or `codex` on the host. Then run `tizen-ai-shell` inside the VM and launch the installed CLI from your project. The image includes Node.js, npm, ripgrep, bubblewrap and socat. Sign in with your own provider account. [AI tool setup and verification](docs/ai-tools.md)
 
 ## Update
 
 | Host command | When to use it |
 |---|---|
-| `tizen-vm update --packages` | Update installed RPMs in the running guest from the latest configured snapshot |
-| `tizen-vm update --packages ed` | Limit the RPM transaction to a named package and its required dependencies |
-| `tizen-vm update --image` or `tizen-vm update` | Build a replacement system and migrate the previous disk's persistent files after guest shutdown |
-| `tizen-vm rollback` | Switch back to the previous disk after guest shutdown |
+| `tizen-ornn update --packages` | Update installed RPMs in the running guest from the latest configured snapshot |
+| `tizen-ornn update --packages ed` | Limit the RPM transaction to a named package and its required dependencies |
+| `tizen-ornn update --image` or `tizen-ornn update` | Build a replacement system and migrate the previous disk's persistent files after guest shutdown |
+| `tizen-ornn rollback` | Switch back to the previous disk after guest shutdown |
 
 In a terminal, both update modes offer a numbered choice when multiple updatable x86_64 images are installed. Image updates use the chosen stopped disk as the migration source. Package updates require the chosen guest to be running. Noninteractive updates use the active image. ARMv7 update support is pending.
 
@@ -93,11 +108,11 @@ Allow space for both images and build downloads. Migrating a QCOW2 disk or recov
 
 ## Choose the snapshot source
 
-`tizen-vm config` shows the effective source and initial snapshot. The default source is **download.tizen.org**. Choose a different initial snapshot or a compatible HTTPS mirror before building:
+`tizen-ornn config` shows the effective source and initial snapshot. The default source is **download.tizen.org**. Choose a different initial snapshot or a compatible HTTPS mirror before building:
 
 ```sh
-tizen-vm config --snapshot tizen-10.1-unified_20261119.053314
-tizen-vm config --repository https://mirror.example.org/snapshots/TIZEN/Tizen-10.1/
+tizen-ornn config --snapshot tizen-10.1-unified_20261119.053314
+tizen-ornn config --repository https://mirror.example.org/snapshots/TIZEN/Tizen-10.1/
 ```
 
-The repository must provide the same `Tizen-10.1-Unified/` and `Tizen-10.1-Base/` layout as the official server. Per-user settings live in `~/.config/tizen-vm/image.toml`. The system default is `/etc/tizen-vm/image.toml`. Set `TIZEN_IMAGE_CONFIG=/absolute/path/to/image.toml` for a one-off configuration. Tizen Studio SDK packages and the prebuilt project kernel have separately pinned sources. [Snapshot builder (Korean)](docs/snapshot-build.md) · [RPM repository details](docs/snapshot-packages.md) · [Guest verification results (Korean)](docs/verification.md)
+The repository must provide the same `Tizen-10.1-Unified/` and `Tizen-10.1-Base/` layout as the official server. Per-user settings live in `~/.config/tizen-ornn/image.toml`. The system default is `/etc/tizen-ornn/image.toml`. Set `TIZEN_IMAGE_CONFIG=/absolute/path/to/image.toml` for a one-off configuration. Tizen Studio SDK packages and the prebuilt project kernel have separately pinned sources. [Snapshot builder (Korean)](docs/snapshot-build.md) · [RPM repository details](docs/snapshot-packages.md) · [Guest verification results (Korean)](docs/verification.md)

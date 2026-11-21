@@ -33,11 +33,11 @@ Ubuntu 24.04.4 LTS x86_64를 실행하는 WSL2에서 Ubuntu 패키지를 APT로 
 | 콘솔 수명 | 두 터미널로 같은 VM에 접속해 Ctrl+C로 dlog를 종료했습니다. 최상위 셸에서 `exit`를 입력해 양쪽을 분리한 뒤 다시 접속해 같은 셸 PID, 작업 디렉터리, 백그라운드 프로세스를 확인했습니다. |
 | 최종 이미지 부팅 | 두 번 부팅해 `tests/boot-smoke.expect`의 18단계가 통과했습니다. systemd 플랫폼 서비스, SMACK, C/C++·Cargo, x86_64·ARMv7 빌드와 패키징, AI 런타임, GDB·strace, HTTPS, 재부팅 데이터 보존을 확인했습니다. SDB 피어 왕복은 이 실행에서 생략했습니다. |
 | WSLg GUI와 게스트 설치 | 선택된 R5의 일회용 오버레이를 `tests/guest-packages.expect --gui`로 부팅했습니다. 호스트에서 RPM을 설치하는 동안 게스트 전경 프로세스 PID가 유지됐고, 실제 가상 태블릿으로 EFL 버튼을 클릭해 화면의 숫자가 0에서 1로 바뀌었습니다. GUI 검사에는 호스트의 Expect와 Python Pillow가 필요합니다. |
-| 선택형 AI 도구 | 19일 게스트에 호스트 패키지의 `tizen-vm install codex`로 설치한 뒤 owner로 `codex sandbox`에서 프로세스를 실행했습니다. 별도의 10.1 게스트에서는 `agy`, `gemini`, `claude`, `codex` 모두 설치 후 버전 출력까지 확인했습니다. [AI 런타임과 검증 버전](ai-tools.md) |
+| 선택형 AI 도구 | 19일 게스트에 호스트 패키지의 `tizen-ornn install codex`로 설치한 뒤 owner로 `codex sandbox`에서 프로세스를 실행했습니다. 별도의 10.1 게스트에서는 `agy`, `gemini`, `claude`, `codex` 모두 설치 후 버전 출력까지 확인했습니다. [AI 런타임과 검증 버전](ai-tools.md) |
 
 ## R4 추가 검증
 
-WSL2에서 x86_64 Tizen VM을 부팅해 수행했습니다. 게스트의 일반 사용자 `owner`(UID 5001)가 소스와 빌드 디렉터리에 쓸 수 있는지 함께 확인했습니다.
+WSL2에서 x86_64 Tizen Ornn VM을 부팅해 수행했습니다. 게스트의 일반 사용자 `owner`(UID 5001)가 소스와 빌드 디렉터리에 쓸 수 있는지 함께 확인했습니다.
 
 | 작업 | 관찰 결과 |
 |---|---|

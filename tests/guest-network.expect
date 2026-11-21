@@ -61,7 +61,7 @@ set failed [catch {
             guest [string map [list @GATEWAY@ $gateway] {tr '\0' '\n' <"/proc/$pid/environ" | grep -Fxq 'http_proxy=@GATEWAY@'}]
             guest {su - owner -c 'test "$no_proxy" = 10.0.2.2 && test "$(curl -fsS --max-time 10 http://127.0.0.1:1/via-proxy)" = proxied'}
         } else {
-            guest {test ! -e /run/tizen-vm-network/login.sh && su - owner -c 'test -z "${http_proxy-}${HTTP_PROXY-}${no_proxy-}${NO_PROXY-}"'}
+            guest {test ! -e /run/tizen-ornn-network/login.sh && su - owner -c 'test -z "${http_proxy-}${HTTP_PROXY-}${no_proxy-}${NO_PROXY-}"'}
             guest {test -r "/proc/$pid/environ" && ! tr '\0' '\n' <"/proc/$pid/environ" | grep -qi '^http_proxy='}
         }
         guest [string map [list @GATEWAY@ $gateway] {su - owner -c 'test "$(curl -fsS --max-time 10 @GATEWAY@/direct)" = direct'}]

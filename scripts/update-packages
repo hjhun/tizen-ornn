@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Prepare verified native RPM indexes and send them to the running Tizen VM."""
+"""Prepare verified native RPM indexes and send them to the running Tizen Ornn VM."""
 import argparse
 import fcntl
 import json
@@ -28,7 +28,7 @@ with args.disk.open("rb") as disk:
     except BlockingIOError:
         running = Path(prefix + ".packages").is_socket()
 if not running:
-    parser.exit(1, "Start the selected VM with tizen-vm run before updating its packages.\n")
+    parser.exit(1, "Start the selected VM with tizen-ornn run before updating its packages.\n")
 
 with tempfile.TemporaryDirectory(prefix="tizen-rpm-update-") as tmp:
     work = Path(tmp)

@@ -140,7 +140,7 @@ def update(port, req):
 
 
 def main():
-    port = Port("/dev/tizen-vm-packages")
+    port = Port("/dev/tizen-ornn-packages")
     while True:
         try:
             req = port.receive()

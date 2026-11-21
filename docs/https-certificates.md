@@ -10,12 +10,12 @@ openssl x509 -in company-root.pem -noout -subject -issuer -dates -fingerprint -s
 |---|---|
 | Downloading the host CLI, resolving a snapshot or fetching build inputs on Ubuntu | Ubuntu, including the Ubuntu distribution running under WSL2 |
 | A `zypper` download inside the image build's Tizen chroot or the running VM | Tizen's system CA bundle |
-| `tizen-vm update --packages` | Ubuntu fetches repository metadata. The guest downloads RPM payloads. Check which step failed. |
+| `tizen-ornn update --packages` | Ubuntu fetches repository metadata. The guest downloads RPM payloads. Check which step failed. |
 | npm or a Node.js CLI inside Tizen | The guest Node.js process's trusted CAs |
 
 ### Ubuntu or WSL2
 
-Install the approved CA in the Ubuntu distribution that runs `tizen-vm`. Ubuntu expects one PEM certificate per file with a `.crt` extension in this directory. Retry the URL that failed after updating the store. [Ubuntu CA installation guide](https://ubuntu.com/server/docs/how-to/security/install-a-root-ca-certificate-in-the-trust-store/)
+Install the approved CA in the Ubuntu distribution that runs `tizen-ornn`. Ubuntu expects one PEM certificate per file with a `.crt` extension in this directory. Retry the URL that failed after updating the store. [Ubuntu CA installation guide](https://ubuntu.com/server/docs/how-to/security/install-a-root-ca-certificate-in-the-trust-store/)
 
 ```sh
 sudo install -m 0644 company-root.pem /usr/local/share/ca-certificates/company-root.crt
@@ -48,7 +48,7 @@ The R5 system bundle is `/etc/ssl/ca-bundle.pem`, a symlink to `/opt/var/lib/ca-
 )
 ```
 
-Retry the original curl, Git or zypper operation. Keep RPM repository signature verification enabled. A full `tizen-vm update --image` migrates `/root` and installs a fresh system CA bundle. Reapply the approved CA on the new image and recheck it after a CA package upgrade.
+Retry the original curl, Git or zypper operation. Keep RPM repository signature verification enabled. A full `tizen-ornn update --image` migrates `/root` and installs a fresh system CA bundle. Reapply the approved CA on the new image and recheck it after a CA package upgrade.
 
 For npm and Node-based tools, open `tizen-ai-shell` in the guest. Point new processes at the updated bundle before installing or launching the client. Shell exports apply to commands started in that shell. For an install that needs this setting, run the guest installer there. [Node.js CLI environment variables](https://nodejs.org/api/cli.html#node_extra_ca_certsfile)
 
