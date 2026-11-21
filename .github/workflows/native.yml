@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    paths: ['Cargo.*', 'src/**', 'tests/windows-console.ps1', '.github/workflows/native.yml']
+    paths: ['Cargo.*', 'src/**', 'packaging/windows-launcher.nsi', 'config/version', 'tests/windows-console.ps1', '.github/workflows/native.yml']
 permissions:
   contents: read
 jobs:
@@ -41,7 +41,6 @@ jobs:
           path: fixture
           retention-days: 1
       - name: Package the matching recipe for a full Windows build
-        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
         run: |
           mkdir -p kernel-input builder
           cp fixture/bzImage kernel-input/
@@ -50,7 +49,6 @@ jobs:
           TIZEN_ORNN_KERNEL_DIR="$PWD/kernel-input" scripts/package-cli.sh builder
           cp fixture/bzImage builder/
       - uses: actions/upload-artifact@v4
-        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
         with:
           name: windows-builder-inputs
           path: builder
@@ -93,10 +91,44 @@ jobs:
           if ($LASTEXITCODE) { throw 'QEMU extraction failed' }
           ./tests/windows-console.ps1 -Cli $cli -Image (Resolve-Path 'test image')
       - uses: actions/download-artifact@v4
-        if: inputs.provision || github.ref_name == 'verify/native-host-r16'
         with:
           name: windows-builder-inputs
           path: target/release/builder
+      - name: Package and open the standalone executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $makensis = "${env:ProgramFiles(x86)}/NSIS/makensis.exe"
+          if (!(Test-Path $makensis)) {
+            choco install nsis --yes --no-progress
+            if ($LASTEXITCODE) { throw 'Could not install NSIS' }
+          }
+          $payload = (Resolve-Path target/release).Path
+          $bundle = "$env:GITHUB_SHA-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          & $makensis "/DPAYLOAD=$payload" "/DBUNDLE_ID=$bundle" packaging/windows-launcher.nsi
+          if ($LASTEXITCODE) { throw 'Failed to package standalone executable' }
+          $downloads = New-Item -ItemType Directory "$env:RUNNER_TEMP/Ornn standalone download"
+          Copy-Item "$payload/tizen-ornn-windows-x64.exe" $downloads
+          $installed = "$env:LOCALAPPDATA/Tizen Ornn/tools/$bundle"
+          if (Test-Path $installed) { throw 'Expected a fresh bundle directory' }
+          foreach ($attempt in 1..2) {
+            $launch = Start-Process "$downloads/tizen-ornn-windows-x64.exe" -WorkingDirectory $downloads -PassThru
+            if (!$launch.WaitForExit(90000) -or $launch.ExitCode -ne 0) { throw 'Standalone launcher failed' }
+            $gui = $null
+            try {
+              for ($i = 0; $i -lt 60; $i++) {
+                $gui = Get-Process -Name tizen-ornn-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$installed/tizen-ornn-gui.exe".Replace('/','\') }
+                if ($gui.MainWindowTitle -eq 'Tizen Ornn') { break }
+                Start-Sleep 1
+              }
+              if ($gui.MainWindowTitle -ne 'Tizen Ornn') { throw 'Standalone GUI window missing' }
+            } finally { if ($gui) { $gui.Kill(); $gui.WaitForExit() } }
+          }
+          foreach ($file in 'tizen-ornn.exe','tizen-ornn-gui.exe','builder/bzImage','builder/tizen-ornn_amd64.deb') {
+            if ((Get-FileHash "$installed/$file").Hash -ne (Get-FileHash "$payload/$file").Hash) { throw "Damaged $file" }
+          }
+          & "$installed/tizen-ornn.exe" --version
+          if ($LASTEXITCODE) { throw 'Bundled CLI failed' }
       - name: Build a new Windows guest and verify the independent disk
         if: inputs.provision || github.ref_name == 'verify/native-host-r16'
         shell: pwsh

@@ -6,7 +6,7 @@ Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen develo
 
 | Host | Release files | First step |
 | --- | --- | --- |
-| Windows x64 | [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip) | Extract the entire archive, install QEMU and open `tizen-ornn-gui.exe` or use the CLI in PowerShell. |
+| Windows x64 | [Download the Windows launcher (.exe)](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.exe) | Double-click the file to open Tizen Ornn. Install QEMU before building or running a VM. |
 | Ubuntu 24.04 amd64, terminal | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) | Install the package, then run `tizen-ornn build`. |
 | Ubuntu 24.04 amd64, desktop | [CLI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb) and [GUI package](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-gui_amd64.deb) | Install both packages from the same release and open `tizen-ornn-gui`. |
 
@@ -39,9 +39,11 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 
 ### Windows x64 (native)
 
-1. Install [64-bit QEMU for Windows](https://www.qemu.org/download/#windows) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
-2. Download and extract the complete [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip). Keep both executables and the `builder` folder together.
-3. Start `tizen-ornn-gui.exe`, enter an image name, and choose **Build image…**. After the build finishes, select the image and click **Open guest terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
+1. Download [tizen-ornn-windows-x64.exe](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.exe) and double-click it. The launcher opens the GUI and keeps its CLI and image recipe under `%LOCALAPPDATA%\Tizen Ornn\tools` for subsequent runs. This step requires only the one file and runs as the current user.
+2. To create or start a VM, install [64-bit QEMU for Windows](https://www.qemu.org/download/#windows) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
+3. Enter an image name and choose **Build image…**. After the build finishes, select the image and click **Open guest terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
+
+For a portable CLI directory, extract the complete [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip) and open PowerShell in the extracted folder.
 
 The same operations work from PowerShell:
 
