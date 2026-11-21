@@ -81,7 +81,75 @@ async fn forward(pipe: NamedPipeClient) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn run(cmd: &mut Command) -> io::Result<()> {
+pub(super) fn size() -> Option<(u16, u16)> {
+    let mut info = CONSOLE_SCREEN_BUFFER_INFO::default();
+    if unsafe { GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &mut info) } == 0 {
+        return None;
+    }
+    let rect = info.srWindow;
+    Some((
+        (rect.Bottom - rect.Top + 1) as u16,
+        (rect.Right - rect.Left + 1) as u16,
+    ))
+}
+
+async fn control(path: &str, stop: &std::path::Path) -> io::Result<()> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let mut pipe = loop {
+        match ClientOptions::new().open(path) {
+            Ok(pipe) => break BufReader::new(pipe),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                tokio::time::sleep(Duration::from_millis(100)).await
+            }
+            Err(e) => return Err(e),
+        }
+    };
+    let mut applied = None;
+    let mut sequence = 0u64;
+    loop {
+        tokio::time::sleep(Duration::from_millis(350)).await;
+        let size = size();
+        let shutdown = stop.is_file();
+        if !shutdown && size == applied {
+            continue;
+        }
+        sequence += 1;
+        let id = format!("{sequence:032x}");
+        let request = if shutdown {
+            serde_json::json!({"op":"poweroff","id":id})
+        } else if let Some((rows, cols)) = size {
+            serde_json::json!({"op":"resize","id":id,"names":[rows.to_string(),cols.to_string()]})
+        } else {
+            continue;
+        };
+        pipe.get_mut()
+            .write_all(format!("{request}\n").as_bytes())
+            .await?;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match tokio::time::timeout(Duration::from_secs(4), pipe.read_line(&mut line)).await {
+                Err(_) => break,
+                Ok(result) => {
+                    if result? == 0 {
+                        return Ok(());
+                    }
+                }
+            }
+            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line)
+                && msg["id"] == id
+                && msg["type"] == "exit"
+            {
+                if msg["code"] == 0 {
+                    applied = size;
+                }
+                break;
+            }
+        }
+    }
+}
+
+pub(super) fn run(cmd: &mut Command, stop: &std::path::Path) -> io::Result<()> {
     let name = tempfile::Builder::new()
         .prefix("tizen-ornn-")
         .rand_bytes(16)
@@ -89,8 +157,15 @@ pub(super) fn run(cmd: &mut Command) -> io::Result<()> {
     let leaf = name.path().file_name().unwrap().to_string_lossy();
     let path = format!(r"\\.\pipe\{leaf}");
     cmd.args(["-chardev", &format!("pipe,id=console,path={leaf}")]);
+    let control_path = format!(r"\\.\pipe\{leaf}-control");
+    cmd.args([
+        "-chardev",
+        &format!("pipe,id=control,path={leaf}-control"),
+        "-device",
+        "virtserialport,bus=guestbus.0,chardev=control,name=org.tizen.vm.packages",
+    ]);
     let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
+        .enable_all()
         .build()?;
     let mut child = cmd.spawn()?;
     let start = Instant::now();
@@ -112,7 +187,15 @@ pub(super) fn run(cmd: &mut Command) -> io::Result<()> {
                 Err(e) => return Err(e),
             }
         };
-        forward(pipe).await
+        let forward = forward(pipe);
+        tokio::pin!(forward);
+        tokio::select! {
+            result = &mut forward => result,
+            result = control(&control_path, stop) => {
+                if let Err(error) = result { eprintln!("Guest control channel: {error}"); }
+                forward.await
+            }
+        }
     });
     if result.is_err() {
         let _ = child.kill();

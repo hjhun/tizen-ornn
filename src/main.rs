@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::{path::PathBuf, process::ExitCode};
 use tizen_ornn::VERSION;
+mod build_source;
 
 #[cfg(target_os = "linux")]
 mod ubuntu;
@@ -25,13 +26,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+    /// Save the host folder mounted at /home/tizen/share (or clear the setting).
+    ShareDir {
+        #[arg(required_unless_present = "reset", conflicts_with = "reset")]
+        path: Option<String>,
+        #[arg(long)]
+        reset: bool,
+    },
     /// List available images as JSON.
     Images,
     /// Create a development image or reuse the installed disk.
     Build {
-        #[cfg(windows)]
-        #[arg(long, default_value = "default")]
-        name: String,
+        /// Build from a compatible HTTPS repository, snapshot directory, or build.xml.
+        #[arg(long)]
+        repository: Option<String>,
+        /// Save the new image under this name. A URL defaults to its dated release ID.
+        #[arg(long)]
+        name: Option<String>,
     },
     /// Start the selected image and open its console.
     #[command(visible_alias = "start")]
@@ -39,10 +50,8 @@ enum Action {
         /// Use the kernel and disk in this directory.
         #[arg(long)]
         image_dir: Option<PathBuf>,
-        #[cfg(target_os = "linux")]
         #[arg(long, conflicts_with = "share_ro")]
         share: Option<PathBuf>,
-        #[cfg(target_os = "linux")]
         #[arg(long)]
         share_ro: Option<PathBuf>,
         #[cfg(target_os = "linux")]
@@ -60,9 +69,11 @@ enum Action {
         #[arg(long)]
         snapshot: Option<String>,
     },
-    #[cfg(target_os = "linux")]
-    /// Shut down the active guest.
-    Shutdown,
+    /// Shut down the selected guest cleanly.
+    Shutdown {
+        #[arg(long)]
+        image_dir: Option<PathBuf>,
+    },
     #[cfg(target_os = "linux")]
     /// Install packages in the guest.
     Install { packages: Vec<String> },

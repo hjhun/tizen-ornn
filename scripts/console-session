@@ -51,7 +51,7 @@ else
         echo 'Shut down the guest and restart with --host-browser to enable browser access.' >&2
         exit 2
     fi
-    if [[ -n $share_id ]]; then
+    if [[ -n $share_id && ${TIZEN_ORNN_IMPLICIT_SHARE:-0} == 0 ]]; then
         active_share=$("${tm[@]}" show-environment -t '=vm' TIZEN_ORNN_SHARE_ID 2>/dev/null || :)
         if [[ $active_share != "TIZEN_ORNN_SHARE_ID=$share_id" ]]; then
             echo 'The running VM has different share settings. Run systemctl poweroff in the guest to change them.' >&2

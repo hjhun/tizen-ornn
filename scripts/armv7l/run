@@ -13,6 +13,8 @@ for img in rootfs system-data user hal; do
     path=$out/disk/$img.img
     args+=(-drive "if=none,format=raw,id=$img,file=${path//,/,,}" -device "virtio-blk-device,drive=$img")
 done
+prefix=$("$(dirname "$0")/../vm-runtime" "$out/build.lock")
+args+=(-qmp "unix:$prefix.power,server=on,wait=off")
 if [[ -n ${TIZEN_QMP:-} ]]; then args+=(-qmp "unix:${TIZEN_QMP//,/,,},server=on,wait=off"); fi
 exec "$qemu" -machine virt -cpu cortex-a15 -accel tcg -m "${TIZEN_RAM:-1536}" -smp "${TIZEN_CPUS:-2}" \
     -kernel "$out/zImage" -append 'root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target' \

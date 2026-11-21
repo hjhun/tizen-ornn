@@ -1,14 +1,17 @@
 [package]
 name = "tizen-ornn"
-version = "10.1.18"
+version = "10.1.19"
 license = "Apache-2.0"
 edition = "2024"
 default-run = "tizen-ornn"
 
 [features]
-desktop = ["dep:eframe","dep:wgpu"]
+desktop = ["dep:eframe","dep:wgpu","dep:egui-file-dialog"]
 
 [dependencies]
+url = "2"
+roxmltree = "0.20"
+egui-file-dialog = { version = "0.10", optional = true, default-features = false }
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -27,14 +27,44 @@ fn cli() -> Result<Command, String> {
     Ok(cmd)
 }
 
+fn guest_arch(path: &std::path::Path) -> Option<&'static str> {
+    if path.join("bzImage").is_file()
+        && ["tizen-rootfs.ext4", "tizen-rootfs.qcow2"]
+            .iter()
+            .any(|file| path.join(file).is_file())
+    {
+        return Some("x86_64");
+    }
+    #[cfg(target_os = "linux")]
+    if path.join("zImage").is_file()
+        && ["rootfs.img", "system-data.img", "user.img", "hal.img"]
+            .iter()
+            .all(|file| path.join("disk").join(file).is_file())
+    {
+        return Some("armv7l");
+    }
+    None
+}
+
+fn connected_directories(store: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    match std::fs::read(store.join("connected-images.json")) {
+        Ok(data) => Ok(serde_json::from_slice(&data)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
+}
+
 #[derive(Default)]
 struct Launcher {
     images: Vec<Image>,
     selected: Option<PathBuf>,
-    custom: String,
-    #[cfg(windows)]
+    stopping: Option<(PathBuf, Child)>,
+    folder_dialog: egui_file_dialog::FileDialog,
     name: String,
+    repository: String,
+    build_open: bool,
     workdir: String,
+    share: String,
     active_workdir: String,
     settings_open: bool,
     status: String,
@@ -60,6 +90,18 @@ impl Launcher {
             return Err(String::from_utf8_lossy(&output.stderr).into_owned());
         }
         self.images = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+        for path in connected_directories(std::path::Path::new(&self.active_workdir))
+            .map_err(|e| e.to_string())?
+        {
+            if !self.images.iter().any(|image| image.path == path)
+                && let Some(arch) = guest_arch(&path)
+            {
+                self.images.push(Image {
+                    path,
+                    arch: arch.into(),
+                });
+            }
+        }
         if !self
             .images
             .iter()
@@ -67,6 +109,37 @@ impl Launcher {
         {
             self.selected = self.images.first().map(|i| i.path.clone());
         }
+        Ok(())
+    }
+
+    fn connect_directory(&mut self, path: PathBuf) -> std::io::Result<()> {
+        let arch = guest_arch(&path).ok_or_else(|| {
+            std::io::Error::other("Choose an image directory containing a guest kernel and disk.")
+        })?;
+        if !self.images.iter().any(|image| image.path == path) {
+            let store = std::path::Path::new(&self.active_workdir);
+            std::fs::create_dir_all(store)?;
+            let lock = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(store.join(".connected-images.lock"))?;
+            lock.lock()?;
+            let mut paths = connected_directories(store)?;
+            if !paths.contains(&path) {
+                paths.push(path.clone());
+                let mut tmp = tempfile::NamedTempFile::new_in(store)?;
+                serde_json::to_writer(&mut tmp, &paths)?;
+                tmp.persist(store.join("connected-images.json"))?;
+            }
+            self.images.push(Image {
+                path: path.clone(),
+                arch: arch.into(),
+            });
+        }
+        self.selected = Some(path);
+
         Ok(())
     }
 
@@ -131,36 +204,38 @@ impl Launcher {
             );
             if ui.add(design::action("Save work directory")).clicked() {
                 self.status = match tizen_ornn::workdir::save(&self.workdir) {
-                    Ok(()) => {
-                        self.custom.clear();
-                        self.refresh()
-                            .err()
-                            .unwrap_or_else(|| "Work directory saved.".into())
-                    }
+                    Ok(()) => self
+                        .refresh()
+                        .err()
+                        .unwrap_or_else(|| "Work directory saved.".into()),
                     Err(e) => format!("Could not save work directory: {e}"),
+                };
+            }
+            ui.separator();
+            ui.label(RichText::new("Shared folder (x86_64)").size(20.0).strong());
+            ui.label("Mounted at /home/tizen/share when the image starts.");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.share)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(
+                        PathBuf::from(&self.active_workdir)
+                            .join("share")
+                            .display()
+                            .to_string(),
+                    ),
+            );
+            if ui.add(design::action("Save shared folder")).clicked() {
+                self.status = match tizen_ornn::workdir::save_share(&self.share) {
+                    Ok(()) => "Shared folder saved for the next boot.".into(),
+                    Err(error) => error.to_string(),
                 };
             }
         });
     }
 
     fn build_controls(&mut self, ui: &mut egui::Ui) {
-        #[cfg(windows)]
-        {
-            ui.label("New image name");
-            ui.text_edit_singleline(&mut self.name);
-        }
         if ui.add(design::action("Build image…")).clicked() {
-            #[cfg(windows)]
-            {
-                let name = self.name.clone();
-                if let Err(e) = self.terminal(&["build", "--name", &name]) {
-                    self.status = e;
-                }
-            }
-            #[cfg(target_os = "linux")]
-            if let Err(e) = self.terminal(&["build"]) {
-                self.status = e;
-            }
+            self.build_open = true;
         }
     }
 
@@ -168,6 +243,9 @@ impl Launcher {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Image library").size(31.0).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(design::action("Open image folder…")).clicked() {
+                    self.folder_dialog.pick_directory();
+                }
                 if ui.add(design::secondary("Refresh")).clicked() {
                     self.status = self.refresh().err().unwrap_or_default();
                 }
@@ -179,11 +257,19 @@ impl Launcher {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     let width = (ui.available_width() * 0.32).min(190.0);
-                    ui.add(egui::Image::new((art.library.id(), egui::vec2(width, width * 0.5625))).corner_radius(6));
+                    ui.add(
+                        egui::Image::new((art.library.id(), egui::vec2(width, width * 0.5625)))
+                            .corner_radius(6),
+                    );
                     ui.add_space(4.0);
                     ui.vertical(|ui| {
                         ui.label(RichText::new("No images yet").size(21.0).strong());
-                        ui.label(RichText::new("Build a development image or open an existing image directory below.").color(MUTED));
+                        ui.label(
+                            RichText::new(
+                                "Build a development image or open an existing image folder.",
+                            )
+                            .color(MUTED),
+                        );
                         self.build_controls(ui);
                     });
                 });
@@ -197,8 +283,7 @@ impl Launcher {
                     .show(ui, |ui| {
                         for image in &self.images {
                             let name = image.path.file_name().unwrap_or_default().to_string_lossy();
-                            let selected = self.custom.is_empty()
-                                && self.selected.as_ref() == Some(&image.path);
+                            let selected = self.selected.as_ref() == Some(&image.path);
                             let row = egui::Button::new(format!("{name}   ·   {}", image.arch))
                                 .selected(selected)
                                 .min_size(egui::vec2(ui.available_width(), 34.0));
@@ -208,7 +293,6 @@ impl Launcher {
                                 .clicked()
                             {
                                 self.selected = Some(image.path.clone());
-                                self.custom.clear();
                             }
                         }
                     });
@@ -216,50 +300,98 @@ impl Launcher {
             });
         }
         ui.add_space(12.0);
-        ui.label(RichText::new("Tizen account terminal").size(18.0).strong());
-        ui.label(RichText::new("Image directory").color(MUTED));
-        ui.add(
-            egui::TextEdit::singleline(&mut self.custom)
-                .margin(egui::Margin::symmetric(10, 7))
-                .desired_width(f32::INFINITY)
-                .hint_text(
-                    self.selected
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "Enter a directory containing a guest disk".into()),
-                ),
-        );
-        let directory = if self.custom.is_empty() {
-            self.selected.clone()
-        } else {
-            Some(PathBuf::from(&self.custom))
+        let Some(dir) = self.selected.clone() else {
+            return Ok(());
         };
-        if ui
-            .add_enabled(
-                directory.is_some(),
-                design::secondary("Open tizen terminal"),
-            )
-            .clicked()
-        {
-            let dir = directory.unwrap();
-            let mut args = Vec::new();
-            #[cfg(target_os = "linux")]
-            if self
-                .images
-                .iter()
-                .any(|i| i.path == dir && i.arch == "armv7l")
-            {
-                args.extend(["--arch", "armv7l", "run"]);
+        let arm = guest_arch(&dir) == Some("armv7l");
+        #[cfg(windows)]
+        let lock = dir.join(".ornn-session");
+        #[cfg(target_os = "linux")]
+        let lock = if arm {
+            dir.join("build.lock")
+        } else {
+            let raw = dir.join("tizen-rootfs.ext4");
+            if raw.is_file() {
+                raw
+            } else {
+                dir.join("tizen-rootfs.qcow2")
             }
-            if args.is_empty() {
-                args.extend(["run", "--headless"]);
-            }
-            args.extend([
-                "--image-dir",
-                dir.to_str().ok_or("Invalid image directory")?,
-            ]);
-            self.terminal(&args)?;
-        }
+        };
+        let running = match std::fs::File::open(lock) {
+            Ok(file) => match file.try_lock_shared() {
+                Ok(()) => false,
+                Err(std::fs::TryLockError::WouldBlock) => true,
+                Err(std::fs::TryLockError::Error(e)) => return Err(e.to_string()),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e.to_string()),
+        };
+        let stopping = self.stopping.as_ref().is_some_and(|(path, _)| path == &dir);
+        let path = dir.to_str().ok_or("Invalid image directory")?;
+        design::card()
+            .show(ui, |ui| -> Result<(), String> {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(dir.file_name().unwrap_or_default().to_string_lossy())
+                            .size(19.0)
+                            .strong(),
+                    );
+                    ui.label(if stopping {
+                        "Shutting down…"
+                    } else if running {
+                        "Running"
+                    } else {
+                        "Stopped"
+                    });
+                });
+                ui.label(RichText::new(path).color(MUTED));
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| -> Result<(), String> {
+                    if ui
+                        .add_enabled(!running && !stopping, design::action("Start with display"))
+                        .clicked()
+                    {
+                        let mut args = vec!["run", "--gui", "--image-dir", path];
+                        if arm {
+                            args.extend(["--arch", "armv7l"]);
+                        }
+                        self.terminal(&args)?;
+                        self.status.clear();
+                    }
+                    if ui
+                        .add_enabled(
+                            running && self.stopping.is_none(),
+                            design::secondary("Shut down"),
+                        )
+                        .clicked()
+                    {
+                        let mut cmd = cli()?;
+                        self.configure(&mut cmd)?;
+                        let child = cmd
+                            .args(["shutdown", "--image-dir", path])
+                            .stderr(Stdio::piped())
+                            .spawn()
+                            .map_err(|e| e.to_string())?;
+                        self.stopping = Some((dir.clone(), child));
+                        self.status.clear();
+                    }
+                    if !arm
+                        && ui
+                            .add_enabled(
+                                !running && !stopping,
+                                design::secondary("Start terminal only"),
+                            )
+                            .clicked()
+                    {
+                        self.terminal(&["run", "--headless", "--image-dir", path])?;
+                        self.status.clear();
+                    }
+                    Ok(())
+                })
+                .inner
+            })
+            .inner?;
         Ok(())
     }
 }
@@ -290,7 +422,24 @@ impl eframe::App for Desktop {
         if finished && let Err(e) = app.refresh() {
             app.status = e;
         }
-        if !app.processes.is_empty() {
+        if let Some((_, proc)) = app.stopping.as_mut() {
+            match proc.try_wait() {
+                Ok(Some(_)) => {
+                    let (_, child) = app.stopping.take().unwrap();
+                    app.status = match child.wait_with_output() {
+                        Ok(out) if out.status.success() => "Guest shut down.".into(),
+                        Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+                        Err(e) => e.to_string(),
+                    };
+                }
+                Err(e) => {
+                    app.stopping = None;
+                    app.status = e.to_string();
+                }
+                Ok(None) => (),
+            }
+        }
+        if app.selected.is_some() || !app.processes.is_empty() {
             ctx.request_repaint_after(Duration::from_secs(1));
         }
         egui::TopBottomPanel::top("header")
@@ -343,17 +492,59 @@ impl eframe::App for Desktop {
                         }
                     });
             });
+        if app.build_open {
+            let mut open = true;
+            egui::Window::new("Build x86_64 image")
+                .open(&mut open)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    ui.label("Snapshot repository URL");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.repository)
+                            .desired_width(400.0)
+                            .hint_text("Leave blank for the configured snapshot"),
+                    );
+                    ui.label("Image name");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.name)
+                            .desired_width(400.0)
+                            .hint_text("Use the snapshot ID when a URL is supplied"),
+                    );
+                    if ui.add(design::action("Build")).clicked() {
+                        let repository = app.repository.trim().to_owned();
+                        let name = app.name.trim().to_owned();
+                        let mut args = vec!["build"];
+                        if !repository.is_empty() {
+                            args.extend(["--repository", &repository]);
+                        }
+                        if !name.is_empty() {
+                            args.extend(["--name", &name]);
+                        }
+                        match app.terminal(&args) {
+                            Ok(()) => app.build_open = false,
+                            Err(e) => app.status = e,
+                        }
+                    }
+                });
+            app.build_open &= open;
+        }
+        app.folder_dialog.update(ctx);
+        if let Some(path) = app.folder_dialog.take_picked() {
+            app.status = match app.connect_directory(path) {
+                Ok(()) => String::new(),
+                Err(error) => error.to_string(),
+            };
+        }
     }
 }
 
 fn main() -> eframe::Result {
     let mut app = Launcher::default();
-    #[cfg(windows)]
-    {
-        app.name = "default".into();
-    }
     if let Ok(Some(path)) = tizen_ornn::workdir::setting() {
         app.workdir = path.display().to_string();
+    }
+    if let Ok(Some(path)) = tizen_ornn::workdir::shared_directory() {
+        app.share = path.display().to_string();
     }
     if let Err(e) = app.refresh() {
         app.status = e;
@@ -362,7 +553,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_app_id("tizen-ornn")
             .with_icon(eframe::icon_data::from_png_bytes(design::ICON).expect("embedded app icon"))
-            .with_inner_size([680.0, 485.0])
+            .with_inner_size([760.0, 560.0])
             .with_min_inner_size([400.0, 330.0]),
         ..Default::default()
     };

@@ -12,7 +12,7 @@ root=$1
 mount -t proc proc "$root/proc"
 mount --bind /etc/resolv.conf "$root/etc/resolv.conf"
 chroot "$root" /usr/bin/zypper --non-interactive --no-refresh install --no-recommends \
-    meson autoconf automake libtool m4 openssh rsync jq python3-pip iputils crash-worker-support-regdump
+    meson autoconf automake libtool m4 openssh rsync jq ncurses-utils python3-pip iputils crash-worker-support-regdump
 INSTALL
 
 # Tizen ships its SSH client and socket-activated server in the same RPM.

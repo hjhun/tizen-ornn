@@ -9,6 +9,13 @@ host_browser=0
 share_mode=
 share_path=
 launch_options=()
+# Plain reattach keeps the running session's share, even after a one-boot override.
+implicit_share=0
+if [[ -n ${TIZEN_ORNN_BOOT_SHARE:-} ]]; then
+    set -- "$@" --share "$TIZEN_ORNN_BOOT_SHARE"
+    unset TIZEN_ORNN_BOOT_SHARE
+    implicit_share=1
+fi
 while (( $# )); do
     case "$1" in
         --gui) gui=1; launch_options+=(--gui) ;;
@@ -74,6 +81,8 @@ if (( managed )) && [[ -t 0 && -t 1 ]]; then
     # The pane owns the disk lock. A client can leave without releasing it.
     share_id=
     if [[ -n $share_mode ]]; then share_id="$share_mode:$(stat -Lc '%d-%i' -- "$share_path")"; fi
+    if (( implicit_share )); then share_id="tizen:$share_id"; fi
+    export TIZEN_ORNN_IMPLICIT_SHARE=$implicit_share
     exec "$project/scripts/console-session" "$disk" "$share_id" "$host_network" "$host_browser" env TIZEN_CONSOLE_MANAGED=1 \
         TIZEN_OUT="$out" TIZEN_DISK="$(realpath -- "$disk")" TIZEN_DISK_FORMAT="$format" \
         TIZEN_KERNEL="${TIZEN_KERNEL:+$(realpath -- "$kernel")}" TIZEN_SELECTION_LINK="${TIZEN_SELECTION_LINK:-}" \
@@ -130,10 +139,18 @@ if [[ -n $share_mode ]]; then
     if [[ $share_mode == ro ]]; then readonly_flag=on; fi
     args+=(-fsdev "local,id=hostshare,path=${share_path//,/,,},security_model=none,readonly=$readonly_flag"
            -device virtio-9p-pci,fsdev=hostshare,mount_tag=tizen-share
-           -fw_cfg "name=opt/tizen-ornn/share,string=$share_mode")
-    # Map the developer's existing host identity to Tizen owner for 9P stat
+           -fw_cfg "name=opt/tizen-ornn/share,string=$share_mode"
+           -fw_cfg "name=opt/tizen-ornn/share-script,file=${project//,/,,}/guest/tizen-ornn-share")
+    mapped_user=10000
+    mapped_group=10000
+    if (( ! implicit_share )) && [[ ${TIZEN_ORNN_IMPLICIT_SHARE:-0} != 1 ]]; then
+        mapped_user=5001
+        mapped_group=100
+        args+=(-fw_cfg name=opt/tizen-ornn/owner-share,string=1)
+    fi
+    # Map the developer's existing host identity to the development account for 9P stat
     # and access checks, including private source trees.
-    runner=(unshare --user --map-user=5001 --map-group=100 --)
+    runner=(unshare --user --map-user="$mapped_user" --map-group="$mapped_group" --)
 fi
 init=/usr/lib/systemd/systemd
 init_args=

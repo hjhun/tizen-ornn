@@ -58,7 +58,11 @@ fn builder_file(cache: &Path, remote: &str, sha: &str) -> io::Result<PathBuf> {
     Ok(path)
 }
 
-fn make_seed(path: &Path, deb: &Path) -> io::Result<()> {
+fn make_seed(
+    path: &Path,
+    deb: &Path,
+    source: Option<&crate::build_source::BuildSource>,
+) -> io::Result<()> {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -74,6 +78,10 @@ fn make_seed(path: &Path, deb: &Path) -> io::Result<()> {
         let root = volume.root_dir();
         root.create_file("meta-data")?
             .write_all(b"instance-id: ornn-builder\nlocal-hostname: ornn-builder\n")?;
+        if let Some(source) = source {
+            root.create_file("image.toml")?
+                .write_all(source.config().as_bytes())?;
+        }
         // NoCloud shell user-data executes once on each fresh builder overlay.
         root.create_file("user-data")?
             .write_all(include_bytes!("provision.sh"))?;
@@ -82,29 +90,21 @@ fn make_seed(path: &Path, deb: &Path) -> io::Result<()> {
     volume.unmount()
 }
 
-fn valid_name(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-    !name.is_empty()
-        && name.len() <= 64
-        && name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-        && !matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        && !(upper.len() == 4
-            && (upper.starts_with("COM") || upper.starts_with("LPT"))
-            && upper.as_bytes()[3].is_ascii_digit())
-}
-
-pub(super) fn create(home: &Path, name: &str) -> io::Result<()> {
-    if !valid_name(name) {
-        return Err(io::Error::other(
-            "Use 1–64 letters, digits, hyphens or underscores for the image name.",
-        ));
-    }
+pub(super) fn create(
+    home: &Path,
+    name: &str,
+    source: Option<&crate::build_source::BuildSource>,
+) -> io::Result<()> {
     let images = home.join("images");
     fs::create_dir_all(&images)?;
     let dest = images.join(name);
     if dest.exists() {
+        if source.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Image already exists: {}", dest.display()),
+            ));
+        }
         disk(&dest)?;
         println!("Existing image ready: {}", dest.display());
         return Ok(());
@@ -141,7 +141,7 @@ pub(super) fn create(home: &Path, name: &str) -> io::Result<()> {
         .tempdir_in(&images)?;
     let output = work.path().join("output");
     fs::create_dir(&output)?;
-    make_seed(&work.path().join("seed.img"), &deb)?;
+    make_seed(&work.path().join("seed.img"), &deb, source)?;
     File::create(work.path().join("status.raw"))?.set_len(1024 * 1024)?;
     checked(
         qemu("qemu-img")?
@@ -220,7 +220,42 @@ pub(super) fn create(home: &Path, name: &str) -> io::Result<()> {
     }
     fs::copy(kernel, output.join("bzImage"))?;
     File::create(output.join(".tizen-virtio-console"))?;
+    if let Some(source) = source {
+        fs::write(output.join("image.toml"), source.config())?;
+    }
     fs::rename(output, &dest)?;
     println!("Image ready: {}", dest.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_seed_carries_the_selected_repository_and_dated_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let deb = temp.path().join("recipe.deb");
+        fs::write(&deb, b"recipe").unwrap();
+        let seed = temp.path().join("seed.img");
+        let source = crate::build_source::BuildSource {
+            repository: "https://mirror.example/Tizen-10.1/".into(),
+            release: "tizen-10.1-unified_20261119.053314".into(),
+        };
+        make_seed(&seed, &deb, Some(&source)).unwrap();
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(seed)
+            .unwrap();
+        let volume = fatfs::FileSystem::new(file, fatfs::FsOptions::new()).unwrap();
+        let mut actual = String::new();
+        volume
+            .root_dir()
+            .open_file("image.toml")
+            .unwrap()
+            .read_to_string(&mut actual)
+            .unwrap();
+        assert_eq!(actual, source.config());
+    }
 }

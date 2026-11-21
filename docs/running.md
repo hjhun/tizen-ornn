@@ -53,19 +53,26 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 ## Share a host directory
 
-Run the launcher as your normal Ubuntu user. On an existing R5 disk, upgrade the host CLI to R6 or later to use the bundled kernel for sharing. The project stays on the host and its files are accessible under `/home/owner/host` for this boot.
+Windows and Ubuntu mount a host folder at `/home/tizen/share` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The guest sees live host files, including edits and deletions.
+
+Use **Open image folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+
+Set **Settings → Shared folder (x86_64) → Save shared folder** in the desktop launcher, then select an image in **Image library** and choose **Start with display** or **Start terminal only**. The CLI accepts the same persistent setting. Supply an existing absolute directory. In a portable installation, run the CLI beside the GUI binary inside `Tizen Ornn Portable/runtime-…` to use that installation’s settings and bundled Windows QEMU.
 
 ```sh
-tizen-ornn run --share "$PWD"
-# In the guest console
-su -
-su - owner
-cd /home/owner/host
+tizen-ornn share-dir "$PWD"       # Ubuntu
+tizen-ornn run --headless
+tizen-ornn share-dir --reset      # restore the default for future boots
 ```
 
-To share a Windows project from WSL2, use its WSL path, for example `tizen-ornn run --share "/mnt/c/Users/me/My Project"`. Use `--share-ro` to enforce read-only access on the host side. With `--share`, guest edits and deletions affect the host files immediately. The export has the access rights of the Ubuntu account launching QEMU. Guest `owner` can work in private directories without changing their host ownership. File permissions, case sensitivity and link support on Windows paths depend on the underlying filesystem and WSL mount settings.
+```powershell
+.\tizen-ornn.exe share-dir 'D:\Projects'
+.\tizen-ornn.exe run --gui --image-dir 'D:\Tizen Images\my-image'
+```
 
-Choose one directory per boot. The guest mountpoint must be absent or empty. The launcher uses a Linux user namespace and a virtio-9p device. To check whether your Ubuntu host permits the required user mapping, run `unshare --user --map-user=5001 --map-group=100 -- true` as the user who starts the VM. The guest shuts down with a diagnostic if it cannot mount the directory. Run plain `tizen-ornn` to reattach. After `systemctl poweroff`, the next launch may select a different directory or omit sharing. A full image update carries the files stored on the guest disk. Shared project files already live on the host.
+Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, these two legacy one-boot flags keep the original guest `owner` identity for host permissions and also expose the folder at `/home/owner/host` when that location is empty. Use `share-dir` or the GUI setting to work on private host files as the interactive `tizen` account. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
+
+Before mounting, the launcher’s guest startup script renames a populated guest `share` directory to `/home/tizen/share.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. An empty mountpoint needs no backup.
 
 ## Host networking
 

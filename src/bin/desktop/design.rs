@@ -60,8 +60,9 @@ pub fn configure(ctx: &egui::Context) {
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, LINE);
     visuals.override_text_color = Some(INK);
     visuals.selection.bg_fill = Color32::from_rgb(175, 220, 209);
+    ctx.set_theme(egui::ThemePreference::Light);
     ctx.set_visuals(visuals);
-    ctx.style_mut(|style| {
+    ctx.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(10.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 7.0);
         style.spacing.interact_size.y = 32.0;

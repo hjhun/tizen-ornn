@@ -20,9 +20,25 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         "directory":null, "command":null
     });
     let (name, fields) = match cli.command {
+        Some(Action::ShareDir { path, .. }) => {
+            return tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""));
+        }
         None => ("run", Value::Null),
         Some(Action::Images) => ("images", Value::Null),
-        Some(Action::Build {}) => ("build", Value::Null),
+        Some(Action::Build { repository, name }) => {
+            if let Some(name) = &name {
+                crate::build_source::validate_name(name)?;
+            }
+            let source = repository
+                .as_deref()
+                .map(crate::build_source::BuildSource::resolve)
+                .transpose()?;
+            let name = name.or_else(|| source.as_ref().map(|s| s.release.replace('.', "-")));
+            (
+                "build",
+                json!({"name":name, "build_config":source.as_ref().map(|s| s.config())}),
+            )
+        }
         Some(Action::Run {
             image_dir,
             share,
@@ -52,12 +68,18 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             "update",
             json!({"packages":packages,"snapshot":snapshot,"names":names}),
         ),
-        Some(Action::Shutdown) => ("shutdown", Value::Null),
+        Some(Action::Shutdown { image_dir }) => ("shutdown", json!({"directory":image_dir})),
         Some(Action::Rollback) => ("rollback", Value::Null),
     };
     req["command"] = json!(name);
     if let Value::Object(values) = fields {
         req.as_object_mut().unwrap().extend(values);
+    }
+    if name == "run" && req["share"].is_null() && req["share_ro"].is_null() {
+        req["saved_share"] = json!(tizen_ornn::workdir::shared_directory()?);
+        if req["saved_share"].is_null() {
+            req["default_share"] = json!(tizen_ornn::workdir::default_share()?);
+        }
     }
     Err(Command::new(root.join("scripts/linux-backend"))
         .arg(req.to_string())

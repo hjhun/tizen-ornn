@@ -246,19 +246,23 @@ def matches(image, release, source, revision):
     return lock.get('release') == release and archive_url.startswith(f'{source}Tizen-10.1-Unified/{release}/')
 
 
-def build_image(stage, release):
+def build_image(stage, release, config=None):
     settings = {'TIZEN_PREBUILT_KERNEL': os.environ.get('TIZEN_PREBUILT_KERNEL', '1')}
     for key in ('TIZEN_FS_SIZE', 'JOBS'):
         if key in os.environ:
             settings[key] = os.environ[key]
-    settings['TIZEN_IMAGE_CONFIG'] = str(config_path().resolve(strict=True))
+    settings['TIZEN_IMAGE_CONFIG'] = str((config or config_path()).resolve(strict=True))
     cmd = ['env', *(f'{key}={val}' for key, val in settings.items()), BUILDER,
            '--snapshot', release, '--out', stage]
     run_as_root(cmd)
 
 
-def prepare(home, active, snapshot):
-    release, source = requested_image(snapshot)
+def prepare(home, active, snapshot, *, name=None, previous=None, config=None):
+    if config:
+        settings = ImageSource.load(config)
+        release, source = settings.snapshot, settings.base_url
+    else:
+        release, source = requested_image(snapshot)
     revision = (ROOT / 'config/image-revision').read_text().strip()
     if active and matches(active, release, source, revision):
         print(f'Already up to date: {release} ({active})')
@@ -269,7 +273,9 @@ def prepare(home, active, snapshot):
         images.mkdir(exist_ok=True)
         key = hashlib.sha256(source.encode()).hexdigest()[:12]
         stem = f'{release}-v{revision}-{key}'
-        stage = images / f'.building-{stem}'
+        if name and os.path.lexists(images / name):
+            raise ValueError(f'Image already exists: {images / name}')
+        stage = images / (f'.building-{stem}-{name}' if name else f'.building-{stem}')
         if stage.is_symlink():
             raise ValueError(f'Expected an image build directory at {stage}.')
         # A failed merge can be resumed with the same source disk. If it has
@@ -287,7 +293,10 @@ def prepare(home, active, snapshot):
             print(f'Previous partial migration retained at {partial}.')
         stage.mkdir(exist_ok=True)
         if not (stage / '.image-ready').is_file():
-            build_image(stage, release)
+            if config:
+                build_image(stage, release, config)
+            else:
+                build_image(stage, release)
         if not (stage / '.image-ready').is_file() or not matches(stage, release, source, revision):
             raise ValueError(f'Built image does not match the requested source and revision: {stage}')
         new_disk = disk_at(stage)
@@ -297,13 +306,13 @@ def prepare(home, active, snapshot):
                 print('Copying Tizen user data and home directories to the new disk...', flush=True)
                 run_as_root(['unshare', '--mount', '--propagation', 'private',
                              SCRIPTS / 'copy-workspace.sh', disk_at(active), new_disk])
-            target = images / stem
+            target = images / (name or stem)
             number = 1
             while target.exists() or target.is_symlink():
                 number += 1
                 target = images / f'{stem}-{number}'
             stage.rename(target)
-            select(home, target, active)
+            select(home, target, active or previous)
     print(f'Selected {release} in {target}')
     if active:
         print(f'Previous disk retained at {active}. Run tizen-ornn rollback to use it.')
@@ -447,6 +456,8 @@ def execute(args):
                 return
             args.arch, picked = choice
     if args.arch == 'armv7l' and args.command != 'delete':
+        if getattr(args, 'name', None) or getattr(args, 'build_config', None):
+            raise ValueError('Building a named repository image requires x86_64')
         if headless or args.command not in (None, 'run', 'start', 'build'):
             raise ValueError('ARMv7 currently supports build and graphical run/start')
         if any(getattr(args, key, False) for key in ('share', 'share_ro', 'host_browser', 'no_host_network')):
@@ -484,9 +495,39 @@ def execute(args):
             command.extend(['--share', args.share])
         elif getattr(args, 'share_ro', None) is not None:
             command.extend(['--share-ro', args.share_ro])
+        else:
+            saved = getattr(args, 'saved_share', None)
+            if saved is None:
+                directory = Path(args.default_share)
+                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                saved = str(directory)
+            os.environ['TIZEN_ORNN_BOOT_SHARE'] = saved
         os.execv(run, command)
+    if args.command == 'shutdown' and picked and (picked / 'zImage').is_file():
+        import socket
+        lock = picked / 'build.lock'
+        prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(10)
+            client.connect(prefix + '.power')
+            with client.makefile('rwb') as stream:
+                if 'QMP' not in json.loads(stream.readline()):
+                    raise ValueError('Unexpected QEMU monitor greeting.')
+                for op in ('qmp_capabilities', 'system_powerdown'):
+                    stream.write(json.dumps({'execute': op}).encode() + b'\n')
+                    stream.flush()
+                    while reply := stream.readline():
+                        message = json.loads(reply)
+                        if 'error' in message:
+                            raise ValueError(message['error']['desc'])
+                        if 'return' in message:
+                            break
+                    else:
+                        raise ValueError('QEMU monitor disconnected.')
+        subprocess.run(['flock', '--shared', '--timeout', '90', lock, 'true'], check=True)
+        return
     if args.command == 'shutdown':
-        disk = os.environ.get('TIZEN_DISK')
+        disk = str(disk_at(picked)) if picked else os.environ.get('TIZEN_DISK')
         if not disk:
             image = Path(explicit) if explicit else active_image(home)
             if image is None:
@@ -547,6 +588,14 @@ def execute(args):
                 delete_image(home, active, path.name, yes)
         elif args.command == 'rollback':
             rollback(home, active)
+        elif args.command == 'build' and getattr(args, 'name', None):
+            if not args.build_config:
+                prepare(home, None, None, name=args.name, previous=active)
+            else:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.toml') as config:
+                    config.write(args.build_config)
+                    config.flush()
+                    prepare(home, None, None, name=args.name, previous=active, config=Path(config.name))
         elif args.command in ('install', 'build') and active:
             dependencies(build=False)
             print(f'Existing image ready: {active}')

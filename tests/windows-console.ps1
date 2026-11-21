@@ -2,6 +2,13 @@
 param([Parameter(Mandatory)] [string] $Cli, [Parameter(Mandatory)] [string] $Image,
       [switch] $Development)
 $ErrorActionPreference = 'Stop'
+# Use a private settings directory for both the CLI and its guest.
+$state = New-Item -ItemType Directory (Join-Path $env:TEMP ([guid]::NewGuid()))
+$env:TIZEN_ORNN_PORTABLE_DIR = $state.FullName
+$share = New-Item -ItemType Directory "$state/shared folder"
+Set-Content "$share/host.txt" 'from-host' -Encoding ascii -NoNewline
+& $Cli share-dir $share.FullName
+if ($LASTEXITCODE) { throw 'Failed to save the shared folder' }
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = $Cli
 $info.ArgumentList.Add('run')
@@ -36,11 +43,16 @@ try {
         Wait-Console 'tizen@[^\r\n]*\$ '
         Send-Console 'id; test "$(id -un)" = tizen && test "$(id -u)" != 0 && id -G | tr " " "\n" | grep -qx 0 && rpm -q git >/dev/null && printf "ORNN_%s_OK\n" ROOTGROUP'
         Wait-Console '(?m)^ORNN_ROOTGROUP_OK\r?$'
+        Send-Console 'test "$(cat /home/tizen/share/host.txt)" = from-host && echo guest-write > /home/tizen/share/fixture-check && printf "ORNN_%s_OK\n" SHARE'
+        Wait-Console '(?m)^ORNN_SHARE_OK\r?$'
         Send-Console 'su -c "sync; systemctl --force poweroff"'
     } else {
         Wait-Console 'ORNN_SERIAL_READY'
         Send-Console 'ornn-console-check'
         Wait-Console '(?m)^ORNN_SERIAL_OK\r?$'
+    }
+    if ((Get-Content -LiteralPath "$share/fixture-check") -ne 'guest-write') {
+        throw 'Missing guest write on the Windows host'
     }
     if (-not $proc.WaitForExit(30000) -or $proc.ExitCode -ne 0) {
         throw "Guest shutdown failed: exited=$($proc.HasExited) code=$($proc.ExitCode)"
@@ -48,4 +60,5 @@ try {
 } finally {
     if (-not $proc.HasExited) { $proc.Kill($true) }
     $proc.Dispose()
+    Remove-Item -Recurse -Force -LiteralPath $state.FullName
 }

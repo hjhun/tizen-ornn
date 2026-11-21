@@ -4,6 +4,12 @@ param([Parameter(Mandatory)][string]$Payload,
       [Parameter(Mandatory)][string]$Output)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+$devices = & "$QemuDir/qemu-system-x86_64.exe" -device help
+if ($LASTEXITCODE -or !($devices -match 'virtio-9p-pci')) {
+    throw 'The Windows QEMU distribution must include virtio-9p-pci (QCW UCRT64).'
+}
+$net = & "$QemuDir/qemu-system-x86_64.exe" -netdev help
+if ($LASTEXITCODE -or !($net -match '^user$')) { throw 'QEMU user networking is required.' }
 $stage = New-Item -ItemType Directory (Join-Path $env:TEMP ([guid]::NewGuid()))
 try {
     $files = New-Item -ItemType Directory "$stage/files"

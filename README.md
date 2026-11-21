@@ -1,6 +1,6 @@
 # Tizen Ornn
 
-Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Ubuntu supports x86_64 and ARMv7 guests, image updates, package management and host directory sharing.
+Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Ubuntu also supports ARMv7 guests, image updates and package management.
 
 ## Downloads
 
@@ -34,7 +34,9 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-Select an image and click **Open tizen terminal**. On Ubuntu this opens the system terminal and attaches to the managed console. **Build image…** opens the builder in a terminal for progress and sudo prompts. The desktop launcher and the guest display are separate: `tizen-ornn run --gui` opens the guest's graphical display.
+Use **Open image folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+
+Select an image and click **Start with display** to open its Tizen graphical session and console. The selected image shows its current state. **Shut down** asks that guest to power off cleanly. Choose **Start terminal only** for an x86_64 console-only boot. **Build image…** opens a terminal for build progress and Ubuntu sudo prompts.
 
 Run the CLI as your normal user. The first build downloads the dated snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse disk. Set `TIZEN_ORNN_HOME` to select another image store on a Linux filesystem. [SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
 
@@ -42,13 +44,15 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 
 Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
 
+Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/home/tizen/share`. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
+
 Both launchers unpack their runtime and keep the setting in `Tizen Ornn Portable` beside the downloaded file. Relative work directories resolve inside that folder. Move it along with the launcher to preserve settings. Ubuntu guest operations use the host terminal and the project's Ubuntu system dependencies.
 
 ### Windows x64 (native)
 
 1. Download [tizen-ornn-windows-x64.exe](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.exe) and double-click it. The launcher opens the GUI and keeps its CLI and image recipe under `%LOCALAPPDATA%\Tizen Ornn\tools` for subsequent runs. This step requires only the one file and runs as the current user.
-2. To create or start a VM, install [64-bit QEMU for Windows](https://www.qemu.org/download/#windows) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
-3. Enter an image name and choose **Build image…**. After the build finishes, select the image and click **Open tizen terminal**. To shut down cleanly, run `su -` followed by `systemctl poweroff` inside the guest.
+2. To create or start a VM, install [QCW UCRT64 QEMU for Windows](https://github.com/arixmkii/qcw/releases/tag/v0.1.28) (the UCRT64 build includes both virtio-9p and user networking) in its default directory or set `TIZEN_ORNN_QEMU_DIR` to the directory containing `qemu-system-x86_64.exe` and `qemu-img.exe`.
+3. Choose **Build image…**, enter an optional snapshot URL and image name, and click **Build**. After the build finishes, select the image and click **Start with display**. Click **Shut down** to power off that guest.
 
 For a portable CLI directory, extract the complete [Windows ZIP](https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn-windows-x64.zip) and open PowerShell in the extracted folder.
 
@@ -63,7 +67,7 @@ The same operations work from PowerShell:
 
 The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the project's snapshot and RPM build recipe inside a temporary QEMU VM. Windows requires neither a WSL distribution nor a pre-existing Tizen disk. The build requires network access, 4 GiB of guest RAM and disk space for a sparse 64 GiB scratch disk and a 16 GiB output disk. Allow extra time for QEMU software emulation. The completed guest disk is independent of the builder. Images live under `%LOCALAPPDATA%\Tizen Ornn\images`; set `TIZEN_ORNN_HOME` to place images and the download cache on another drive.
 
-A Windows guest terminal stays attached to its QEMU process. Power off from the guest before closing it. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
+A Windows guest terminal stays attached to its QEMU process. Use **Shut down** or `tizen-ornn shutdown --image-dir PATH` before closing it. The native console follows the visible Windows terminal size at startup and on resize. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
 
 ### Guest development account
 
@@ -127,7 +131,7 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 |---|---|---|
 | Host | `tizen-ornn` | In a terminal, choose an installed image by number when several are ready. Enter accepts the first image and q cancels. A single image opens directly. |
 | Host | `tizen-ornn run` | Start the currently selected x86_64 VM or reconnect to its console |
-| Host | `tizen-ornn run --share "$PWD"` | Open the host project at `/home/owner/host` inside Tizen |
+| Host | `tizen-ornn run --share "$PWD"` | Open the host project at `/home/tizen/share` inside Tizen |
 | Host | `tizen-ornn run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
 | Host | `tizen-ornn run --share-ro "$PWD"` | Open the same directory read-only |
 | Host | `tizen-ornn --headless` | Start with a console only |
@@ -175,7 +179,15 @@ An image update merges the previous disk's `/opt/usr`, `/home` and `/root` into 
 
 Allow space for both images and build downloads. Migrating a QCOW2 disk or recovering an unclean ext4 filesystem also needs space for a temporary sparse raw copy. To select a dated release for either update mode, append `--snapshot tizen-10.1-unified_20261119.053314`. To update the **host CLI**, repeat the first two installation commands. Existing R5 guests gain host sharing and proxy import after the host package upgrade and guest shutdown. Guests built before R5 need one `update --image` to gain live package management.
 
+Fresh x86_64 images include the terminfo-aware `clear` command. For an existing running Ubuntu-managed guest, use `tizen-ornn install ncurses-utils`. Inside a guest with the pinned repositories, root can also run `zypper install ncurses-utils`.
+
 ## Choose the snapshot source
+
+On Windows or Ubuntu, open **Build image…** and paste the HTTPS snapshot repository, Unified snapshot directory, or its `build.xml` into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata with dots replaced by hyphens. Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
+
+```sh
+tizen-ornn build --repository https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/
+```
 
 `tizen-ornn config` shows the effective source and initial snapshot. The default source is **download.tizen.org**. Choose a different initial snapshot or a compatible HTTPS mirror before building:
 

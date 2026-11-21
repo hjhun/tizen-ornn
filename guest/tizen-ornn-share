@@ -1,0 +1,41 @@
+#!/bin/sh
+# Called before systemd, while no guest user processes can modify these paths.
+set -eu
+mode=$1
+case "$mode" in rw|ro) ;; *) exit 1 ;; esac
+home=/opt/usr/home/tizen
+target=$home/share
+[ "$(readlink -f /home/tizen)" = "$home" ] &&
+    [ "$(readlink -f "$home")" = "$home" ] && [ -d "$home" ] ||
+    { echo 'Unexpected guest tizen home directory' >&2; exit 1; }
+
+# Verify the export first. A failed connection leaves the guest files in place.
+stage=$(mktemp -d /run/tizen-share.XXXXXX)
+options="$mode,trans=virtio,version=9p2000.L,cache=none,access=any,nosuid,nodev"
+mount -t 9p -o "$options,smackfsroot=User::Shell,smackfsdef=User::Shell" tizen-share "$stage"
+backup=
+if [ -L "$target" ] || { [ -e "$target" ] && [ ! -d "$target" ]; }; then
+    occupied=yes
+elif [ -d "$target" ]; then
+    occupied=$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)
+else
+    occupied=
+fi
+if [ -n "$occupied" ]; then
+    backup=$home/share.before-host
+    index=0
+    while [ -e "$backup" ] || [ -L "$backup" ]; do
+        index=$((index + 1))
+        backup=$home/share.before-host.$index
+    done
+    mv -T -- "$target" "$backup"
+    echo "tizen-ornn: preserved /home/tizen/share at /home/tizen/${backup##*/}" >&2
+fi
+if ! mkdir -p -- "$target" || ! mount --move "$stage" "$target"; then
+    if [ -n "$backup" ]; then
+        if [ -d "$target" ]; then rmdir -- "$target"; fi
+        mv -T -- "$backup" "$target"
+    fi
+    exit 1
+fi
+rmdir -- "$stage"

@@ -65,7 +65,12 @@ CACHE_DIR="$TIZEN_OUT/cache/sdk" "$project/scripts/install-sdk.sh" "$root"
 "$project/scripts/install-guest-control.sh" "$root"
 sync -f "$root"
 detach
-[[ -z $(losetup -j "$disk") ]]
+# Linux releases autoclear loop devices asynchronously after umount.
+for ((attempt=0; attempt<100; attempt++)); do
+    [[ -n $(losetup -j "$disk") ]] || break
+    sleep 0.1
+done
+[[ -z $(losetup -j "$disk") ]] || { echo "Loop device still attached after unmount: $disk" >&2; exit 1; }
 chown "${SUDO_UID:-$(stat -c %u "$project")}:${SUDO_GID:-$(stat -c %g "$project")}" "$disk"
 install -m 0644 "$project/config/image-revision" "$TIZEN_OUT/.tizen-ornn-image-revision"
 touch "$TIZEN_OUT/.tizen-virtio-console" "$TIZEN_OUT/.image-ready"

@@ -7,9 +7,12 @@ trap 'rm -rf -- "$work"' EXIT
 cd "$work"
 
 for tool in gcc g++ make cmake ninja pkg-config git gdb strace ssh scp sftp \
-    ssh-keygen curl meson autoconf autoreconf automake libtoolize m4 ip ping; do
+    ssh-keygen curl meson autoconf autoreconf automake libtoolize m4 ip ping clear; do
     command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }
 done
+
+TERM=xterm-256color clear > clear.out
+test -s clear.out
 
 cat > main.c <<'C'
 #include <stdio.h>

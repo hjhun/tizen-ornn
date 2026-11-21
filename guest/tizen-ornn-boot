@@ -12,6 +12,12 @@ dropin=/run/systemd/system/systemd-udev-trigger.service.d
 mkdir -p "$dropin"
 printf '[Unit]\nAfter=tizen-dev-setup.service\n' > "$dropin/tizen-ornn-policy.conf"
 
+# Older disks bind their control service to the historical device alias.
+if grep -Fq 'dev-tizen\x2dvm\x2dpackages.device' /etc/systemd/system/tizen-guest-control.service 2>/dev/null; then
+    mkdir -p /run/udev/rules.d
+    echo 'SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.vm.packages", SYMLINK+="tizen-vm-packages"' > /run/udev/rules.d/89-tizen-ornn-compat.rules
+fi
+
 if [ -r "$config/graphics/raw" ]; then
     /bin/sh "$config/graphics/raw"
 fi
@@ -22,23 +28,16 @@ fi
 
 if [ -r "$config/share/raw" ]; then
     mode=$(tr -d '\000' < "$config/share/raw")
-    case "$mode" in
-        rw|ro) ;;
-        *) echo 'tizen-ornn: invalid host share access mode' >&2; exit 1 ;;
-    esac
-    target=/opt/usr/home/owner/host
-    if [ -L "$target" ] || [ "$(readlink -f "$target")" != "$target" ]; then
-        echo 'tizen-ornn: the guest share path contains a symbolic link' >&2
-        exit 1
-    fi
-    if [ -d "$target" ]; then
-        if [ -n "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-            echo 'tizen-ornn: /home/owner/host must be empty before mounting' >&2
-            exit 1
+    /bin/sh "$config/share-script/raw" "$mode"
+fi
+
+# Preserve the historical path for explicit --share boots without hiding data there.
+if [ -r "$config/owner-share/raw" ]; then
+    legacy=/opt/usr/home/owner/host
+    if [ "$(readlink -f "$legacy")" = "$legacy" ] && [ ! -L "$legacy" ]; then
+        mkdir -p -- "$legacy"
+        if [ -z "$(find "$legacy" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+            mount --bind /home/tizen/share "$legacy"
         fi
-    else
-        mkdir -m 0555 "$target"
     fi
-    options="$mode,trans=virtio,version=9p2000.L,cache=none,access=any,nosuid,nodev"
-    mount -t 9p -o "$options,smackfsroot=User::Shell,smackfsdef=User::Shell" tizen-share "$target"
 fi

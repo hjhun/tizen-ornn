@@ -12,6 +12,7 @@ cp /mnt/ornn-seed/ornn.deb /var/tmp/tizen-ornn.deb
 export DEBIAN_FRONTEND=noninteractive TIZEN_PREBUILT_KERNEL=1 JOBS=4
 apt-get -o Acquire::Retries=3 update
 apt-get -o Acquire::Retries=3 install -y /var/tmp/tizen-ornn.deb
+if [[ -f /mnt/ornn-seed/image.toml ]]; then export TIZEN_IMAGE_CONFIG=/mnt/ornn-seed/image.toml; fi
 /usr/lib/tizen-ornn/scripts/tizen-image --out "$work"
 test -f "$work/.image-ready" && test -f "$work/.tizen-virtio-console"
 test "$(stat -c %s "$work/tizen-rootfs.ext4")" = "$(blockdev --getsize64 "$disk")"
