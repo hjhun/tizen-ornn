@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    paths: ['Cargo.*', 'src/**', 'guest/tizen-ornn-share', 'packaging/windows-launcher.nsi', 'config/version', 'tests/windows-console.ps1', '.github/workflows/native.yml']
+    paths: ['Cargo.*', 'build.rs', 'packaging/ornn.rc', 'packaging/art/tizen-ornn.ico', 'src/**', 'guest/tizen-ornn-share', 'packaging/windows-launcher.nsi', 'config/version', 'tests/windows-console.ps1', '.github/workflows/native.yml']
 permissions:
   contents: read
 jobs:

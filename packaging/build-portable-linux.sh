@@ -33,6 +33,11 @@ if [[ ! -d $runtime ]]; then
     rm -rf -- "$stage"
     trap - EXIT
 fi
+export TIZEN_ORNN_PORTABLE_LAUNCHER="$file"
+if [[ ${1:-} == --install-shortcut ]]; then
+    python3 "$runtime/packaging/portable-shortcut.py" "$file" "$runtime"
+    exit
+fi
 exec "$runtime/tizen-ornn-gui"
 __ARCHIVE__
 LAUNCH

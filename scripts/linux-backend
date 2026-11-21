@@ -455,6 +455,12 @@ def execute(args):
             if choice is None:
                 return
             args.arch, picked = choice
+    if args.command == 'console':
+        lock = picked / 'build.lock' if (picked / 'zImage').is_file() else disk_at(picked)
+        prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
+        os.environ.pop('TMUX', None)
+        os.environ.pop('TMUX_PANE', None)
+        os.execvp('tmux', ['tmux', '-S', prefix + '.sock', 'attach-session', '-t', '=vm'])
     if args.arch == 'armv7l' and args.command != 'delete':
         if getattr(args, 'name', None) or getattr(args, 'build_config', None):
             raise ValueError('Building a named repository image requires x86_64')
@@ -464,7 +470,13 @@ def execute(args):
             raise ValueError('these host integration options currently require x86_64')
         arm_home = data_home() / 'armv7l-headed'
         tool = SCRIPTS / 'armv7l' / ('build-image' if args.command == 'build' else 'run')
-        os.execv(tool, [str(tool), str(picked or arm_home)])
+        image = picked or arm_home
+        if args.command != 'build' and sys.stdin.isatty() and sys.stdout.isatty():
+            lock = image / 'build.lock'
+            lock.touch(exist_ok=True)
+            session = SCRIPTS / 'console-session'
+            os.execv(session, [session, lock, '', '0', '0', tool, image])
+        os.execv(tool, [str(tool), str(image)])
     if args.command == 'config':
         configure(args.repository, args.snapshot)
         return

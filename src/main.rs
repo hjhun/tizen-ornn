@@ -35,6 +35,11 @@ enum Action {
     },
     /// List available images as JSON.
     Images,
+    /// Attach a terminal to the running guest. Closing it leaves the VM running.
+    Console {
+        #[arg(long)]
+        image_dir: PathBuf,
+    },
     /// Create a development image or reuse the installed disk.
     Build {
         /// Build from a compatible HTTPS repository, snapshot directory, or build.xml.
@@ -47,6 +52,9 @@ enum Action {
     /// Start the selected image and open its console.
     #[command(visible_alias = "start")]
     Run {
+        #[cfg(windows)]
+        #[arg(long, hide = true)]
+        worker: bool,
         /// Use the kernel and disk in this directory.
         #[arg(long)]
         image_dir: Option<PathBuf>,

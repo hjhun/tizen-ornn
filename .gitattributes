@@ -1,0 +1,3 @@
+# These bytes are executed by Linux inside the guest, including Windows builds.
+guest/** text=auto eol=lf
+*.sh text eol=lf

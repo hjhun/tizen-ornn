@@ -1,6 +1,6 @@
 # Running the VM and managing storage
 
-From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. CPU, memory and display settings take effect when the VM boots.
+From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. The native Windows launcher uses QEMU’s GTK display with guest software rendering. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
 
 GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
 This provides the multisampled EGL surface used by the Flutter home screen.
@@ -55,7 +55,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 Windows and Ubuntu mount a host folder at `/home/tizen/share` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The guest sees live host files, including edits and deletions.
 
-Use **Open image folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
 
 Set **Settings → Shared folder (x86_64) → Save shared folder** in the desktop launcher, then select an image in **Image library** and choose **Start with display** or **Start terminal only**. The CLI accepts the same persistent setting. Supply an existing absolute directory. In a portable installation, run the CLI beside the GUI binary inside `Tizen Ornn Portable/runtime-…` to use that installation’s settings and bundled Windows QEMU.
 

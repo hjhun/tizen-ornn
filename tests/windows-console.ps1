@@ -48,6 +48,16 @@ try {
         Send-Console 'su -c "sync; systemctl --force poweroff"'
     } else {
         Wait-Console 'ORNN_SERIAL_READY'
+        # Close the viewer while the guest is waiting for input and reconnect.
+        $proc.Kill()
+        $proc.WaitForExit()
+        $proc.Dispose()
+        $info.ArgumentList.Clear()
+        foreach ($arg in @('console', '--image-dir', $Image)) {
+            $info.ArgumentList.Add($arg)
+        }
+        $proc = [System.Diagnostics.Process]::Start($info)
+        Wait-Console 'ORNN_SERIAL_READY'
         Send-Console 'ornn-console-check'
         Wait-Console '(?m)^ORNN_SERIAL_OK\r?$'
     }

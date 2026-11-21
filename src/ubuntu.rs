@@ -24,6 +24,7 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             return tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""));
         }
         None => ("run", Value::Null),
+        Some(Action::Console { image_dir }) => ("console", json!({"directory":image_dir})),
         Some(Action::Images) => ("images", Value::Null),
         Some(Action::Build { repository, name }) => {
             if let Some(name) = &name {

@@ -7,6 +7,7 @@ use std::{
 use tizen_ornn::Image;
 mod build;
 mod console;
+mod session;
 
 fn home() -> io::Result<PathBuf> {
     let dir = env::var_os("TIZEN_ORNN_HOME")
@@ -238,7 +239,7 @@ fn boot(
         ]);
         cmd.args([
             "-display",
-            "sdl,gl=off",
+            "gtk,gl=off,show-menubar=off",
             "-device",
             "virtio-gpu-pci,xres=1024,yres=768",
             "-device",
@@ -257,15 +258,59 @@ fn boot(
         &format!("name=opt/tizen-ornn/share,string={mode}"),
     ]);
     let setup = "mount -t sysfs sysfs /sys && /bin/sh /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/boot/raw && exec /usr/lib/systemd/systemd";
-    let (rows, cols) = console::size().unwrap_or((24, 80));
+    let (rows, cols) = env::var("TIZEN_ORNN_INITIAL_SIZE")
+        .ok()
+        .and_then(|value| {
+            let (r, c) = value.split_once('x')?;
+            Some((r.parse::<u16>().ok()?, c.parse::<u16>().ok()?))
+        })
+        .filter(|(r, c)| *r > 0 && *c > 0)
+        .unwrap_or((24, 80));
     cmd.args(["-append", &format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} init=/bin/sh systemd.unit={target} net.ifnames=0 tizen.console_size={rows}x{cols} -- -c \"{setup}; echo tizen-ornn: shared folder setup failed >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff\"")]);
-    console::run(&mut cmd, &stop)?;
+    console::run(&mut cmd, &stop, &image)?;
     if fs::read(status)?.contains(&b'!') {
         return Err(io::Error::other(
             "Guest shared folder setup failed. See the guest console.",
         ));
     }
     Ok(())
+}
+
+fn launch(
+    image: Option<PathBuf>,
+    graphics: bool,
+    share: Option<PathBuf>,
+    read_only: bool,
+) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    let image = select_image(image)?;
+    disk(&image)?;
+    let mut command = Command::new(env::current_exe()?);
+    command.args(["run", "--worker", "--image-dir"]).arg(&image);
+    if let Some((rows, cols)) = console::size() {
+        command.env("TIZEN_ORNN_INITIAL_SIZE", format!("{rows}x{cols}"));
+    }
+    if graphics {
+        command.arg("--gui");
+    }
+    if let Some(share) = share {
+        command
+            .arg(if read_only { "--share-ro" } else { "--share" })
+            .arg(share);
+    }
+    // The worker has no console attachment. Closing a viewer leaves QEMU alive.
+    let mut child = command
+        .creation_flags(0x08000000)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .spawn()?;
+    session::attach(&image, Some(&mut child))?;
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("VM exited with {status}")))
+    }
 }
 
 pub fn execute(cli: Cli) -> io::Result<()> {
@@ -318,14 +363,20 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         Some(Action::ShareDir { path, .. }) => {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))
         }
-        None => boot(None, cli.gui, None, false),
+        Some(Action::Console { image_dir }) => session::attach(&image_dir, None),
+        None => launch(None, cli.gui, None, false),
         Some(Action::Run {
+            worker,
             image_dir,
             share,
             share_ro,
         }) => {
             let read_only = share_ro.is_some();
-            boot(image_dir, cli.gui, share.or(share_ro), read_only)
+            if worker {
+                boot(image_dir, cli.gui, share.or(share_ro), read_only)
+            } else {
+                launch(image_dir, cli.gui, share.or(share_ro), read_only)
+            }
         }
     }
 }

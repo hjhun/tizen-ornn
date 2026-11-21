@@ -1,3 +1,5 @@
+<img src="packaging/art/tizen-ornn.png" width="64" height="64" alt="Tizen Ornn logo">
+
 # Tizen Ornn
 
 Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Ubuntu also supports ARMv7 guests, image updates and package management.
@@ -34,9 +36,9 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-Use **Open image folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
 
-Select an image and click **Start with display** to open its Tizen graphical session and console. The selected image shows its current state. **Shut down** asks that guest to power off cleanly. Choose **Start terminal only** for an x86_64 console-only boot. **Build image…** opens a terminal for build progress and Ubuntu sudo prompts.
+Select an image and click **Start with display** to open its Tizen graphical session and console. Close the terminal window at any time. Click **Open terminal** on the running image to reconnect to the same shell and its running jobs. From the CLI, use `tizen-ornn console --image-dir PATH`. **Shut down** asks that guest to power off cleanly. Choose **Start terminal only** for an x86_64 console-only boot. **Build image…** opens a terminal for build progress and Ubuntu sudo prompts.
 
 Run the CLI as your normal user. The first build downloads the dated snapshot and SDK components, verifies their hashes and creates a 16 GiB sparse disk. Set `TIZEN_ORNN_HOME` to select another image store on a Linux filesystem. [SDK installation and terms](https://developer.samsung.com/tizen/get-started/installation.html)
 
@@ -45,6 +47,8 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
 
 Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/home/tizen/share`. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
+
+On Ubuntu, run `./tizen-ornn-ubuntu-amd64-portable.run --install-shortcut` to add the portable launcher and its icon to the application menu.
 
 Both launchers unpack their runtime and keep the setting in `Tizen Ornn Portable` beside the downloaded file. Relative work directories resolve inside that folder. Move it along with the launcher to preserve settings. Ubuntu guest operations use the host terminal and the project's Ubuntu system dependencies.
 
@@ -67,7 +71,7 @@ The same operations work from PowerShell:
 
 The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the project's snapshot and RPM build recipe inside a temporary QEMU VM. Windows requires neither a WSL distribution nor a pre-existing Tizen disk. The build requires network access, 4 GiB of guest RAM and disk space for a sparse 64 GiB scratch disk and a 16 GiB output disk. Allow extra time for QEMU software emulation. The completed guest disk is independent of the builder. Images live under `%LOCALAPPDATA%\Tizen Ornn\images`; set `TIZEN_ORNN_HOME` to place images and the download cache on another drive.
 
-A Windows guest terminal stays attached to its QEMU process. Use **Shut down** or `tizen-ornn shutdown --image-dir PATH` before closing it. The native console follows the visible Windows terminal size at startup and on resize. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
+Closing a Windows terminal disconnects that viewer. Use **Shut down** or `tizen-ornn shutdown --image-dir PATH` to power off the guest. The native console follows the visible Windows terminal size at startup and on resize. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
 
 ### Guest development account
 

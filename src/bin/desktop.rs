@@ -2,7 +2,7 @@
 
 #[path = "desktop/design.rs"]
 mod design;
-use design::{Artwork, INK, MUTED};
+use design::{INK, MUTED};
 use eframe::egui::{self, Color32, RichText};
 use std::{
     path::PathBuf,
@@ -233,60 +233,46 @@ impl Launcher {
         });
     }
 
-    fn build_controls(&mut self, ui: &mut egui::Ui) {
-        if ui.add(design::action("Build image…")).clicked() {
-            self.build_open = true;
-        }
-    }
-
-    fn library(&mut self, ui: &mut egui::Ui, art: &Artwork) -> Result<(), String> {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Image library").size(31.0).strong());
+    fn library(&mut self, ui: &mut egui::Ui) -> Result<(), String> {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Images").size(28.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(design::action("Open image folder…")).clicked() {
+                if ui.add(design::secondary("Build image…")).clicked() {
+                    self.build_open = true;
+                }
+                if ui.add(design::secondary("Open folder…")).clicked() {
                     self.folder_dialog.pick_directory();
                 }
-                if ui.add(design::secondary("Refresh")).clicked() {
+                if ui.button("Refresh").clicked() {
                     self.status = self.refresh().err().unwrap_or_default();
                 }
             });
         });
-        ui.add_space(5.0);
-        if self.images.is_empty() {
-            design::card().show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() * 0.32).min(190.0);
-                    ui.add(
-                        egui::Image::new((art.library.id(), egui::vec2(width, width * 0.5625)))
-                            .corner_radius(6),
-                    );
-                    ui.add_space(4.0);
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("No images yet").size(21.0).strong());
-                        ui.label(
-                            RichText::new(
-                                "Build a development image or open an existing image folder.",
-                            )
-                            .color(MUTED),
-                        );
-                        self.build_controls(ui);
-                    });
-                });
-            });
-        } else {
-            design::card().show(ui, |ui| {
-                ui.set_width(ui.available_width());
+        ui.add_space(9.0);
+        design::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if self.images.is_empty() {
+                ui.label("No images yet");
+                ui.label(
+                    RichText::new("Open an image folder or build an image to get started.")
+                        .color(MUTED),
+                );
+            } else {
                 egui::ScrollArea::vertical()
                     .id_salt("image-list")
-                    .max_height(164.0)
+                    .max_height(210.0)
                     .show(ui, |ui| {
                         for image in &self.images {
                             let name = image.path.file_name().unwrap_or_default().to_string_lossy();
                             let selected = self.selected.as_ref() == Some(&image.path);
-                            let row = egui::Button::new(format!("{name}   ·   {}", image.arch))
+                            let row = egui::Button::new(format!("{name}    ·    {}", image.arch))
                                 .selected(selected)
-                                .min_size(egui::vec2(ui.available_width(), 34.0));
+                                .fill(if selected {
+                                    Color32::from_rgb(228, 237, 252)
+                                } else {
+                                    Color32::WHITE
+                                })
+                                .min_size(egui::vec2(ui.available_width(), 40.0));
                             if ui
                                 .add(row)
                                 .on_hover_text(image.path.display().to_string())
@@ -296,10 +282,9 @@ impl Launcher {
                             }
                         }
                     });
-                self.build_controls(ui);
-            });
-        }
-        ui.add_space(12.0);
+            }
+        });
+        ui.add_space(14.0);
         let Some(dir) = self.selected.clone() else {
             return Ok(());
         };
@@ -334,8 +319,7 @@ impl Launcher {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(dir.file_name().unwrap_or_default().to_string_lossy())
-                            .size(19.0)
-                            .strong(),
+                            .size(18.0),
                     );
                     ui.label(if stopping {
                         "Shutting down…"
@@ -348,16 +332,34 @@ impl Launcher {
                 ui.label(RichText::new(path).color(MUTED));
                 ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| -> Result<(), String> {
-                    if ui
-                        .add_enabled(!running && !stopping, design::action("Start with display"))
-                        .clicked()
-                    {
-                        let mut args = vec!["run", "--gui", "--image-dir", path];
-                        if arm {
-                            args.extend(["--arch", "armv7l"]);
+                    if running {
+                        if ui
+                            .add_enabled(!stopping, design::action("Open terminal"))
+                            .clicked()
+                        {
+                            self.terminal(&["console", "--image-dir", path])?;
+                            self.status.clear();
                         }
-                        self.terminal(&args)?;
-                        self.status.clear();
+                    } else {
+                        if ui
+                            .add_enabled(!stopping, design::action("Start with display"))
+                            .clicked()
+                        {
+                            let mut args = vec!["run", "--gui", "--image-dir", path];
+                            if arm {
+                                args.extend(["--arch", "armv7l"]);
+                            }
+                            self.terminal(&args)?;
+                            self.status.clear();
+                        }
+                        if !arm
+                            && ui
+                                .add_enabled(!stopping, design::secondary("Start terminal only"))
+                                .clicked()
+                        {
+                            self.terminal(&["run", "--headless", "--image-dir", path])?;
+                            self.status.clear();
+                        }
                     }
                     if ui
                         .add_enabled(
@@ -376,17 +378,6 @@ impl Launcher {
                         self.stopping = Some((dir.clone(), child));
                         self.status.clear();
                     }
-                    if !arm
-                        && ui
-                            .add_enabled(
-                                !running && !stopping,
-                                design::secondary("Start terminal only"),
-                            )
-                            .clicked()
-                    {
-                        self.terminal(&["run", "--headless", "--image-dir", path])?;
-                        self.status.clear();
-                    }
                     Ok(())
                 })
                 .inner
@@ -397,8 +388,8 @@ impl Launcher {
 }
 
 struct Desktop {
+    logo: egui::TextureHandle,
     launcher: Launcher,
-    art: Artwork,
 }
 
 impl eframe::App for Desktop {
@@ -445,18 +436,14 @@ impl eframe::App for Desktop {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(INK)
-                    .inner_margin(egui::Margin::symmetric(22, 12)),
+                    .fill(Color32::WHITE)
+                    .inner_margin(egui::Margin::symmetric(24, 10)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.image((self.art.mark.id(), egui::vec2(56.0, 56.0)));
-                    ui.label(design::wordmark());
-                    ui.label(
-                        RichText::new(tizen_ornn::VERSION)
-                            .color(Color32::from_rgb(174, 203, 198))
-                            .monospace(),
-                    );
+                    ui.image((self.logo.id(), egui::vec2(30.0, 30.0)));
+                    ui.label(RichText::new("Tizen Ornn").size(19.0));
+                    ui.label(RichText::new(tizen_ornn::VERSION).size(13.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let label = if app.settings_open {
                             "Back to library"
@@ -483,7 +470,7 @@ impl eframe::App for Desktop {
                     .show(ui, |ui| {
                         if app.settings_open {
                             app.settings(ui);
-                        } else if let Err(error) = app.library(ui, &self.art) {
+                        } else if let Err(error) = app.library(ui) {
                             app.status = error;
                         }
                         if !app.status.is_empty() {
@@ -551,10 +538,16 @@ fn main() -> eframe::Result {
     }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_app_id("tizen-ornn")
+            .with_app_id(
+                if std::env::var_os("TIZEN_ORNN_PORTABLE_LAUNCHER").is_some() {
+                    "tizen-ornn-portable"
+                } else {
+                    "tizen-ornn"
+                },
+            )
             .with_icon(eframe::icon_data::from_png_bytes(design::ICON).expect("embedded app icon"))
             .with_inner_size([760.0, 560.0])
-            .with_min_inner_size([400.0, 330.0]),
+            .with_min_inner_size([540.0, 350.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -562,9 +555,18 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             design::configure(&cc.egui_ctx);
+            let icon = eframe::icon_data::from_png_bytes(design::ICON).expect("embedded icon");
+            let logo = cc.egui_ctx.load_texture(
+                "ornn-logo",
+                egui::ColorImage::from_rgba_unmultiplied(
+                    [icon.width as usize, icon.height as usize],
+                    &icon.rgba,
+                ),
+                egui::TextureOptions::LINEAR,
+            );
             Ok(Box::new(Desktop {
                 launcher: app,
-                art: Artwork::load(&cc.egui_ctx),
+                logo,
             }))
         }),
     )
