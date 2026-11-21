@@ -11,7 +11,7 @@ root=$1
 mount -t proc proc "$root/proc"
 mount --bind /etc/resolv.conf "$root/etc/resolv.conf"
 chroot "$root" /usr/bin/zypper --non-interactive --no-refresh install --no-recommends \
-    elementary-devel efl-devel wayland-devel
+    elementary-devel efl-devel wayland-devel patchelf
 chroot "$root" /usr/bin/pkg-config --modversion elementary
 INSTALL
 units="$root/etc/systemd/system"

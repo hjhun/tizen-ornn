@@ -1,0 +1,40 @@
+#!/bin/sh
+# Prepare the platform apps before systemd starts the GUI session.
+set -eu
+units=/run/systemd/system
+# The snapshot's default YaGL backend expects the Tizen Studio GPU. DALi
+# clients and Enlightenment must agree on how to render their shared buffers.
+for unit in user@ boot-animation display-manager; do
+    dir=$units/$unit.service.d
+    mkdir -p "$dir"
+    cat > "$dir/tizen-vm-graphics.conf" <<'UNIT'
+[Service]
+BindReadOnlyPaths=/hal/lib64/driver:/usr/lib64/driver
+Environment=LIBGL_ALWAYS_SOFTWARE=1
+UNIT
+    if [ "$unit" = display-manager ]; then
+        # Evas otherwise rejects softpipe and attempts the hardware GBM path.
+        echo 'Environment=EVAS_GL_NO_BLACKLIST=1' >> "$dir/tizen-vm-graphics.conf"
+    fi
+done
+
+# audio-hal-emul uses pow without linking libm. PulseAudio loads the HAL
+# in a separate linker namespace, so LD_PRELOAD in the daemon cannot fix it.
+hal=/hal/lib64/libhal-backend-audio.so
+if [ "$(rpm -qf --qf '%{NAME}' "$hal" 2>/dev/null)" = audio-hal-emul ] &&
+    ! readelf -d "$hal" | grep -Fq '[libm.so.6]'; then
+    if ! command -v patchelf >/dev/null; then
+        echo 'tizen-vm: run tizen-vm install patchelf on the host and restart the GUI to enable volume management.' >&2
+        exit 0
+    fi
+    # Keep the RPM intact. Only the PulseAudio namespace uses this copy.
+    work=/run/tizen-vm-audio
+    mkdir -p "$work"
+    mount -t tmpfs -o nosuid,nodev,mode=0755,size=1m tmpfs "$work"
+    cp "$hal" "$work/backend.so"
+    patchelf --add-needed libm.so.6 "$work/backend.so"
+    chsmack -a _ "$work/backend.so"
+    mkdir -p "$units/pulseaudio.service.d"
+    printf '[Service]\nBindReadOnlyPaths=%s:%s\n' "$work/backend.so" "$hal" \
+        > "$units/pulseaudio.service.d/tizen-vm-audio.conf"
+fi

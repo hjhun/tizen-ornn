@@ -2,6 +2,14 @@
 
 From the host terminal, run `tizen-vm` to start the selected guest or return to its existing console. For a graphical guest, use `tizen-vm --gui` on the first start. The window needs WSLg or a Linux desktop. CPU, memory and display settings take effect when the VM boots.
 
+GUI boots select the image's Mesa software renderer for platform applications.
+Enlightenment uses the same Mesa backend for composition, and the EFL
+demo can still use Wayland shared memory. On an existing guest using the emulator audio HAL, run
+`tizen-vm install patchelf` on the host before restarting with `--gui`.
+Fresh images include this dependency. PulseAudio uses a boot-local copy of
+the emulator HAL linked to libm so the Volume app can query its volume range.
+
+
 | Action | Result |
 | --- | --- |
 | Press Ctrl+C during `dlogutil` or a build | The guest sends SIGINT to the foreground job. |

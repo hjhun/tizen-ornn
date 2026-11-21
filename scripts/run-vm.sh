@@ -102,6 +102,9 @@ prefix=$("$project/scripts/vm-runtime" "$disk")
 args=(-device virtio-serial-pci,id=guestbus
     -chardev "socket,id=packages,path=$prefix.packages,server=on,wait=off"
     -device virtserialport,bus=guestbus.0,chardev=packages,name=org.tizen.vm.packages)
+if (( gui )); then
+    args+=(-fw_cfg "name=opt/tizen-vm/graphics,file=${project//,/,,}/guest/tizen-vm-graphics")
+fi
 network_data=
 if (( host_network )); then network_data=$("$project/scripts/host-network"); fi
 if [[ -n $network_data ]]; then
@@ -126,7 +129,7 @@ if [[ -n $share_mode ]]; then
 fi
 init=/usr/lib/systemd/systemd
 init_args=
-if [[ -n $share_mode || -n $network_data ]]; then
+if (( gui )) || [[ -n $share_mode || -n $network_data ]]; then
     candidates=("$kernel")
     if [[ -z ${TIZEN_KERNEL:-} ]]; then
         candidates+=("$project/kernel/bzImage" "$project/out/share-kernel/bzImage")
@@ -146,7 +149,7 @@ if [[ -n $share_mode || -n $network_data ]]; then
         break
     done
     if [[ -z $kernel ]]; then
-        echo 'This kernel lacks guest sharing or network configuration support. Install the updated host package or select a compatible TIZEN_KERNEL.' >&2
+        echo 'No compatible kernel was found for the requested guest boot options. Install the updated host package or select a compatible TIZEN_KERNEL.' >&2
         exit 1
     fi
     args+=(-fw_cfg "name=opt/tizen-vm/boot,file=${project//,/,,}/guest/tizen-vm-boot")

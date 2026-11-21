@@ -4,7 +4,13 @@ set -eu
 config=/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-vm
 
 mount -t proc -o nosuid,nodev,noexec proc /proc
-mount -t tmpfs -o nosuid,nodev,mode=0755 tmpfs /run
+mount -t tmpfs -o nosuid,nodev,noexec,mode=0755 tmpfs /run
+# Match systemd's native Tizen /run before udev creates its device records.
+chsmack -a System::Run -t /run
+
+if [ -r "$config/graphics/raw" ]; then
+    /bin/sh "$config/graphics/raw"
+fi
 
 if [ -r "$config/network/raw" ]; then
     /usr/bin/python3 -I "$config/network/raw"

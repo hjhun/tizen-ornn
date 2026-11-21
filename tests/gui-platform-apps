@@ -1,0 +1,26 @@
+#!/bin/sh
+# Run as root in a booted GUI guest. Both platform apps have short crash loops
+# when EGL initialization or the audio policy is broken on the emulator image.
+set -eu
+apps() {
+    pgrep -x TaskBar.dll && pgrep -x VolumeApp.dll
+}
+for i in $(seq 1 90); do
+    if pids=$(apps); then break; fi
+    pids=
+    sleep 1
+done
+test -n "${pids:-}"
+for i in $(seq 1 12); do
+    sleep 5
+    test "$(apps)" = "$pids" || { echo "Platform app exited or relaunched" >&2; exit 1; }
+done
+systemctl is-active --quiet tizen-dev-gui.target
+systemctl is-active --quiet display-manager.service
+systemctl is-active --quiet tizen-ui-demo.service
+pactl -s unix:/run/pulse/native list short modules | grep -qw module-tizenaudio-policy
+windows=$(enlightenment_info -topvwins)
+for app in TaskBar VolumeApp; do
+    printf '%s\n' "$windows" | grep -Fqi "/$app.dll"
+done
+printf 'Both .NET apps retained their PIDs for 60 seconds and registered compositor windows.\n'
