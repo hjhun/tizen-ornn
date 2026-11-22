@@ -21,7 +21,9 @@ Type=ext4
 EOF
 done
 {
-    echo "mkdir $units/local-fs.target.requires"
+    if ! debugfs -R "stat $units/local-fs.target.requires" "$disk" 2>/dev/null | grep -F 'Type: directory' >/dev/null; then
+        echo "mkdir $units/local-fs.target.requires"
+    fi
     for unit in opt.mount hal.mount; do
         echo "write $stage/$unit $units/$unit"
         echo "ea_set $units/$unit security.SMACK64 _"

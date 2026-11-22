@@ -29,7 +29,10 @@ with tempfile.TemporaryDirectory() as stage:
     for dest, content in files.items():
         src = Path(stage) / Path(dest).name
         src.write_text(content)
-        cmds = f'mkdir {Path(dest).parent}\nwrite "{src}" {dest}\nea_set {dest} security.SMACK64 _\n'
+        parent = Path(dest).parent
+        stat = subprocess.check_output(["debugfs", "-R", f"stat {parent}", disk], stderr=subprocess.DEVNULL)
+        mkdir = "" if b"Type: directory" in stat else f"mkdir {parent}\n"
+        cmds = f'{mkdir}write "{src}" {dest}\nea_set {dest} security.SMACK64 _\n'
         subprocess.run(["debugfs", "-w", "-f", "-", disk], input=cmds, text=True, check=True)
         actual = subprocess.check_output(["debugfs", "-R", f"cat {dest}", disk])
         if actual != content.encode():

@@ -54,7 +54,8 @@ Environment=EVAS_GL_NO_BLACKLIST=1
     for dest, source in files.items():
         # Do not replace any existing unrelated unit or setting.
         parent = str(Path(dest).parent)
-        if parent.endswith(".service.d"):
+        if parent.endswith(".service.d") and b"Type: directory" not in subprocess.check_output(
+                ["debugfs", "-R", f"stat {parent}", disk], stderr=subprocess.DEVNULL):
             print(f"mkdir {parent}", file=commands)
         print(f'write "{source}" {dest}', file=commands)
         print(f"ea_set {dest} security.SMACK64 _", file=commands)

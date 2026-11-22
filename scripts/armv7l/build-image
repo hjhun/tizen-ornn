@@ -48,6 +48,7 @@ FSTAB
     for img in rootfs system-data; do
         truncate -s "+${TIZEN_ARM_DISK_GROW:-2G}" "$stage/$img.img"
         resize2fs "$stage/$img.img"
+        e2fsck -fn "$stage/$img.img"
     done
     mv -T "$stage" "$out/disk"
 fi
