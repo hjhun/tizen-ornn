@@ -2,7 +2,7 @@
 
 # Tizen Ornn
 
-Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Ubuntu also supports ARMv7 guests, image updates and package management.
+Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Both launchers have headed ARMv7l and AArch64 build recipes. Ubuntu also supports x86_64 image updates and package management.
 
 ## Downloads
 
@@ -177,7 +177,7 @@ For a coding assistant, use `tizen-ornn install agy`, `gemini`, `claude` or `cod
 | `tizen-ornn update --image` or `tizen-ornn update` | Build a replacement system and migrate the previous disk's persistent files after guest shutdown |
 | `tizen-ornn rollback` | Switch back to the previous disk after guest shutdown |
 
-In a terminal, both update modes offer a numbered choice when multiple updatable x86_64 images are installed. Image updates use the chosen stopped disk as the migration source. Package updates require the chosen guest to be running. Noninteractive updates use the active image. ARMv7 update support is pending.
+In a terminal, both update modes offer a numbered choice when multiple updatable x86_64 images are installed. Image updates use the chosen stopped disk as the migration source. Package updates require the chosen guest to be running. Noninteractive updates use the active image. ARM guest updates are unsupported.
 
 An image update merges the previous disk's `/opt/usr`, `/home` and `/root` into the new image, including owner projects and the AI tool home. Existing file contents, ownership, links and SMACK attributes are carried across. The new image supplies the system RPMs, package database and directories such as `/etc` and `/usr`. Reinstall any additional system RPMs you need. The previous disk remains available with its original system and data. Edits made after switching belong to the disk on which they were made.
 
@@ -185,9 +185,23 @@ Allow space for both images and build downloads. Migrating a QCOW2 disk or recov
 
 Fresh x86_64 images include the terminfo-aware `clear` command. For an existing running Ubuntu-managed guest, use `tizen-ornn install ncurses-utils`. Inside a guest with the pinned repositories, root can also run `zypper install ncurses-utils`.
 
+## Build a headed ARM guest
+
+Open **Build image…**, select **armv7l** or **aarch64**, and click **Build**. The recipe downloads the official headed and generic HAL archives for `tizen-10.1-unified_20261119.053314`, verifies both checksums and builds a QEMU virt kernel. After building, select the image and choose **Start with display**. The CLI equivalents are `tizen-ornn build --arch aarch64` and `tizen-ornn run --arch aarch64 --gui`; substitute `armv7l` for 32-bit ARM.
+
+| Build option | x86_64 | armv7l / aarch64 |
+|---|---|---|
+| Source | Configured snapshot or compatible HTTPS snapshot URL | Fixed official headed image and matching generic HAL |
+| Image name | Editable; a URL defaults to its dated ID including dots | `armv7l-headed` or `aarch64-headed` |
+| Local source archive | Ubuntu script with `--archive` | Unsupported |
+| Developer RPMs | Resolved from the snapshot repositories | Original image contents; no Ornn development RPM provisioning |
+| Guest access | Graphical or terminal-only boot; host folder sharing | Graphical boot with serial terminal |
+
+All recipes need network access for a fresh build. The GUI does not accept extra RPM repository URLs. Ubuntu ARM builds require the kernel build dependencies, `e2fsprogs`, `qemu-system-arm`, and either `gcc-arm-linux-gnueabihf` or `gcc-aarch64-linux-gnu`. Windows uses the packaged Ubuntu builder VM and the matching native ARM QEMU executable. Allow space for the downloaded archives, kernel build and four writable guest partitions.
+
 ## Choose the snapshot source
 
-On Windows or Ubuntu, open **Build image…** and paste the HTTPS snapshot repository, Unified snapshot directory, its `build.xml`, an emulator profile directory, or its dated `.ks`, `.packages`, or archive URL into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata with dots replaced by hyphens. Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
+On Windows or Ubuntu, open **Build image…**, select **x86_64**, and paste the HTTPS snapshot repository, Unified snapshot directory, its `build.xml`, an emulator profile directory, or its dated `.ks`, `.packages`, or archive URL into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata including its dots (for example, `tizen-10.1-unified_20261119.053314`). Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
 
 ```sh
 tizen-ornn build --repository https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/

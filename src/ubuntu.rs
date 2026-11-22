@@ -34,7 +34,7 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                 .as_deref()
                 .map(crate::build_source::BuildSource::resolve)
                 .transpose()?;
-            let name = name.or_else(|| source.as_ref().map(|s| s.release.replace('.', "-")));
+            let name = name.or_else(|| source.as_ref().map(|s| s.release.clone()));
             (
                 "build",
                 json!({"name":name, "build_config":source.as_ref().map(|s| s.config())}),

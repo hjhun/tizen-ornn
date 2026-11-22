@@ -109,20 +109,22 @@ def launch_choices(home):
         if disk not in seen:
             choices.append(('x86_64', path.resolve()))
             seen.add(disk)
-    arm = home / 'armv7l-headed'
-    files = [arm / 'zImage', *(arm / 'disk' / (name + '.img')
-                               for name in ARM_PARTITIONS)]
-    if all(path.is_file() and path.stat().st_size for path in files):
-        choices.append(('armv7l', arm))
+    for arch, kernel in ARM_KERNELS.items():
+        arm = home / f'{arch}-headed'
+        files = [arm / kernel, *(arm / 'disk' / (name + '.img') for name in ARM_PARTITIONS)]
+        if all(path.is_file() and path.stat().st_size for path in files):
+            choices.append((arch, arm))
     return choices
 
 
 def update_choices(home):
     choices = [item for item in launch_choices(home) if item[0] == 'x86_64']
-    if (home / 'armv7l-headed' / 'disk').is_dir():
+    for arch in ARM_KERNELS:
+        if not (home / f'{arch}-headed' / 'disk').is_dir():
+            continue
         if not choices:
-            raise ValueError('ARMv7 image and package updates are not supported yet.')
-        print('armv7l-headed: image and package updates are not supported yet.')
+            raise ValueError(f'{arch} image and package updates are not supported yet.')
+        print(f'{arch}-headed: image and package updates are not supported yet.')
     return choices
 
 
@@ -323,13 +325,14 @@ def prepare(home, active, snapshot, *, name=None, previous=None, config=None):
         print(f'Previous disk retained at {active}. Run tizen-ornn rollback to use it.')
 
 
+ARM_KERNELS = {'armv7l': 'zImage', 'aarch64': 'Image'}
 ARM_PARTITIONS = ('rootfs', 'system-data', 'user', 'hal')
 
 
 def deletable_images(home, arch):
     images = home / 'images'
     choices = []
-    if arch != 'armv7l' and images.is_dir() and not images.is_symlink():
+    if arch in (None, 'x86_64') and images.is_dir() and not images.is_symlink():
         for path in sorted(images.iterdir()):
             if path.name.startswith('.') or path.is_symlink() or not path.is_dir():
                 continue
@@ -338,11 +341,12 @@ def deletable_images(home, arch):
             except ValueError:
                 continue
             choices.append(('x86_64', path))
-    arm = home / 'armv7l-headed'
-    directory = arm / 'disk'
-    if (arch != 'x86_64' and not arm.is_symlink() and not directory.is_symlink()
-            and all((directory / f'{part}.img').is_file() for part in ARM_PARTITIONS)):
-        choices.append(('armv7l', arm))
+    for target in ARM_KERNELS:
+        arm = home / f'{target}-headed'
+        directory = arm / 'disk'
+        if (arch in (None, target) and not arm.is_symlink() and not directory.is_symlink()
+                and all((directory / f'{part}.img').is_file() for part in ARM_PARTITIONS)):
+            choices.append((target, arm))
     return choices
 
 
@@ -375,7 +379,7 @@ def check_disk_unused(images, disk):
 def delete_arm(home, image, yes):
     directory = image / 'disk'
     parts = [directory / f'{part}.img' for part in ARM_PARTITIONS]
-    with lock_file(image / 'build.lock', 'ARMv7 image is in use.', create=True):
+    with lock_file(image / 'build.lock', 'ARM image is in use.', create=True):
         if (image.is_symlink() or directory.is_symlink() or os.path.ismount(directory)
                 or set(directory.iterdir()) != set(parts)):
             raise ValueError(f'Unexpected ARM partition directory: {directory}')
@@ -460,20 +464,26 @@ def execute(args):
             if choice is None:
                 return
             args.arch, picked = choice
+    if picked and args.command in (None, 'run', 'start'):
+        arch = next((arch for arch, kernel in ARM_KERNELS.items() if (picked / kernel).is_file()), 'x86_64')
+        if args.arch and args.arch != arch:
+            raise ValueError(f'Expected a {args.arch} image at {picked}, found {arch}.')
+        args.arch = arch
     if args.command == 'console':
-        lock = picked / 'build.lock' if (picked / 'zImage').is_file() else disk_at(picked)
+        lock = picked / 'build.lock' if any((picked / k).is_file() for k in ARM_KERNELS.values()) else disk_at(picked)
         prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
         os.environ.pop('TMUX', None)
         os.environ.pop('TMUX_PANE', None)
         os.execvp('tmux', ['tmux', '-S', prefix + '.sock', 'attach-session', '-t', '=vm'])
-    if args.arch == 'armv7l' and args.command != 'delete':
+    if args.arch in ARM_KERNELS and args.command != 'delete':
         if getattr(args, 'name', None) or getattr(args, 'build_config', None):
             raise ValueError('Building a named repository image requires x86_64')
         if headless or args.command not in (None, 'run', 'start', 'build'):
-            raise ValueError('ARMv7 currently supports build and graphical run/start')
+            raise ValueError('ARM currently supports build and graphical run/start')
         if any(getattr(args, key, False) for key in ('share', 'share_ro', 'host_browser', 'no_host_network')):
             raise ValueError('these host integration options currently require x86_64')
-        arm_home = data_home() / 'armv7l-headed'
+        os.environ['TIZEN_ARM_ARCH'] = args.arch
+        arm_home = data_home() / f'{args.arch}-headed'
         tool = SCRIPTS / 'armv7l' / ('build-image' if args.command == 'build' else 'run')
         image = picked or arm_home
         if args.command != 'build' and sys.stdin.isatty() and sys.stdout.isatty():
@@ -520,7 +530,7 @@ def execute(args):
                 saved = str(directory)
             os.environ['TIZEN_ORNN_BOOT_SHARE'] = saved
         os.execv(run, command)
-    if args.command == 'shutdown' and picked and (picked / 'zImage').is_file():
+    if args.command == 'shutdown' and picked and any((picked / k).is_file() for k in ARM_KERNELS.values()):
         import socket
         lock = picked / 'build.lock'
         prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
@@ -564,7 +574,7 @@ def execute(args):
         if args.command == 'update' and interactive:
             choices = update_choices(home)
             if choices:
-                choice = choose_image(choices, 'update packages in', (home / 'armv7l-headed/disk').is_dir())
+                choice = choose_image(choices, 'update packages in', any((home / f'{arch}-headed/disk').is_dir() for arch in ARM_KERNELS))
                 if choice is None:
                     return
                 active = choice[1]
@@ -599,7 +609,7 @@ def execute(args):
                 choice = matches[0]
             arch, path = choice
             yes = args.yes and args.image is not None
-            if arch == 'armv7l':
+            if arch in ARM_KERNELS:
                 delete_arm(home, path, yes)
             else:
                 delete_image(home, active, path.name, yes)
@@ -620,7 +630,7 @@ def execute(args):
             if interactive:
                 choices = update_choices(home)
                 if choices:
-                    choice = choose_image(choices, 'update', (home / 'armv7l-headed/disk').is_dir())
+                    choice = choose_image(choices, 'update', any((home / f'{arch}-headed/disk').is_dir() for arch in ARM_KERNELS))
                     if choice is None:
                         return
                     active = choice[1]

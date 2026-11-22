@@ -35,15 +35,7 @@ fn guest_arch(path: &std::path::Path) -> Option<&'static str> {
     {
         return Some("x86_64");
     }
-    #[cfg(target_os = "linux")]
-    if path.join("zImage").is_file()
-        && ["rootfs.img", "system-data.img", "user.img", "hal.img"]
-            .iter()
-            .all(|file| path.join("disk").join(file).is_file())
-    {
-        return Some("armv7l");
-    }
-    None
+    tizen_ornn::arm_arch(path)
 }
 
 fn connected_directories(store: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
@@ -99,6 +91,7 @@ struct Launcher {
     name: String,
     repository: String,
     build_open: bool,
+    build_arch: Option<&'static str>,
     workdir: String,
     share: String,
     active_workdir: String,
@@ -206,6 +199,63 @@ impl Launcher {
             .map_err(|e| e.to_string())?;
         self.processes.push(child);
         Ok(())
+    }
+
+    fn build_form(&mut self, ui: &mut egui::Ui) {
+        ui.label("Guest architecture");
+        self.build_arch.get_or_insert("x86_64");
+        ui.horizontal_wrapped(|ui| {
+            for arch in ["x86_64", "armv7l", "aarch64"] {
+                ui.selectable_value(&mut self.build_arch, Some(arch), arch);
+            }
+        });
+        let arch = self.build_arch.unwrap_or("x86_64");
+        let arm = arch != "x86_64";
+        if arm {
+            ui.label(format!(
+                "Official Tizen 10.1 headed {} + generic HAL · tizen-10.1-unified_20261119.053314",
+                arch
+            ));
+            ui.label("Graphical boot with a serial terminal. This recipe uses a fixed snapshot and image name. Custom RPM repositories, local archives, host folders and package updates are unsupported.");
+            if cfg!(windows) {
+                ui.label(
+                    "Windows uses a disposable Ubuntu builder VM and native QEMU for the guest.",
+                );
+            } else {
+                ui.label(
+                    "Install qemu-system-arm and the matching cross compiler before building.",
+                );
+            }
+        } else {
+            ui.label("The builder downloads the official source archive and development RPMs. Use an HTTPS snapshot or compatible mirror. Additional RPM repository URLs are unsupported. For a local archive, use scripts/tizen-image --archive on Ubuntu.");
+            ui.label("Snapshot repository URL");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.repository)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"),
+            );
+            ui.label("Image name");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.name)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("Leave blank to use the snapshot ID, including dots"),
+            );
+        }
+        if ui.add(design::action("Build")).clicked() {
+            let repository = self.repository.trim().to_owned();
+            let name = self.name.trim().to_owned();
+            let mut args = vec!["build", "--arch", arch];
+            if !arm && !repository.is_empty() {
+                args.extend(["--repository", &repository]);
+            }
+            if !arm && !name.is_empty() {
+                args.extend(["--name", &name]);
+            }
+            match self.terminal(&args) {
+                Ok(()) => self.build_open = false,
+                Err(e) => self.status = e,
+            }
+        }
     }
 
     fn settings(&mut self, ui: &mut egui::Ui) {
@@ -329,7 +379,7 @@ impl Launcher {
             self.status = self.refresh().err().unwrap_or_default();
         }
         if build {
-            open_popup(ui.ctx(), "Build x86_64 image", &mut self.build_open);
+            open_popup(ui.ctx(), "Build image", &mut self.build_open);
         }
         if open {
             if self.folder_dialog.is_some() {
@@ -395,7 +445,8 @@ impl Launcher {
         let Some(dir) = self.selected.clone() else {
             return Ok(());
         };
-        let arm = guest_arch(&dir) == Some("armv7l");
+        let arch = guest_arch(&dir).ok_or("Image files are missing.")?;
+        let arm = arch != "x86_64";
         #[cfg(windows)]
         let lock = dir.join(".ornn-session");
         #[cfg(target_os = "linux")]
@@ -458,7 +509,7 @@ impl Launcher {
                         {
                             let mut args = vec!["run", "--gui", "--image-dir", path];
                             if arm {
-                                args.extend(["--arch", "armv7l"]);
+                                args.extend(["--arch", arch]);
                             }
                             self.terminal(&args)?;
                             self.status.clear();
@@ -495,10 +546,10 @@ impl Launcher {
                 ui.label(RichText::new("Image folder").color(MUTED).size(13.0));
                 ui.add(egui::Label::new(path).wrap());
                 ui.label(RichText::new("Architecture").color(MUTED).size(13.0));
-                ui.label(if arm { "armv7l" } else { "x86_64" });
+                ui.label(arch);
                 let store = PathBuf::from(&self.active_workdir);
                 let external = self.external.contains(&dir);
-                let expected_parent = if arm {
+                let expected_parent = if arm && cfg!(target_os = "linux") {
                     store.clone()
                 } else {
                     store.join("images")
@@ -507,7 +558,7 @@ impl Launcher {
                     .parent()
                     .and_then(|p| p.canonicalize().ok())
                     .is_some_and(|parent| Some(parent) == expected_parent.canonicalize().ok())
-                    && (!arm || dir.ends_with("armv7l-headed"));
+                    && (!arm || dir.ends_with(format!("{arch}-headed")));
                 if (external || managed)
                     && ui
                         .add_enabled(
@@ -744,43 +795,13 @@ impl eframe::App for Desktop {
             app.settings_open = !closed;
         }
         if app.build_open {
-            let closed = popup(
-                ctx,
-                "Build x86_64 image",
-                [480.0, 210.0],
-                [320.0, 180.0],
-                |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        ui.label("Snapshot repository URL");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut app.repository)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("Leave blank for the configured snapshot"),
-                        );
-                        ui.label("Image name");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut app.name)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("Use the snapshot ID when a URL is supplied"),
-                        );
-                        if ui.add(design::action("Build")).clicked() {
-                            let repository = app.repository.trim().to_owned();
-                            let name = app.name.trim().to_owned();
-                            let mut args = vec!["build"];
-                            if !repository.is_empty() {
-                                args.extend(["--repository", &repository]);
-                            }
-                            if !name.is_empty() {
-                                args.extend(["--name", &name]);
-                            }
-                            match app.terminal(&args) {
-                                Ok(()) => app.build_open = false,
-                                Err(e) => app.status = e,
-                            }
-                        }
+            let closed = popup(ctx, "Build image", [550.0, 390.0], [320.0, 180.0], |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        app.build_form(ui);
                     });
-                },
-            );
+                });
+            });
             app.build_open &= !closed;
         }
         if let Some(dialog) = &mut app.folder_dialog {

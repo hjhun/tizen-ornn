@@ -17,8 +17,7 @@ struct Cli {
     /// Use the guest serial console only.
     #[arg(long, global = true)]
     headless: bool,
-    #[cfg(target_os = "linux")]
-    #[arg(long, global = true, value_parser = ["x86_64", "armv7l"])]
+    #[arg(long, global = true, value_parser = ["x86_64", "armv7l", "aarch64"])]
     arch: Option<String>,
     #[command(subcommand)]
     command: Option<Action>,

@@ -32,12 +32,18 @@ CONFIG_F2FS_FS_SECURITY=y
 CONFIG_ARM_LPAE=y
 CONFIG_DEPRECATED_PARAM_STRUCT=y
 CONFIG
-kmake=(make -C "$src" O="$build" ARCH=arm CROSS_COMPILE="${CROSS_COMPILE:-arm-linux-gnueabihf-}")
+case ${TIZEN_ARM_ARCH:-armv7l} in
+    armv7l) machine=arm; target=zImage; compiler=arm-linux-gnueabihf-; required="ARCH_VIRT AEABI VFP" ;;
+    aarch64) machine=arm64; target=Image; compiler=aarch64-linux-gnu-; required="ARM64"
+        echo CONFIG_ARM64_4K_PAGES=y >> "$build/virt.config" ;;
+    *) exit 2 ;;
+esac
+kmake=(make -C "$src" O="$build" ARCH="$machine" CROSS_COMPILE="${CROSS_COMPILE:-$compiler}")
 "${kmake[@]}" KCONFIG_ALLCONFIG="$build/virt.config" allnoconfig
-for option in ARCH_VIRT AEABI VFP SERIAL_AMBA_PL011_CONSOLE VIRTIO_MMIO VIRTIO_BLK DRM_VIRTIO_GPU EXT4_FS EXT4_FS_SECURITY SECURITY_SMACK; do
+for option in $required SERIAL_AMBA_PL011_CONSOLE VIRTIO_MMIO VIRTIO_BLK DRM_VIRTIO_GPU EXT4_FS EXT4_FS_SECURITY SECURITY_SMACK; do
     grep -qx "CONFIG_$option=y" "$build/.config" || { echo "Missing CONFIG_$option" >&2; exit 1; }
 done
 if [[ ${2:-} == --config-only ]]; then exit 0; fi
-"${kmake[@]}" -j"${JOBS:-4}" zImage
-install -m 0644 "$build/arch/arm/boot/zImage" "$out/zImage.new"
-mv -T "$out/zImage.new" "$out/zImage"
+"${kmake[@]}" -j"${JOBS:-4}" "$target"
+install -m 0644 "$build/arch/$machine/boot/$target" "$out/$target.new"
+mv -T "$out/$target.new" "$out/$target"

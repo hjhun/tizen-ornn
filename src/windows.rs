@@ -74,10 +74,16 @@ fn images() -> io::Result<Vec<Image>> {
     if root.is_dir() {
         for item in fs::read_dir(root)? {
             let item = item?;
-            if !item.file_name().to_string_lossy().starts_with('.') && disk(&item.path()).is_ok() {
+            if item.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let path = item.path();
+            if let Some(arch) =
+                tizen_ornn::arm_arch(&path).or_else(|| disk(&path).ok().map(|_| "x86_64"))
+            {
                 result.push(Image {
-                    arch: "x86_64".into(),
-                    path: item.path(),
+                    arch: arch.into(),
+                    path,
                 });
             }
         }
@@ -91,16 +97,29 @@ fn delete_disk(name: &str) -> io::Result<()> {
     crate::build_source::validate_name(name)?;
     let root = home()?.join("images");
     let image = root.join(name);
-    let (filename, _) = disk(&image)?;
-    let target = image.join(filename);
-    // A managed path must not redirect deletion through a junction or symlink.
-    for path in [&root, &image, &target] {
+    let partitions = image.join("disk");
+    let arm = tizen_ornn::arm_arch(&image).is_some();
+    let mut targets = Vec::new();
+    if arm {
+        for part in ["rootfs.img", "system-data.img", "user.img", "hal.img"] {
+            targets.push(partitions.join(part));
+        }
+        if fs::read_dir(&partitions)?.count() != targets.len()
+            || fs::symlink_metadata(&partitions)?.file_attributes() & 0x400 != 0
+        {
+            return Err(io::Error::other("Unexpected ARM partition directory."));
+        }
+    } else {
+        let (filename, _) = disk(&image)?;
+        if image.join("tizen-rootfs.ext4").exists() && image.join("tizen-rootfs.qcow2").exists() {
+            return Err(io::Error::other("Expected exactly one guest disk."));
+        }
+        targets.push(image.join(filename));
+    }
+    for path in [&root, &image].into_iter().chain(targets.iter()) {
         if fs::symlink_metadata(path)?.file_attributes() & 0x400 != 0 {
             return Err(io::Error::other("Cannot delete through a reparse point."));
         }
-    }
-    if image.join("tizen-rootfs.ext4").exists() && image.join("tizen-rootfs.qcow2").exists() {
-        return Err(io::Error::other("Expected exactly one guest disk."));
     }
     let session = fs::OpenOptions::new()
         .write(true)
@@ -110,10 +129,13 @@ fn delete_disk(name: &str) -> io::Result<()> {
     session
         .try_lock()
         .map_err(|_| io::Error::other("This image is in use."))?;
-    let canonical = target.canonicalize()?;
+    let canonical = targets
+        .iter()
+        .map(|p| p.canonicalize())
+        .collect::<io::Result<Vec<_>>>()?;
     for item in fs::read_dir(&root)? {
         let overlay = item?.path().join("tizen-rootfs.qcow2");
-        if !overlay.is_file() || overlay.canonicalize()? == canonical {
+        if !overlay.is_file() || canonical.contains(&overlay.canonicalize()?) {
             continue;
         }
         let info = qemu("qemu-img")?
@@ -128,7 +150,7 @@ fn delete_disk(name: &str) -> io::Result<()> {
         let layers: Vec<serde_json::Value> = serde_json::from_slice(&info.stdout)?;
         for layer in layers {
             if let Some(backing) = layer["full-backing-filename"].as_str()
-                && Path::new(backing).canonicalize()? == canonical
+                && canonical.contains(&Path::new(backing).canonicalize()?)
             {
                 return Err(io::Error::other(format!(
                     "{} uses this disk as a backing image.",
@@ -137,7 +159,13 @@ fn delete_disk(name: &str) -> io::Result<()> {
             }
         }
     }
-    fs::remove_file(target)
+    if arm {
+        let trash = tempfile::tempdir_in(&image)?;
+        fs::rename(partitions, trash.path().join("disk"))?;
+        trash.close()
+    } else {
+        fs::remove_file(&targets[0])
+    }
 }
 
 fn select_image(image: Option<PathBuf>) -> io::Result<PathBuf> {
@@ -173,6 +201,32 @@ fn boot(
     let stop = image.join(".ornn-shutdown");
     if stop.exists() {
         fs::remove_file(&stop)?;
+    }
+    if let Some(arch) = tizen_ornn::arm_arch(&image) {
+        if !graphics || share.is_some() {
+            return Err(io::Error::other(
+                "ARM guests require graphical mode and do not support host folder sharing.",
+            ));
+        }
+        let (tool, cpu, kernel) = if arch == "aarch64" {
+            ("qemu-system-aarch64", "cortex-a72", "Image")
+        } else {
+            ("qemu-system-arm", "cortex-a15", "zImage")
+        };
+        let mut cmd = qemu(tool)?;
+        cmd.current_dir(&image).args(["-machine","virt","-cpu",cpu,"-accel","tcg","-m","1536","-smp","2","-kernel",kernel,
+            "-append","root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target",
+            "-display","sdl,show-cursor=on","-device","virtio-gpu-device","-device","virtio-keyboard-device","-device","virtio-tablet-device","-device","virtio-rng-device",
+            "-netdev","user,id=net","-device","virtio-net-device,netdev=net","-serial","chardev:console","-monitor","none","-no-reboot"]);
+        for part in ["rootfs", "system-data", "user", "hal"] {
+            cmd.args([
+                "-drive",
+                &format!("if=none,format=raw,id={part},file=disk/{part}.img"),
+                "-device",
+                &format!("virtio-blk-device,drive={part}"),
+            ]);
+        }
+        return console::run(&mut cmd, &stop, &image, true);
     }
     let (name, format) = disk(&image)?;
     let mut cmd = qemu("qemu-system-x86_64")?;
@@ -331,7 +385,7 @@ fn boot(
         .filter(|(r, c)| *r > 0 && *c > 0)
         .unwrap_or((24, 80));
     cmd.args(["-append", &format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} init=/bin/sh systemd.unit={target} net.ifnames=0 tizen.console_size={rows}x{cols} -- -c \"{setup}; echo tizen-ornn: shared folder setup failed >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff\"")]);
-    console::run(&mut cmd, &stop, &image)?;
+    console::run(&mut cmd, &stop, &image, false)?;
     if fs::read(status)?.contains(&b'!') {
         return Err(io::Error::other(
             "Guest shared folder setup failed. See the guest console.",
@@ -348,7 +402,20 @@ fn launch(
 ) -> io::Result<()> {
     use std::os::windows::process::CommandExt;
     let image = select_image(image)?;
-    disk(&image)?;
+    if let Some(arch) = tizen_ornn::arm_arch(&image) {
+        qemu(if arch == "armv7l" {
+            "qemu-system-arm"
+        } else {
+            "qemu-system-aarch64"
+        })?;
+        if !graphics || share.is_some() {
+            return Err(io::Error::other(
+                "ARM guests support graphical boot without host folder sharing.",
+            ));
+        }
+    } else {
+        disk(&image)?;
+    }
     let mut command = Command::new(env::current_exe()?);
     command.args(["run", "--worker", "--image-dir"]).arg(&image);
     if let Some((rows, cols)) = console::size() {
@@ -419,6 +486,15 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             Ok(())
         }
         Some(Action::Build { name, repository }) => {
+            let arch = cli.arch.as_deref().unwrap_or("x86_64");
+            if arch != "x86_64" {
+                if name.is_some() || repository.is_some() {
+                    return Err(io::Error::other(
+                        "ARM builds use the pinned headed snapshot and its generic HAL.",
+                    ));
+                }
+                return build::create(&home()?, &format!("{arch}-headed"), arch, None);
+            }
             if let Some(name) = &name {
                 crate::build_source::validate_name(name)?;
             }
@@ -427,26 +503,56 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                 .map(crate::build_source::BuildSource::resolve)
                 .transpose()?;
             let name = name
-                .or_else(|| source.as_ref().map(|s| s.release.replace('.', "-")))
+                .or_else(|| source.as_ref().map(|s| s.release.clone()))
                 .unwrap_or_else(|| "default".into());
-            build::create(&home()?, &name, source.as_ref())
+            build::create(&home()?, &name, arch, source.as_ref())
         }
         Some(Action::ShareDir { path, .. }) => {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))
         }
         Some(Action::Console { image_dir }) => session::attach(&image_dir, None),
-        None => launch(None, cli.gui, None, false),
+        None => {
+            let image = cli
+                .arch
+                .as_deref()
+                .filter(|arch| *arch != "x86_64")
+                .map(|arch| home().map(|h| h.join("images").join(format!("{arch}-headed"))))
+                .transpose()?;
+            launch(
+                image,
+                !cli.headless
+                    && (cli.gui || cli.arch.as_deref().is_some_and(|arch| arch != "x86_64")),
+                None,
+                false,
+            )
+        }
         Some(Action::Run {
             worker,
             image_dir,
             share,
             share_ro,
         }) => {
+            let image_dir = match (image_dir, cli.arch.as_deref()) {
+                (None, Some(arch @ ("armv7l" | "aarch64"))) => {
+                    Some(home()?.join("images").join(format!("{arch}-headed")))
+                }
+                (image, _) => image,
+            };
+            let detected = image_dir.as_deref().and_then(tizen_ornn::arm_arch);
+            if let (Some(requested), Some(path)) = (cli.arch.as_deref(), image_dir.as_deref())
+                && requested != detected.unwrap_or("x86_64")
+            {
+                return Err(io::Error::other(format!(
+                    "Expected a {requested} image at {}",
+                    path.display()
+                )));
+            }
+            let graphics = cli.gui || (!cli.headless && detected.is_some());
             let read_only = share_ro.is_some();
             if worker {
-                boot(image_dir, cli.gui, share.or(share_ro), read_only)
+                boot(image_dir, graphics, share.or(share_ro), read_only)
             } else {
-                launch(image_dir, cli.gui, share.or(share_ro), read_only)
+                launch(image_dir, graphics, share.or(share_ro), read_only)
             }
         }
     }

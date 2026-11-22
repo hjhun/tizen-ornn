@@ -188,10 +188,27 @@ async fn control(
     }
 }
 
+async fn arm_power(stream: TcpStream, stop: &std::path::Path) -> io::Result<()> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let mut pipe = BufReader::new(stream);
+    let mut line = String::new();
+    pipe.read_line(&mut line).await?;
+    pipe.get_mut()
+        .write_all(b"{\"execute\":\"qmp_capabilities\"}\n")
+        .await?;
+    while !stop.is_file() {
+        tokio::time::sleep(Duration::from_millis(350)).await;
+    }
+    pipe.get_mut()
+        .write_all(b"{\"execute\":\"system_powerdown\"}\n")
+        .await
+}
+
 pub(super) fn run(
     cmd: &mut Command,
     stop: &std::path::Path,
     image: &std::path::Path,
+    arm: bool,
 ) -> io::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -211,10 +228,14 @@ pub(super) fn run(
             ),
         ]);
     }
-    cmd.args([
-        "-device",
-        "virtserialport,bus=guestbus.0,chardev=control,name=org.tizen.vm.packages",
-    ]);
+    if arm {
+        cmd.args(["-mon", "chardev=control,mode=control"]);
+    } else {
+        cmd.args([
+            "-device",
+            "virtserialport,bus=guestbus.0,chardev=control,name=org.tizen.vm.packages",
+        ]);
+    }
     let listener = {
         let _guard = rt.enter();
         super::session::Listener::new(image)?
@@ -239,7 +260,7 @@ pub(super) fn run(
         tokio::pin!(forward);
         tokio::select! {
             result = &mut forward => result,
-            result = control(control_stream, stop,size_rx) => {
+            result = async { if arm { arm_power(control_stream,stop).await } else { control(control_stream, stop,size_rx).await } } => {
                 if let Err(error) = result { eprintln!("Guest control channel: {error}"); }
                 forward.await
             }

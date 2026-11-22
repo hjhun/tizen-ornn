@@ -9,6 +9,19 @@ pub struct Image {
     pub path: PathBuf,
 }
 
+pub fn arm_arch(path: &std::path::Path) -> Option<&'static str> {
+    if !["rootfs.img", "system-data.img", "user.img", "hal.img"]
+        .iter()
+        .all(|part| path.join("disk").join(part).is_file())
+    {
+        return None;
+    }
+    [("armv7l", "zImage"), ("aarch64", "Image")]
+        .into_iter()
+        .find(|(_, kernel)| path.join(kernel).is_file())
+        .map(|(arch, _)| arch)
+}
+
 pub fn sibling(name: &str) -> io::Result<PathBuf> {
     Ok(env::current_exe()?.with_file_name(format!("{name}{}", env::consts::EXE_SUFFIX)))
 }

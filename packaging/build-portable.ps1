@@ -11,6 +11,12 @@ if ($LASTEXITCODE -or !($devices -match 'virtio-9p-pci')) {
 }
 $net = & "$QemuDir/qemu-system-x86_64.exe" -netdev help
 if ($LASTEXITCODE -or !($net -match '^user$')) { throw 'QEMU user networking is required.' }
+foreach ($arch in 'arm','aarch64') {
+    $machines = & "$QemuDir/qemu-system-$arch.exe" -machine help
+    if ($LASTEXITCODE -ne 0 -or !($machines -match '^virt\s')) {
+        throw "A matching qemu-system-$arch.exe with the virt board is required."
+    }
+}
 $stage = New-Item -ItemType Directory (Join-Path $env:TEMP ([guid]::NewGuid()))
 try {
     $files = New-Item -ItemType Directory "$stage/files"
@@ -21,7 +27,7 @@ try {
     $share = New-Item -ItemType Directory "$qemu/share"
     Copy-Item "$Payload/tizen-ornn.exe","$Payload/tizen-ornn-gui.exe" $files
     Copy-Item "$Payload/builder/bzImage","$Payload/builder/tizen-ornn_amd64.deb" $builder
-    Copy-Item "$QemuDir/*.dll","$QemuDir/qemu-system-x86_64.exe","$QemuDir/qemu-img.exe","$QemuDir/COPYING*","$QemuDir/README.rst","$QemuDir/VERSION" $qemu
+    Copy-Item "$QemuDir/*.dll","$QemuDir/qemu-system-x86_64.exe","$QemuDir/qemu-system-arm.exe","$QemuDir/qemu-system-aarch64.exe","$QemuDir/qemu-img.exe","$QemuDir/COPYING*","$QemuDir/README.rst","$QemuDir/VERSION" $qemu
     Copy-Item "$QemuDir/share/*.bin","$QemuDir/share/*.rom","$QemuDir/share/keymaps" $share -Recurse
     if (!$MesaArchive) {
         $MesaArchive = "$stage/mesa.7z"

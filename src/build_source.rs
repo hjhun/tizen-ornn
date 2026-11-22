@@ -52,7 +52,9 @@ impl BuildSource {
                 let (Some("images"), Some("emulator"), Some(name)) =
                     (parts.next(), parts.next(), parts.next())
                 else {
-                    return Err(invalid("Expected an emulator image profile directory."));
+                    return Err(invalid(
+                        "For x86_64, choose an emulator image profile. For a pinned ARM headed image, select armv7l or aarch64 in Build image.",
+                    ));
                 };
                 if name.is_empty()
                     || name.len() > 100
@@ -144,20 +146,50 @@ impl BuildSource {
 }
 
 pub fn validate_name(name: &str) -> io::Result<()> {
-    let upper = name.to_ascii_uppercase();
+    // Windows reserves device names even when followed by an extension.
+    let upper = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
     if name.is_empty()
         || name.len() > 64
+        || name.starts_with('.')
+        || name.ends_with('.')
         || !name
             .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.'))
         || matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
         || (upper.len() == 4
             && (upper.starts_with("COM") || upper.starts_with("LPT"))
             && upper.as_bytes()[3].is_ascii_digit())
     {
         return Err(invalid(
-            "Use 1–64 letters, digits, hyphens or underscores for the image name; Windows device names are reserved.",
+            "Use 1–64 letters, digits, hyphens, underscores or interior dots. Windows device names are reserved.",
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::validate_name;
+
+    #[test]
+    fn accepts_snapshot_names_and_rejects_reserved_paths() {
+        for name in ["tizen-10.1-unified_20261119.053314", "tizen-10-1-dev"] {
+            assert!(validate_name(name).is_ok(), "{name}");
+        }
+        for name in [
+            ".",
+            "..",
+            ".hidden",
+            "trailing.",
+            "con.img",
+            "LPT1.dev",
+            "../other",
+        ] {
+            assert!(validate_name(name).is_err(), "{name}");
+        }
+    }
 }

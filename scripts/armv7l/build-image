@@ -3,6 +3,16 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=$(realpath -m -- "${1:?supply ARM image directory}")
+arch=${TIZEN_ARM_ARCH:-armv7l}
+case $arch in
+    armv7l) kernel=zImage
+        headed=a8c9b5c7f34cdd0234bc2688c693321f4ff5e3b3ae15e7be0c1baea42ea160e1
+        hal=8333444fe788c2157a42b83e648d8dbf4de58d38cbb51545dc9ca38a5b72d26f ;;
+    aarch64) kernel=Image
+        headed=e71a36023266a8b26748e31802873abad240d469afc427d0fadbc8c42095bf4a
+        hal=89fa83121d6bfbca3fad98de247f57dd56a7fe7b8d9e36a2b819dc7667c9c50c ;;
+    *) echo "Unsupported ARM architecture: $arch" >&2; exit 2 ;;
+esac
 mkdir -p "$out/cache"
 exec 9>"$out/build.lock"
 flock -n 9 || { echo 'ARM image is being prepared or used.' >&2; exit 1; }
@@ -19,8 +29,8 @@ if [[ ! -d $out/disk ]]; then
             mv -- "$stage/download" "$dest"
         fi
     }
-    fetch tizen-headed-armv7l a8c9b5c7f34cdd0234bc2688c693321f4ff5e3b3ae15e7be0c1baea42ea160e1 headed
-    fetch tizen-armv7l-generic-hal 8333444fe788c2157a42b83e648d8dbf4de58d38cbb51545dc9ca38a5b72d26f hal
+    fetch "tizen-headed-$arch" "$headed" headed
+    fetch "tizen-$arch-generic-hal" "$hal" hal
     tar -xSzf "$out/cache/headed.tar.gz" -C "$stage" rootfs.img system-data.img user.img
     tar -xSzf "$out/cache/hal.tar.gz" -C "$stage" hal.img
     # The board ramdisk normally mounts these before systemd starts. QEMU
@@ -42,4 +52,4 @@ FSTAB
     trap - EXIT
 fi
 if [[ ${2:-} == --disks-only ]]; then exit 0; fi
-if [[ ! -s $out/zImage ]]; then "$here/build-kernel" "$out"; fi
+if [[ ! -s $out/$kernel ]]; then "$here/build-kernel" "$out"; fi
