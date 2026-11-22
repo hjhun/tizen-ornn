@@ -186,7 +186,7 @@ impl Launcher {
     fn settings(&mut self, ui: &mut egui::Ui) {
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Work directory").size(20.0).strong());
+            ui.label(design::heading("Work directory", 20.0));
             ui.label(
                 RichText::new("Images, build files and downloads are stored here.").color(MUTED),
             );
@@ -210,7 +210,7 @@ impl Launcher {
                 };
             }
             ui.separator();
-            ui.label(RichText::new("Shared folder (x86_64)").size(20.0).strong());
+            ui.label(design::heading("Shared folder (x86_64)", 20.0));
             ui.label("Mounted at /mnt/host when the image starts.");
             ui.add(
                 egui::TextEdit::singleline(&mut self.share)
@@ -232,69 +232,141 @@ impl Launcher {
     }
 
     fn library(&mut self, ui: &mut egui::Ui) -> Result<(), String> {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Images").size(28.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(design::secondary("Build image…")).clicked() {
-                    open_popup(ui.ctx(), "Build x86_64 image", &mut self.build_open);
-                }
-                if ui.add(design::secondary("Open folder…")).clicked() {
-                    if self.folder_dialog.is_some() {
-                        ui.ctx().send_viewport_cmd_to(
-                            popup_id("Open image folder"),
-                            egui::ViewportCommand::Focus,
-                        );
-                    } else {
-                        let mut dialog = egui_file_dialog::FileDialog::new()
-                            .title_bar(false)
-                            .fixed_pos(egui::Pos2::ZERO)
-                            .resizable(false);
-                        dialog.pick_directory();
-                        self.folder_dialog = Some(dialog);
-                    }
-                }
-                if ui.button("Refresh").clicked() {
-                    self.status = self.refresh().err().unwrap_or_default();
-                }
+        let wide = ui.available_width() >= 740.0;
+        if wide {
+            ui.horizontal(|ui| {
+                ui.label(design::heading("Image library", 30.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.library_actions(ui)
+                });
             });
-        });
-        ui.add_space(9.0);
-        design::card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            if self.images.is_empty() {
-                ui.label("No images yet");
-                ui.label(
-                    RichText::new("Open an image folder or build an image to get started.")
-                        .color(MUTED),
+        } else {
+            ui.label(design::heading("Image library", 26.0));
+            ui.horizontal_wrapped(|ui| self.library_actions(ui));
+        }
+        ui.add_space(8.0);
+        if self.images.is_empty() {
+            design::card().show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(design::heading("No images yet", 20.0));
+                ui.label("Open a folder containing a guest image or build one from a snapshot.");
+            });
+            return Ok(());
+        }
+        if wide {
+            let sidebar = (ui.available_width() * 0.32).clamp(236.0, 370.0);
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(sidebar, ui.ctx().screen_rect().height() * 0.65),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| self.image_list(ui),
+                );
+                ui.add_space(6.0);
+                ui.vertical(|ui| self.image_details(ui, true)).inner
+            })
+            .inner
+        } else {
+            let selected = self
+                .selected
+                .as_deref()
+                .and_then(|dir| dir.file_name())
+                .unwrap_or_default()
+                .to_string_lossy();
+            egui::ComboBox::from_id_salt("compact-image-picker")
+                .width(ui.available_width())
+                .truncate()
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    for image in &self.images {
+                        let name = image.path.file_name().unwrap_or_default().to_string_lossy();
+                        ui.selectable_value(
+                            &mut self.selected,
+                            Some(image.path.clone()),
+                            name.as_ref(),
+                        )
+                        .on_hover_text(image.path.display().to_string());
+                    }
+                });
+            ui.add_space(6.0);
+            self.image_details(ui, false)
+        }
+    }
+
+    fn library_actions(&mut self, ui: &mut egui::Ui) {
+        let open_button = if self.images.is_empty() {
+            design::action("Open folder…")
+        } else {
+            design::secondary("Open folder…")
+        };
+        let open = ui.add(open_button).clicked();
+        let build = ui.add(design::secondary("Build image…")).clicked();
+        if ui.add(egui::Button::new("Refresh").frame(false)).clicked() {
+            self.status = self.refresh().err().unwrap_or_default();
+        }
+        if build {
+            open_popup(ui.ctx(), "Build x86_64 image", &mut self.build_open);
+        }
+        if open {
+            if self.folder_dialog.is_some() {
+                ui.ctx().send_viewport_cmd_to(
+                    popup_id("Open image folder"),
+                    egui::ViewportCommand::Focus,
                 );
             } else {
-                egui::ScrollArea::vertical()
-                    .id_salt("image-list")
-                    .max_height(210.0)
-                    .show(ui, |ui| {
-                        for image in &self.images {
-                            let name = image.path.file_name().unwrap_or_default().to_string_lossy();
-                            let selected = self.selected.as_ref() == Some(&image.path);
-                            let row = egui::Button::new(format!("{name}    ·    {}", image.arch))
-                                .selected(selected)
-                                .fill(if selected {
-                                    Color32::from_rgb(228, 237, 252)
-                                } else {
-                                    Color32::WHITE
-                                })
-                                .min_size(egui::vec2(ui.available_width(), 40.0));
-                            if ui
-                                .add(row)
-                                .on_hover_text(image.path.display().to_string())
-                                .clicked()
-                            {
-                                self.selected = Some(image.path.clone());
-                            }
-                        }
-                    });
+                let mut dialog = egui_file_dialog::FileDialog::new()
+                    .title_bar(false)
+                    .fixed_pos(egui::Pos2::ZERO)
+                    .resizable(false);
+                dialog.pick_directory();
+                self.folder_dialog = Some(dialog);
             }
+        }
+    }
+
+    fn image_list(&mut self, ui: &mut egui::Ui) {
+        design::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(design::heading(
+                format!("Images ({})", self.images.len()),
+                16.0,
+            ));
+            ui.separator();
+            let height = ui.ctx().screen_rect().height() * 0.55;
+            egui::ScrollArea::vertical()
+                .id_salt("image-list")
+                .max_height(height)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    for image in &self.images {
+                        let selected = self.selected.as_ref() == Some(&image.path);
+                        let name = image.path.file_name().unwrap_or_default().to_string_lossy();
+                        let button = egui::Button::new(RichText::new(name).color(if selected {
+                            design::ACCENT
+                        } else {
+                            INK
+                        }))
+                        .fill(if selected {
+                            Color32::from_rgb(231, 239, 251)
+                        } else {
+                            Color32::TRANSPARENT
+                        })
+                        .stroke(egui::Stroke::NONE)
+                        .corner_radius(6)
+                        .truncate()
+                        .min_size(egui::vec2(ui.available_width(), 38.0));
+                        if ui
+                            .add(button)
+                            .on_hover_text(image.path.display().to_string())
+                            .clicked()
+                        {
+                            self.selected = Some(image.path.clone());
+                        }
+                    }
+                });
         });
-        ui.add_space(14.0);
+    }
+
+    fn image_details(&mut self, ui: &mut egui::Ui, show_name: bool) -> Result<(), String> {
         let Some(dir) = self.selected.clone() else {
             return Ok(());
         };
@@ -326,21 +398,25 @@ impl Launcher {
         design::card()
             .show(ui, |ui| -> Result<(), String> {
                 ui.set_width(ui.available_width());
+                if show_name {
+                    ui.label(design::heading(
+                        dir.file_name().unwrap_or_default().to_string_lossy(),
+                        23.0,
+                    ));
+                }
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(dir.file_name().unwrap_or_default().to_string_lossy())
-                            .size(18.0),
-                    );
-                    ui.label(if stopping {
-                        "Shutting down…"
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
+                    let (text, color) = if stopping {
+                        ("Shutting down…", Color32::from_rgb(169, 111, 25))
                     } else if running {
-                        "Running"
+                        ("Running", Color32::from_rgb(32, 129, 92))
                     } else {
-                        "Stopped"
-                    });
+                        ("Stopped", MUTED)
+                    };
+                    ui.painter().circle_filled(rect.center(), 4.0, color);
+                    ui.label(RichText::new(text).size(14.0).color(MUTED));
                 });
-                ui.label(RichText::new(path).color(MUTED));
-                ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| -> Result<(), String> {
                     if running {
                         if ui
@@ -371,12 +447,10 @@ impl Launcher {
                             self.status.clear();
                         }
                     }
-                    if ui
-                        .add_enabled(
-                            running && self.stopping.is_none(),
-                            design::secondary("Shut down"),
-                        )
-                        .clicked()
+                    if running
+                        && ui
+                            .add_enabled(self.stopping.is_none(), design::secondary("Shut down"))
+                            .clicked()
                     {
                         let mut cmd = cli()?;
                         self.configure(&mut cmd)?;
@@ -390,7 +464,14 @@ impl Launcher {
                     }
                     Ok(())
                 })
-                .inner
+                .inner?;
+                ui.add_space(2.0);
+                ui.separator();
+                ui.label(RichText::new("Image folder").color(MUTED).size(13.0));
+                ui.add(egui::Label::new(path).wrap());
+                ui.label(RichText::new("Architecture").color(MUTED).size(13.0));
+                ui.label(if arm { "armv7l" } else { "x86_64" });
+                Ok(())
             })
             .inner?;
         Ok(())
@@ -478,16 +559,27 @@ impl eframe::App for Desktop {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::WHITE)
-                    .inner_margin(egui::Margin::symmetric(24, 10)),
+                    .fill(Color32::from_rgb(28, 41, 60))
+                    .inner_margin(egui::Margin::symmetric(22, 9)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.image((self.logo.id(), egui::vec2(30.0, 30.0)));
-                    ui.label(RichText::new("Tizen Ornn").size(19.0));
-                    ui.label(RichText::new(tizen_ornn::VERSION).size(13.0).color(MUTED));
+                    ui.image((self.logo.id(), egui::vec2(36.0, 36.0)));
+                    ui.label(design::heading("Tizen Ornn", 19.0).color(Color32::WHITE));
+                    ui.label(
+                        RichText::new(tizen_ornn::VERSION)
+                            .size(13.0)
+                            .color(Color32::from_rgb(196, 208, 223)),
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(design::secondary("Settings")).clicked() {
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new("Settings").color(Color32::WHITE))
+                                    .fill(Color32::from_rgb(51, 66, 87))
+                                    .corner_radius(7),
+                            )
+                            .clicked()
+                        {
                             open_popup(ctx, "Settings", &mut app.settings_open);
                         }
                     });
@@ -615,8 +707,8 @@ fn main() -> eframe::Result {
                 },
             )
             .with_icon(eframe::icon_data::from_png_bytes(design::ICON).expect("embedded app icon"))
-            .with_inner_size([760.0, 560.0])
-            .with_min_inner_size([540.0, 350.0]),
+            .with_inner_size([960.0, 580.0])
+            .with_min_inner_size([380.0, 320.0]),
         ..Default::default()
     };
     eframe::run_native(

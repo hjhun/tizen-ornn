@@ -4,34 +4,59 @@ pub const INK: Color32 = Color32::from_rgb(29, 32, 37);
 pub const MUTED: Color32 = Color32::from_rgb(88, 95, 105);
 pub const PAPER: Color32 = Color32::from_rgb(246, 247, 249);
 const LINE: Color32 = Color32::from_rgb(215, 219, 225);
-const ACCENT: Color32 = Color32::from_rgb(30, 83, 179);
+pub const ACCENT: Color32 = Color32::from_rgb(32, 82, 168);
 pub const ICON: &[u8] = include_bytes!("../../../packaging/art/tizen-ornn.png");
 
 pub fn configure(ctx: &egui::Context) {
     #[cfg(windows)]
-    let font = std::env::var_os("WINDIR")
-        .map(std::path::PathBuf::from)
-        .map(|root| root.join("Fonts/segoeui.ttf"))
-        .and_then(|path| std::fs::read(path).ok());
+    let faces = {
+        let root =
+            std::path::PathBuf::from(std::env::var_os("WINDIR").unwrap_or_default()).join("Fonts");
+        [root.join("segoeui.ttf"), root.join("seguisb.ttf")]
+    };
     #[cfg(not(windows))]
-    let font = [
-        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
-    .iter()
-    .find_map(|path| std::fs::read(path).ok());
-    if let Some(data) = font {
-        let mut fonts = egui::FontDefinitions::default();
+    let faces = {
+        let root = std::path::Path::new("/usr/share/fonts/truetype");
+        if root.join("lato/Lato-Regular.ttf").is_file() {
+            [
+                root.join("lato/Lato-Regular.ttf"),
+                root.join("lato/Lato-Semibold.ttf"),
+            ]
+        } else if root.join("ubuntu/Ubuntu-R.ttf").is_file() {
+            [
+                root.join("ubuntu/Ubuntu-R.ttf"),
+                root.join("ubuntu/Ubuntu-M.ttf"),
+            ]
+        } else {
+            [
+                root.join("dejavu/DejaVuSans.ttf"),
+                root.join("dejavu/DejaVuSans-Bold.ttf"),
+            ]
+        }
+    };
+    let mut fonts = egui::FontDefinitions::default();
+    let family = egui::FontFamily::Proportional;
+    if let Ok(data) = std::fs::read(&faces[0]) {
         fonts
             .font_data
             .insert("system".into(), egui::FontData::from_owned(data).into());
         fonts
             .families
-            .entry(egui::FontFamily::Proportional)
+            .entry(family.clone())
             .or_default()
             .insert(0, "system".into());
-        ctx.set_fonts(fonts);
     }
+    let mut headings = fonts.families[&family].clone();
+    if let Ok(data) = std::fs::read(&faces[1]) {
+        fonts
+            .font_data
+            .insert("semibold".into(), egui::FontData::from_owned(data).into());
+        headings.insert(0, "semibold".into());
+    }
+    fonts
+        .families
+        .insert(egui::FontFamily::Name("heading".into()), headings);
+    ctx.set_fonts(fonts);
     ctx.set_theme(egui::ThemePreference::Light);
     ctx.all_styles_mut(|style| {
         style.visuals = egui::Visuals::light();
@@ -51,23 +76,32 @@ pub fn configure(ctx: &egui::Context) {
     });
 }
 
+pub fn heading(text: impl Into<String>, size: f32) -> RichText {
+    RichText::new(text).font(egui::FontId::new(
+        size,
+        egui::FontFamily::Name("heading".into()),
+    ))
+}
+
 pub fn card() -> egui::Frame {
     egui::Frame::new()
         .fill(Color32::WHITE)
         .stroke(Stroke::new(1.0_f32, LINE))
-        .corner_radius(12)
-        .inner_margin(18)
+        .corner_radius(10)
+        .inner_margin(16)
 }
 
 pub fn action(text: &str) -> egui::Button<'_> {
-    egui::Button::new(RichText::new(text).color(Color32::WHITE))
+    egui::Button::new(heading(text, 15.0).color(Color32::WHITE))
+        .min_size(egui::vec2(0.0, 40.0))
         .fill(ACCENT)
         .stroke(Stroke::NONE)
         .corner_radius(8)
 }
 
 pub fn secondary(text: &str) -> egui::Button<'_> {
-    egui::Button::new(RichText::new(text).color(INK))
+    egui::Button::new(RichText::new(text).size(15.0).color(INK))
+        .min_size(egui::vec2(0.0, 40.0))
         .fill(Color32::WHITE)
         .stroke(Stroke::new(1.0_f32, LINE))
         .corner_radius(8)
