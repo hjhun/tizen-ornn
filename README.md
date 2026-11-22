@@ -46,6 +46,8 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 
 Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
 
+While a guest is running, the GUI adds a notification icon for that image. You can close the launcher and use the icon menu to open a terminal, open settings, or shut down that guest. The icon goes away when QEMU exits. On Windows, check the taskbar’s hidden icons. On Ubuntu, use a desktop panel with AppIndicator support. The GUI Debian package installs the indicator bindings. For the Ubuntu portable GUI, install `python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1` on the host.
+
 Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/home/tizen/share` or `/mnt/host` to access the same files. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
 
 On Ubuntu, run `./tizen-ornn-ubuntu-amd64-portable.run --install-shortcut` to add the portable launcher and its icon to the application menu.
@@ -189,7 +191,7 @@ Fresh x86_64 images include the terminfo-aware `clear` command. For an existing 
 
 Open **Build image…**, select **armv7l** or **aarch64**, and click **Build**. The recipe downloads the official headed and generic HAL archives from the configured dated snapshot, verifies both checksums and builds a QEMU virt kernel. The matching `tizen-boot-<arch>-rpi.packages` inventory supplies the kernel version and source revision. Ornn verifies the source RPM against repository metadata before applying its patches. After building, select the image and choose **Start with display**. The CLI equivalents are `tizen-ornn build --arch aarch64` and `tizen-ornn run --arch aarch64 --gui`; substitute `armv7l` for 32-bit ARM. The headed launcher defaults to a 1024×768 virtio GPU with OpenGL and 3 GiB of RAM. Windows uses the Mesa runtime bundled with Ornn. On first boot the guest installs the snapshot’s GBM display backend and configures the stock Flutter Home app for the virtual GPU.
 
-An ARM guest can reboot in the same display window. **Shut down** requests poweroff through a dedicated guest port and the virtual board’s power button so the guest can unmount its disks before the next launch. Rebuild older ARM images in a separate image directory to pick up the kernel drivers and guest power-button configuration.
+An ARM guest can reboot in the same display window. **Shut down** requests poweroff through a dedicated guest port and the virtual board’s power button so the guest can unmount its disks before the next launch. Rebuild older ARM images in a separate working directory to pick up the kernel drivers and guest configuration. The ARM kernel limits the virgl uniform-buffer count to the 32 slots supported by the guest Mesa driver on hosts advertising more. The builder supplies PulseAudio with the missing math-library dependency in affected generic audio HALs so the stock Volume app can query the media volume.
 
 The public x86_64 emulator continues to use the packaged kernel by default. Source builds for other emulator repositories use the AArch64 boot inventory from the same snapshot. A missing or ambiguous kernel entry stops the build.
 
@@ -201,7 +203,7 @@ The public x86_64 emulator continues to use the packaged kernel by default. Sour
 | Developer RPMs | Resolved from the snapshot repositories | Original image contents; no Ornn development RPM provisioning |
 | Guest access | Graphical or terminal-only boot; host folder sharing | Graphical boot with serial terminal |
 
-All recipes need network access for a fresh build. The GUI does not accept extra RPM repository URLs. Ubuntu ARM builds require the kernel build dependencies, `e2fsprogs`, `qemu-system-arm`, and either `gcc-arm-linux-gnueabihf` or `gcc-aarch64-linux-gnu`. Windows uses the packaged Ubuntu builder VM and the matching native ARM QEMU executable. Allow space for the downloaded archives, kernel build and four writable guest partitions.
+All recipes need network access for a fresh build. The GUI does not accept extra RPM repository URLs. Ubuntu ARM builds require the kernel build dependencies, `e2fsprogs`, `patchelf`, `qemu-system-arm`, and either `gcc-arm-linux-gnueabihf` or `gcc-aarch64-linux-gnu`. Windows uses the packaged Ubuntu builder VM and the matching native ARM QEMU executable. Allow space for the downloaded archives, kernel build and four writable guest partitions.
 
 ## Choose the snapshot source
 

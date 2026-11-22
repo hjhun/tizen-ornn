@@ -42,11 +42,6 @@ Environment=EVAS_GL_NO_BLACKLIST=1
 """)
     for unit in ("display-manager", "boot-animation", "user@"):
         files[f"{units}/{unit}.service.d/ornn-graphics.conf"] = config
-    # Mesa can abort while tearing down a completed DALI boot animation.
-    # Replaying the splash would cover the platform launcher.
-    animation = stage / "animation.conf"
-    animation.write_text(config.read_text() + "RestartPreventExitStatus=SIGABRT\n")
-    files[f"{units}/boot-animation.service.d/ornn-graphics.conf"] = animation
     files[f"{units}/ornn-arm-graphics.service"] = HERE / "ornn-arm-graphics.service"
     files["/etc/ornn-arm-graphics.sh"] = HERE / "ornn-arm-graphics.sh"
     files["/etc/systemd/user/launchpad-process-pool.service.d/ornn-display-ready.conf"] = HERE / "ornn-display-ready.conf"

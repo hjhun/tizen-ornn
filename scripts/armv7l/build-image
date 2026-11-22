@@ -45,6 +45,7 @@ FSTAB
     "$here/install-mounts" "$stage/rootfs.img"
     "$here/install-power-button" "$stage/rootfs.img"
     "$here/install-graphics" "$stage/rootfs.img" "$arch"
+    "$here/install-audio" "$stage/rootfs.img" "$stage/hal.img" "$arch"
     for img in rootfs system-data; do
         truncate -s "+${TIZEN_ARM_DISK_GROW:-2G}" "$stage/$img.img"
         resize2fs "$stage/$img.img"

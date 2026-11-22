@@ -1,0 +1,40 @@
+--- a/drivers/gpu/drm/virtio/virtgpu_vq.c
++++ b/drivers/gpu/drm/virtio/virtgpu_vq.c
+@@ -695,6 +695,29 @@
+ 	wake_up(&vgdev->resp_wq);
+ }
+ 
++/*
++ * The virgl v1 wire layout is also the prefix of v2. Its uniform-block
++ * count follows the version, four 16-word format masks, feature bits and
++ * eight scalar limits. Tizen Mesa 24.3 has 32 Gallium constant-buffer
++ * slots and trusts this host limit even when unbinding a context.
++ */
++static void ornn_limit_virgl_uniform_blocks(struct virtio_gpu_device *vgdev,
++                                            struct virtio_gpu_drv_cap_cache *cap)
++{
++	const unsigned int word = 1 + 4 * 16 + 1 + 8;
++	__le32 *words = cap->caps_cache;
++
++	if ((cap->id != VIRTIO_GPU_CAPSET_VIRGL && cap->id != VIRTIO_GPU_CAPSET_VIRGL2) ||
++	    cap->size < (word + 1) * sizeof(*words))
++		return;
++
++	if (le32_to_cpu(words[word]) > 32) {
++		drm_info_once(vgdev->ddev, "Limiting virgl uniform blocks from %u to 32 for Tizen Mesa\n",
++			      le32_to_cpu(words[word]));
++		words[word] = cpu_to_le32(32);
++	}
++}
++
+ static void virtio_gpu_cmd_capset_cb(struct virtio_gpu_device *vgdev,
+ 				     struct virtio_gpu_vbuffer *vbuf)
+ {
+@@ -710,6 +733,7 @@
+ 		    cache_ent->id == le32_to_cpu(cmd->capset_id)) {
+ 			memcpy(cache_ent->caps_cache, resp->capset_data,
+ 			       cache_ent->size);
++			ornn_limit_virgl_uniform_blocks(vgdev, cache_ent);
+ 			/* Copy must occur before is_valid is signalled. */
+ 			smp_wmb();
+ 			atomic_set(&cache_ent->is_valid, 1);

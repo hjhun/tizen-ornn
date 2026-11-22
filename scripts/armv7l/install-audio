@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Supply the missing libm dependency in affected generic audio HALs."""
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+rootfs, hal, arch = sys.argv[1:]
+lib = {"aarch64": "lib64", "armv7l": "lib"}[arch]
+backend = f"/{lib}/libhal-backend-audio.so"
+with tempfile.TemporaryDirectory() as directory:
+    stage = Path(directory)
+    elf = stage / "audio.so"
+    subprocess.run(["debugfs", "-R", f'dump {backend} "{elf}"', hal], check=True)
+    if not elf.exists():
+        sys.exit(f"Missing generic audio HAL {backend}")
+    needed = subprocess.check_output(["patchelf", "--print-needed", elf], text=True)
+    symbols = subprocess.check_output(["readelf", "--dyn-syms", "--wide", elf], text=True)
+    if "libm.so.6" in needed.splitlines() or not re.search(r"\bUND\s+pow(?:@\S+)?\s*$", symbols, re.M):
+        sys.exit(0)
+    subprocess.run(["patchelf", "--add-needed", "libm.so.6", elf], check=True)
+    dropin = "/etc/systemd/system/pulseaudio.service.d"
+    conf = stage / "audio.conf"
+    conf.write_text(f"[Unit]\nRequiresMountsFor=/hal\n\n[Service]\n"
+                    f"BindReadOnlyPaths=/etc/ornn-audio-backend.so:/hal{backend}\n")
+    stat = subprocess.check_output(["debugfs", "-R", f"stat {dropin}", rootfs], stderr=subprocess.DEVNULL)
+    commands = "" if b"Type: directory" in stat else f"mkdir {dropin}\n"
+    files = {"/etc/ornn-audio-backend.so": elf, f"{dropin}/ornn-audio.conf": conf}
+    for dest, src in files.items():
+        commands += f'write "{src}" {dest}\nea_set {dest} security.SMACK64 _\n'
+    subprocess.run(["debugfs", "-w", "-f", "-", rootfs], input=commands, text=True, check=True)
+    for dest, src in files.items():
+        if subprocess.check_output(["debugfs", "-R", f"cat {dest}", rootfs]) != src.read_bytes():
+            sys.exit(f"Failed to install {dest}")

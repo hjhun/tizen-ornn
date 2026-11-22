@@ -38,9 +38,14 @@ record=$(python3 "$root/scripts/kernel_source.py" "$source_url" "$snapshot" "$ar
 mapfile -t fields <<< "$record"
 url=${fields[0]} sha256=${fields[1]} vcs=${fields[2]} version=${fields[3]}
 revision=${vcs##*#}
-mkdir -p "$out/work/$sha256"
+tree=$sha256
+if [[ -n ${TIZEN_ARM_ARCH:-} ]]; then
+    compat=$root/kernel/virgl-tizen-caps.patch
+    tree=$sha256-$(sha256sum "$compat" | cut -d' ' -f1)
+fi
+mkdir -p "$out/work/$tree"
 out=$(cd "$out" && pwd)
-work=$out/work/$sha256
+work=$out/work/$tree
 fragment=$root/kernel/qemu-x86_64.config
 jobs=${JOBS:-$(nproc)}
 
@@ -75,6 +80,9 @@ if [[ ! -f $work/src/.tizen-source-$revision ]]; then
         cd "$stage/srpm"
         rpm2cpio "$work/source.rpm" | cpio --quiet -id
         python3 "$root/scripts/kernel_source.py" prepare "$version" ../src
+        if [[ -n ${compat:-} ]]; then
+            patch -d ../src -p1 --fuzz=0 < "$compat" >&2
+        fi
     )
     touch "$stage/src/.tizen-source-$revision"
     mv "$stage/src" "$work/src"
