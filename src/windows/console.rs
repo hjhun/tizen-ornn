@@ -188,7 +188,11 @@ async fn control(
     }
 }
 
-async fn arm_power(stream: TcpStream, stop: &std::path::Path) -> io::Result<()> {
+async fn arm_power(
+    stream: TcpStream,
+    mut guest: TcpStream,
+    stop: &std::path::Path,
+) -> io::Result<()> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let mut pipe = BufReader::new(stream);
     let mut line = String::new();
@@ -199,6 +203,9 @@ async fn arm_power(stream: TcpStream, stop: &std::path::Path) -> io::Result<()> 
     while !stop.is_file() {
         tokio::time::sleep(Duration::from_millis(350)).await;
     }
+    // A headed session can claim the physical key. Also ask systemd
+    // through a dedicated port, independently of desktop input handling.
+    let _ = guest.write_all(b"poweroff\n").await;
     pipe.get_mut()
         .write_all(b"{\"execute\":\"system_powerdown\"}\n")
         .await
@@ -219,7 +226,15 @@ pub(super) fn run(
             TcpListener::bind(("127.0.0.1", 0)).await?,
         ))
     })?;
-    for (id, listener) in [("console", &serial), ("control", &control_listener)] {
+    let power = if arm {
+        Some(rt.block_on(TcpListener::bind(("127.0.0.1", 0)))?)
+    } else {
+        None
+    };
+    for (id, listener) in [("console", &serial), ("control", &control_listener)]
+        .into_iter()
+        .chain(power.as_ref().map(|listener| ("ornnpower", listener)))
+    {
         cmd.args([
             "-chardev",
             &format!(
@@ -244,14 +259,20 @@ pub(super) fn run(
     let mut child = cmd.spawn()?;
     let result=rt.block_on(async {
         let pid=child.id();
-        let connect=async {tokio::try_join!(accept_qemu(serial,pid),accept_qemu(control_listener,pid))};
+        let connect=async {
+            let guest=async { match power {
+                Some(listener) => accept_qemu(listener,pid).await.map(Some),
+                None => Ok(None),
+            }};
+            tokio::try_join!(accept_qemu(serial,pid),accept_qemu(control_listener,pid),guest)
+        };
         let exited=async {
             loop {
                 if let Some(status)=child.try_wait()? { return Err(io::Error::other(format!("QEMU exited during startup: {status}"))); }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         };
-        let (pipe,control_stream)=tokio::select!{
+        let (pipe,control_stream,guest_power)=tokio::select!{
             result=connect=>result?,
             result=exited=>return result,
             _=tokio::time::sleep(Duration::from_secs(60))=>return Err(io::Error::new(io::ErrorKind::TimedOut,"QEMU did not connect its guest console.")),
@@ -260,7 +281,7 @@ pub(super) fn run(
         tokio::pin!(forward);
         tokio::select! {
             result = &mut forward => result,
-            result = async { if arm { arm_power(control_stream,stop).await } else { control(control_stream, stop,size_rx).await } } => {
+            result = async { if let Some(guest) = guest_power { arm_power(control_stream,guest,stop).await } else { control(control_stream, stop,size_rx).await } } => {
                 if let Err(error) = result { eprintln!("Guest control channel: {error}"); }
                 forward.await
             }

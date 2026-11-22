@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Prepare the stock ARM graphical session for QEMU's virtio GPU."""
+import io
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from image_source import ImageSource, primary_index
+from snapshot_rpms import fetch
+
+
+def install(disk, arch, stage):
+    lib = {"armv7l": "lib", "aarch64": "lib64"}[arch]
+    src = ImageSource.load()
+    repo = f"{src.base_url}Tizen-10.1-Unified/{src.snapshot}/repos/standard/packages/"
+    _, _, packages = primary_index(repo)
+    matches = [pkg for pkg in packages if pkg.findtext("{*}name") == "hal-backend-tbm-gbm"
+               and pkg.findtext("{*}arch") == arch]
+    if len(matches) != 1:
+        raise ValueError(f"{repo} must contain one hal-backend-tbm-gbm RPM for {arch}")
+    pkg = matches[0]
+    href = pkg.find("{*}location").get("href")
+    if not re.fullmatch(arch + r"/hal-backend-tbm-gbm-[\w.+~-]+\.rpm", href):
+        raise ValueError(f"Unexpected TBM RPM location {href}")
+    rpm = stage / "tbm.rpm"
+    fetch(repo + href, pkg.findtext("{*}checksum[@type='sha256']"), rpm)
+    files = {"/etc/ornn-arm-tbm.rpm": rpm}
+    units = "/etc/systemd/system"
+    config = stage / "graphics.conf"
+    config.write_text(f"""[Unit]
+Requires=ornn-arm-graphics.service
+After=ornn-arm-graphics.service
+
+[Service]
+BindReadOnlyPaths=/hal/{lib}/driver:/usr/{lib}/driver
+Environment=GBM_BACKEND=dri
+Environment=EVAS_GL_NO_BLACKLIST=1
+""")
+    for unit in ("display-manager", "boot-animation", "user@"):
+        files[f"{units}/{unit}.service.d/ornn-graphics.conf"] = config
+    # Mesa can abort while tearing down a completed DALI boot animation.
+    # Replaying the splash would cover the platform launcher.
+    animation = stage / "animation.conf"
+    animation.write_text(config.read_text() + "RestartPreventExitStatus=SIGABRT\n")
+    files[f"{units}/boot-animation.service.d/ornn-graphics.conf"] = animation
+    files[f"{units}/ornn-arm-graphics.service"] = HERE / "ornn-arm-graphics.service"
+    files["/etc/ornn-arm-graphics.sh"] = HERE / "ornn-arm-graphics.sh"
+    files["/etc/systemd/user/launchpad-process-pool.service.d/ornn-display-ready.conf"] = HERE / "ornn-display-ready.conf"
+    commands = io.StringIO()
+    for dest, source in files.items():
+        # Do not replace any existing unrelated unit or setting.
+        parent = str(Path(dest).parent)
+        if parent.endswith(".service.d"):
+            print(f"mkdir {parent}", file=commands)
+        print(f'write "{source}" {dest}', file=commands)
+        print(f"ea_set {dest} security.SMACK64 _", file=commands)
+    subprocess.run(["debugfs", "-w", "-f", "-", disk], input=commands.getvalue(), text=True, check=True)
+    # debugfs returns success for some failed commands. Check every installed byte.
+    for dest, source in files.items():
+        actual = subprocess.check_output(["debugfs", "-R", f"cat {dest}", disk])
+        if actual != source.read_bytes():
+            raise ValueError(f"Could not install {dest}")
+
+
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory() as stage:
+        install(sys.argv[1], sys.argv[2], Path(stage))

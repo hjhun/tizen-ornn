@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Install the ARM guest's power button and host shutdown channel."""
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+disk = sys.argv[1]
+files = {
+    "/etc/udev/rules.d/89-ornn-power-port.rules":
+        'SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.ornn.power", '
+        'MODE="0600", SYMLINK+="ornnpower", TAG+="systemd", '
+        'ENV{SYSTEMD_WANTS}+="ornn-power.service"\n',
+    "/etc/systemd/system/ornn-power.service": """[Unit]
+Description=Handle the Ornn host shutdown request
+BindsTo=dev-ornnpower.device
+After=dev-ornnpower.device
+
+[Service]
+SmackProcessLabel=System::Privileged
+ExecStart=/bin/sh -c 'while read -r op; do if [ "$$op" = poweroff ]; then exec /usr/bin/systemctl --no-block start poweroff.target; fi; done < /dev/ornnpower'
+""",
+    "/etc/systemd/logind.conf.d/70-ornn-power.conf":
+        "[Login]\nHandlePowerKey=poweroff\nPowerKeyIgnoreInhibited=yes\n",
+    "/etc/udev/rules.d/70-ornn-power.rules":
+        'SUBSYSTEM=="input", KERNEL=="event*", DRIVERS=="gpio-keys", TAG+="power-switch"\n',
+}
+with tempfile.TemporaryDirectory() as stage:
+    for dest, content in files.items():
+        src = Path(stage) / Path(dest).name
+        src.write_text(content)
+        cmds = f'mkdir {Path(dest).parent}\nwrite "{src}" {dest}\nea_set {dest} security.SMACK64 _\n'
+        subprocess.run(["debugfs", "-w", "-f", "-", disk], input=cmds, text=True, check=True)
+        actual = subprocess.check_output(["debugfs", "-R", f"cat {dest}", disk])
+        if actual != content.encode():
+            raise ValueError(f"Could not install {dest}")

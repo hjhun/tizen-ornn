@@ -2,7 +2,6 @@
 """Build the Tizen developer VM from a dated Tizen 10.1 emulator image."""
 import argparse
 import fcntl
-import gzip
 import hashlib
 import json
 import os
@@ -14,7 +13,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from image_recipe import package_rows, validate_kickstart
-from image_source import DATED, ImageSource, PROJECT, read_url
+from image_source import DATED, ImageSource, PROJECT, read_url, primary_index
 
 
 def checksum(data):
@@ -43,19 +42,9 @@ def repositories(build_xml, release, base_url):
 
 
 def package_index(url):
-    md = read_url(url + "repodata/repomd.xml")
-    primary = ET.fromstring(md).find("{*}data[@type='primary']")
-    if primary is None:
-        raise ValueError(f"repository has no primary index: {url}")
-    digest = primary.findtext("{*}checksum[@type='sha256']")
-    name = f"repodata/{digest}-primary.xml.gz"
-    if not digest or not re.fullmatch("[0-9a-f]{64}", digest) or primary.find("{*}location").get("href") != name:
-        raise ValueError(f"expected SHA-256 pinned primary.xml.gz in {url}")
-    data = read_url(url + name)
-    if checksum(data) != digest:
-        raise ValueError(f"primary index checksum failed for {url}")
+    md, digest, entries = primary_index(url)
     packages = {}
-    for pkg in ET.fromstring(gzip.decompress(data)):
+    for pkg in entries:
         arch = pkg.findtext("{*}arch")
         pkgname = pkg.findtext("{*}name")
         if arch != "armv7l" and (arch, pkgname) != ("x86_64", "rust"):

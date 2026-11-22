@@ -1,5 +1,7 @@
 """Select a dated Tizen 10.1 image from the configured HTTPS snapshot tree."""
 from dataclasses import dataclass
+import gzip
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -87,3 +89,18 @@ class ImageSource:
         if match and value in (match[0], self.archive_url(match[0])):
             return match[0]
         raise ValueError("expected latest, a dated Tizen 10.1 Unified ID, or its configured emulator archive URL")
+
+
+def primary_index(url):
+    md = read_url(url + "repodata/repomd.xml")
+    primary = ET.fromstring(md).find("{*}data[@type='primary']")
+    if primary is None:
+        raise ValueError(f"repository has no primary index: {url}")
+    digest = primary.findtext("{*}checksum[@type='sha256']")
+    name = f"repodata/{digest}-primary.xml.gz"
+    if not digest or not re.fullmatch("[0-9a-f]{64}", digest) or primary.find("{*}location").get("href") != name:
+        raise ValueError(f"expected SHA-256 pinned primary.xml.gz in {url}")
+    data = read_url(url + name)
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError(f"primary index checksum failed for {url}")
+    return md, digest, ET.fromstring(gzip.decompress(data))

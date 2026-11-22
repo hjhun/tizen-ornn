@@ -216,7 +216,7 @@ impl Launcher {
                 "Official Tizen 10.1 headed {} + generic HAL · tizen-10.1-unified_20261119.053314",
                 arch
             ));
-            ui.label("Graphical boot with a serial terminal. This recipe uses a fixed snapshot and image name. Custom RPM repositories, local archives, host folders and package updates are unsupported.");
+            ui.label("Graphical boot with a serial terminal. The kernel version comes from the matching ARM boot image’s .packages file. This build uses the configured snapshot and the image name shown above. Custom RPM repositories, local archives, host folders and package updates are unsupported.");
             if cfg!(windows) {
                 ui.label(
                     "Windows uses a disposable Ubuntu builder VM and native QEMU for the guest.",

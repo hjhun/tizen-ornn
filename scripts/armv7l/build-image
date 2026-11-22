@@ -5,34 +5,32 @@ here=$(cd "$(dirname "$0")" && pwd)
 out=$(realpath -m -- "${1:?supply ARM image directory}")
 arch=${TIZEN_ARM_ARCH:-armv7l}
 case $arch in
-    armv7l) kernel=zImage
-        headed=a8c9b5c7f34cdd0234bc2688c693321f4ff5e3b3ae15e7be0c1baea42ea160e1
-        hal=8333444fe788c2157a42b83e648d8dbf4de58d38cbb51545dc9ca38a5b72d26f ;;
-    aarch64) kernel=Image
-        headed=e71a36023266a8b26748e31802873abad240d469afc427d0fadbc8c42095bf4a
-        hal=89fa83121d6bfbca3fad98de247f57dd56a7fe7b8d9e36a2b819dc7667c9c50c ;;
+    armv7l) kernel=zImage ;;
+    aarch64) kernel=Image ;;
     *) echo "Unsupported ARM architecture: $arch" >&2; exit 2 ;;
 esac
-mkdir -p "$out/cache"
+mkdir -p "$out"
 exec 9>"$out/build.lock"
 flock -n 9 || { echo 'ARM image is being prepared or used.' >&2; exit 1; }
+scratch=$(mktemp -d "$out/.arm-build.XXXXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
 if [[ ! -d $out/disk ]]; then
-    stage=$(mktemp -d "$out/.partitions.XXXXXXXX")
-    trap 'rm -rf -- "$stage"' EXIT
-    release=tizen-10.1-unified_20261119.053314
-    base=https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/$release/images/standard
+    stage=$scratch/partitions
+    mkdir "$stage"
+    release=$("$here/../tizen-image" --print-snapshot)
+    base=$("$here/../tizen-image" --print-source)Tizen-10.1-Unified/$release/images/standard
     fetch() {
-        local name=$1 digest=$2 dest=$out/cache/$3.tar.gz
-        if ! (echo "$digest  $dest" | sha256sum --status -c -); then
-            curl -fLSs --retry 2 "$base/$name/${release}_$name.tar.gz" -o "$stage/download"
-            echo "$digest  $stage/download" | sha256sum -c -
-            mv -- "$stage/download" "$dest"
-        fi
+        local name=$1 dest=$scratch/$2.tar.gz file=${release}_$1.tar.gz digest
+        digest=$(curl -fLSs --retry 2 "$base/$name/SHA256SUMS" | awk -v f="$file" '$2 == f {print $1}')
+        [[ $digest =~ ^[0-9a-f]{64}$ ]] || { echo "Missing or ambiguous checksum for $file" >&2; return 1; }
+        curl -fLSs --retry 2 "$base/$name/${release}_$name.tar.gz" -o "$stage/download"
+        echo "$digest  $stage/download" | sha256sum -c -
+        mv -- "$stage/download" "$dest"
     }
-    fetch "tizen-headed-$arch" "$headed" headed
-    fetch "tizen-$arch-generic-hal" "$hal" hal
-    tar -xSzf "$out/cache/headed.tar.gz" -C "$stage" rootfs.img system-data.img user.img
-    tar -xSzf "$out/cache/hal.tar.gz" -C "$stage" hal.img
+    fetch "tizen-headed-$arch" headed
+    fetch "tizen-$arch-generic-hal" hal
+    tar -xSzf "$scratch/headed.tar.gz" -C "$stage" rootfs.img system-data.img user.img
+    tar -xSzf "$scratch/hal.tar.gz" -C "$stage" hal.img
     # The board ramdisk normally mounts these before systemd starts. QEMU
     # boots a direct kernel. Use the original filesystem labels and types.
     cat > "$stage/fstab" <<'FSTAB'
@@ -44,12 +42,17 @@ FSTAB
     debugfs -w -R "write $stage/fstab /etc/fstab" "$stage/rootfs.img"
     debugfs -R 'cat /etc/fstab' "$stage/rootfs.img" | cmp - "$stage/fstab"
     rm -- "$stage/fstab"
+    "$here/install-mounts" "$stage/rootfs.img"
+    "$here/install-power-button" "$stage/rootfs.img"
+    "$here/install-graphics" "$stage/rootfs.img" "$arch"
     for img in rootfs system-data; do
         truncate -s "+${TIZEN_ARM_DISK_GROW:-2G}" "$stage/$img.img"
         resize2fs "$stage/$img.img"
     done
     mv -T "$stage" "$out/disk"
-    trap - EXIT
 fi
 if [[ ${2:-} == --disks-only ]]; then exit 0; fi
-if [[ ! -s $out/$kernel ]]; then "$here/build-kernel" "$out"; fi
+if [[ ! -s $out/$kernel ]]; then
+    "$here/build-kernel" "$scratch"
+    mv "$scratch/$kernel" "$out/$kernel"
+fi

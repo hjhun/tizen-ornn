@@ -28,6 +28,8 @@ if __name__ == "__main__":
         if not sep or not tail.startswith(lock["release"] + "/"):
             raise ValueError("snapshot lock contains an unexpected archive URL")
         print(base + "/")
+    elif section == "release":
+        print(lock["release"])
     elif section == "cross":
         for sha, url in lock[section]:
             print(sha, url)

@@ -47,21 +47,26 @@ detach() {
         fi
     fi
 }
-trap detach EXIT
-"$project/scripts/build-kernel.sh"
+scratch=$(mktemp -d "$TIZEN_OUT/.image-build.XXXXXXXX")
+trap 'detach; rm -rf -- "$scratch"' EXIT
+TIZEN_OUT="$scratch" "$project/scripts/build-kernel.sh"
+for artifact in bzImage kernel.config kernel.sha256; do
+    if [[ -f $scratch/$artifact ]]; then mv "$scratch/$artifact" "$TIZEN_OUT/$artifact"; fi
+done
+export TIZEN_BUILD_CACHE=$scratch/cache
 "$project/scripts/build-root.sh"
-TIZEN_BUILDROOT="$root" "$project/scripts/build-git.sh"
-"$project/scripts/install-git.sh"
-CACHE_DIR="$TIZEN_OUT/cache/sdk" "$project/scripts/install-sdk.sh" "$root"
-"$project/scripts/install-cross.sh" "$root"
-"$project/scripts/install-rust-cross.sh" "$root"
+TIZEN_BUILDROOT="$root" TIZEN_OUT="$scratch" "$project/scripts/build-git.sh"
+"$project/scripts/install-git.sh" "$scratch/git-repo"
+CACHE_DIR="$scratch/cache/sdk" "$project/scripts/install-sdk.sh" "$root"
+TIZEN_OUT="$scratch" "$project/scripts/install-cross.sh" "$root"
+TIZEN_OUT="$scratch" "$project/scripts/install-rust-cross.sh" "$root"
 "$project/scripts/prepare-headed.sh" "$root"
 "$project/scripts/configure-guest.sh" "$root"
 "$project/scripts/prepare-owner.sh" "$root"
 "$project/scripts/install-aul-devel.sh" "$root"
 "$project/scripts/install-spec-builder.sh" "$root"
 "$project/scripts/install-linux-tools.sh" "$root"
-"$project/scripts/install-ai-prereqs.sh" "$root"
+TIZEN_OUT="$scratch" "$project/scripts/install-ai-prereqs.sh" "$root"
 "$project/scripts/install-guest-control.sh" "$root"
 sync -f "$root"
 detach
@@ -74,3 +79,10 @@ done
 chown "${SUDO_UID:-$(stat -c %u "$project")}:${SUDO_GID:-$(stat -c %g "$project")}" "$disk"
 install -m 0644 "$project/config/image-revision" "$TIZEN_OUT/.tizen-ornn-image-revision"
 touch "$TIZEN_OUT/.tizen-virtio-console" "$TIZEN_OUT/.image-ready"
+# Preserve resumable progress until the disk has been unmounted successfully.
+# Only remove the intermediate partition and markers created by build-root.
+state=$TIZEN_OUT/.root-work
+rm -f -- "$state"/{emulator-sysdata.img,extracted,opt-merged,original-packages-verified,packages.txt,packages-installed,repositories-ready,repositories-tested,build.lock}
+for dir in "$state/sysdata" "$state" "$root"; do
+    if [[ -d $dir ]]; then rmdir --ignore-fail-on-non-empty -- "$dir"; fi
+done

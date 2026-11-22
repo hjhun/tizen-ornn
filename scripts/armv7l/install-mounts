@@ -1,0 +1,34 @@
+#!/bin/bash
+# The headed rootfs has no fstab generator. Its board ramdisk normally mounts
+# /opt and /hal before userspace; supply native units for the direct QEMU boot.
+set -euo pipefail
+disk=${1:?expected an offline rootfs partition}
+stage=$(mktemp -d)
+trap 'rm -rf -- "$stage"' EXIT
+units=/etc/systemd/system
+for part in 'opt system-data' 'hal hal'; do
+    read -r mountpoint label <<< "$part"
+    unit=$mountpoint.mount
+    cat > "$stage/$unit" <<EOF
+[Unit]
+DefaultDependencies=no
+After=local-fs-pre.target
+Before=local-fs.target
+[Mount]
+What=/dev/disk/by-label/$label
+Where=/$mountpoint
+Type=ext4
+EOF
+done
+{
+    echo "mkdir $units/local-fs.target.requires"
+    for unit in opt.mount hal.mount; do
+        echo "write $stage/$unit $units/$unit"
+        echo "ea_set $units/$unit security.SMACK64 _"
+        echo "symlink $units/local-fs.target.requires/$unit ../$unit"
+    done
+} | debugfs -w -f - "$disk"
+for unit in opt.mount hal.mount; do
+    debugfs -R "cat $units/$unit" "$disk" | cmp - "$stage/$unit"
+    debugfs -R "stat $units/local-fs.target.requires/$unit" "$disk" | grep -F "link dest: \"../$unit\""
+done

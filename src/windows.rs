@@ -208,22 +208,39 @@ fn boot(
                 "ARM guests require graphical mode and do not support host folder sharing.",
             ));
         }
-        let (tool, cpu, kernel) = if arch == "aarch64" {
-            ("qemu-system-aarch64", "cortex-a72", "Image")
+        let (tool, cpu, kernel, accelerator) = if arch == "aarch64" {
+            ("qemu-system-aarch64", "cortex-a72", "Image", "tcg")
         } else {
-            ("qemu-system-arm", "cortex-a15", "zImage")
+            // Serialize the two emulated vCPUs on Windows ARMv7.
+            (
+                "qemu-system-arm",
+                "cortex-a15",
+                "zImage",
+                "tcg,thread=single",
+            )
         };
         let mut cmd = qemu(tool)?;
-        cmd.current_dir(&image).args(["-machine","virt","-cpu",cpu,"-accel","tcg","-m","1536","-smp","2","-kernel",kernel,
+        cmd.env("GALLIUM_DRIVER", "llvmpipe");
+        cmd.current_dir(&image).args(["-machine","virt","-global","virtio-mmio.force-legacy=false","-cpu",cpu,"-accel",accelerator,"-m","3072","-smp","2","-kernel",kernel,
             "-append","root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target",
-            "-display","sdl,show-cursor=on","-device","virtio-gpu-device","-device","virtio-keyboard-device","-device","virtio-tablet-device","-device","virtio-rng-device",
-            "-netdev","user,id=net","-device","virtio-net-device,netdev=net","-serial","chardev:console","-monitor","none","-no-reboot"]);
-        for part in ["rootfs", "system-data", "user", "hal"] {
+            "-display","sdl,gl=on,show-cursor=on","-device","virtio-gpu-gl-device,xres=1024,yres=768","-device","virtio-keyboard-device","-device","virtio-tablet-device","-device","virtio-rng-device",
+            "-netdev","user,id=net","-device","virtio-net-device,netdev=net","-serial","chardev:console","-monitor","none"]);
+        cmd.args([
+            "-device",
+            "virtio-serial-device,id=armserial",
+            "-device",
+            "virtserialport,bus=armserial.0,chardev=ornnpower,name=org.tizen.ornn.power",
+        ]);
+        // Linux enumerates the virtio-mmio transports by slot. Keep rootfs on vda.
+        for (slot, part) in ["rootfs", "system-data", "user", "hal"]
+            .into_iter()
+            .enumerate()
+        {
             cmd.args([
                 "-drive",
                 &format!("if=none,format=raw,id={part},file=disk/{part}.img"),
                 "-device",
-                &format!("virtio-blk-device,drive={part}"),
+                &format!("virtio-blk-device,drive={part},bus=virtio-mmio-bus.{slot}"),
             ]);
         }
         return console::run(&mut cmd, &stop, &image, true);

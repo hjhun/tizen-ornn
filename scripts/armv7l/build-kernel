@@ -1,12 +1,11 @@
 #!/bin/bash
-# Compile a QEMU virt kernel from the project's pinned Tizen source.
+# Compile a QEMU virt kernel from the image's Tizen boot package inventory.
 set -euo pipefail
 project=$(cd "$(dirname "$0")/../.." && pwd)
 out=$(realpath -m -- "${1:?supply ARM image directory}")
 mkdir -p "$out"
 source_cache=${TIZEN_KERNEL_CACHE:-$out/source-cache}
-TIZEN_OUT="$source_cache" TIZEN_PREBUILT_KERNEL=0 "$project/scripts/build-kernel.sh" --source-only
-src=$source_cache/work/kernel-6.12.41/src
+src=$(TIZEN_OUT="$source_cache" TIZEN_ARM_ARCH="${TIZEN_ARM_ARCH:-armv7l}" TIZEN_PREBUILT_KERNEL=0 "$project/scripts/build-kernel.sh" --source-only)
 build=$out/kernel-build
 mkdir -p "$build"
 # Keep shared filesystem, security, systemd and virtio requirements. Strip PC
@@ -25,6 +24,11 @@ CONFIG_SERIAL_AMBA_PL011=y
 CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
 CONFIG_VIRTIO_MMIO=y
 CONFIG_RTC_DRV_PL031=y
+# QEMU virt exposes its power button through the PL061 GPIO controller.
+CONFIG_GPIOLIB=y
+CONFIG_GPIO_PL061=y
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_KEYBOARD_GPIO=y
 CONFIG_HIGHMEM=y
 CONFIG_F2FS_FS=y
 CONFIG_F2FS_FS_XATTR=y
@@ -33,14 +37,17 @@ CONFIG_ARM_LPAE=y
 CONFIG_DEPRECATED_PARAM_STRUCT=y
 CONFIG
 case ${TIZEN_ARM_ARCH:-armv7l} in
-    armv7l) machine=arm; target=zImage; compiler=arm-linux-gnueabihf-; required="ARCH_VIRT AEABI VFP" ;;
+    armv7l) machine=arm; target=zImage; compiler=arm-linux-gnueabihf-
+        # The Tizen ARMv7 userspace calls the original 32-bit timer and poll syscalls.
+        echo CONFIG_COMPAT_32BIT_TIME=y >> "$build/virt.config"
+        required="ARCH_VIRT AEABI VFP COMPAT_32BIT_TIME" ;;
     aarch64) machine=arm64; target=Image; compiler=aarch64-linux-gnu-; required="ARM64"
         echo CONFIG_ARM64_4K_PAGES=y >> "$build/virt.config" ;;
     *) exit 2 ;;
 esac
 kmake=(make -C "$src" O="$build" ARCH="$machine" CROSS_COMPILE="${CROSS_COMPILE:-$compiler}")
 "${kmake[@]}" KCONFIG_ALLCONFIG="$build/virt.config" allnoconfig
-for option in $required SERIAL_AMBA_PL011_CONSOLE VIRTIO_MMIO VIRTIO_BLK DRM_VIRTIO_GPU EXT4_FS EXT4_FS_SECURITY SECURITY_SMACK; do
+for option in $required GPIO_PL061 KEYBOARD_GPIO SERIAL_AMBA_PL011_CONSOLE VIRTIO_MMIO VIRTIO_BLK DRM_VIRTIO_GPU EXT4_FS EXT4_FS_SECURITY SECURITY_SMACK; do
     grep -qx "CONFIG_$option=y" "$build/.config" || { echo "Missing CONFIG_$option" >&2; exit 1; }
 done
 if [[ ${2:-} == --config-only ]]; then exit 0; fi

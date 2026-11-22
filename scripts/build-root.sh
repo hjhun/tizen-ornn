@@ -7,7 +7,7 @@ if (( EUID != 0 )); then
 fi
 project=$(cd -- "$(dirname "$0")/.." && pwd -P)
 out=${TIZEN_OUT:-"$project/out"}
-cache="$out/cache"
+cache=${TIZEN_BUILD_CACHE:-"$out/cache"}
 root="$out/root"
 disk="$out/tizen-rootfs.ext4"
 work="$out/.root-work"

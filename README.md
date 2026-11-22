@@ -69,7 +69,7 @@ The same operations work from PowerShell:
 .\tizen-ornn.exe run --image-dir 'D:\Tizen Images\my-image'
 ```
 
-The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the project's snapshot and RPM build recipe inside a temporary QEMU VM. Windows requires neither a WSL distribution nor a pre-existing Tizen disk. The build requires network access, 4 GiB of guest RAM and disk space for a sparse 64 GiB scratch disk and a 16 GiB output disk. Allow extra time for QEMU software emulation. The completed guest disk is independent of the builder. Images live under `%LOCALAPPDATA%\Tizen Ornn\images`; set `TIZEN_ORNN_HOME` to place images and the download cache on another drive.
+The Windows builder fetches a SHA-256-pinned Ubuntu cloud image and runs the project's snapshot and RPM build recipe inside a temporary QEMU VM. Windows requires neither a WSL distribution nor a pre-existing Tizen disk. The build requires network access, 4 GiB of guest RAM and disk space for a sparse 64 GiB scratch disk and a 16 GiB output disk. Allow extra time for QEMU software emulation. The completed guest disk is independent of the builder. Images live under `%LOCALAPPDATA%\Tizen Ornn\images`; set `TIZEN_ORNN_HOME` to place the images and temporary build workspace on another drive. Each new build removes its builder downloads, VM overlay and staging files when it finishes. Ubuntu builds also remove temporary kernel objects, downloaded archives and RPM staging files. A local source archive supplied by the user is preserved. An interrupted Ubuntu x86 build retains the disk and extraction state needed to resume.
 
 Closing a Windows terminal disconnects that viewer. Use **Shut down** or `tizen-ornn shutdown --image-dir PATH` to power off the guest. The native console follows the visible Windows terminal size at startup and on resize. The native Windows backend supports building and running x86_64 images; the Ubuntu-specific management commands below apply to the Ubuntu CLI.
 
@@ -187,7 +187,11 @@ Fresh x86_64 images include the terminfo-aware `clear` command. For an existing 
 
 ## Build a headed ARM guest
 
-Open **Build image…**, select **armv7l** or **aarch64**, and click **Build**. The recipe downloads the official headed and generic HAL archives for `tizen-10.1-unified_20261119.053314`, verifies both checksums and builds a QEMU virt kernel. After building, select the image and choose **Start with display**. The CLI equivalents are `tizen-ornn build --arch aarch64` and `tizen-ornn run --arch aarch64 --gui`; substitute `armv7l` for 32-bit ARM.
+Open **Build image…**, select **armv7l** or **aarch64**, and click **Build**. The recipe downloads the official headed and generic HAL archives from the configured dated snapshot, verifies both checksums and builds a QEMU virt kernel. The matching `tizen-boot-<arch>-rpi.packages` inventory supplies the kernel version and source revision. Ornn verifies the source RPM against repository metadata before applying its patches. After building, select the image and choose **Start with display**. The CLI equivalents are `tizen-ornn build --arch aarch64` and `tizen-ornn run --arch aarch64 --gui`; substitute `armv7l` for 32-bit ARM. The headed launcher defaults to a 1024×768 virtio GPU with OpenGL and 3 GiB of RAM. Windows uses the Mesa runtime bundled with Ornn. On first boot the guest installs the snapshot’s GBM display backend and configures the stock Flutter Home app for the virtual GPU.
+
+An ARM guest can reboot in the same display window. **Shut down** requests poweroff through a dedicated guest port and the virtual board’s power button so the guest can unmount its disks before the next launch. Rebuild older ARM images in a separate image directory to pick up the kernel drivers and guest power-button configuration.
+
+The public x86_64 emulator continues to use the packaged kernel by default. Source builds for other emulator repositories use the AArch64 boot inventory from the same snapshot. A missing or ambiguous kernel entry stops the build.
 
 | Build option | x86_64 | armv7l / aarch64 |
 |---|---|---|

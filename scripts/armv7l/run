@@ -14,15 +14,26 @@ fi
 exec 9>"$out/build.lock"
 flock -n -x 9 || { echo 'The ARM VM is already running or building.' >&2; exit 1; }
 args=()
-for img in rootfs system-data user hal; do
+# Keep Linux vda through vdd stable independently of QEMU's automatic placement.
+parts=(rootfs system-data user hal)
+for slot in "${!parts[@]}"; do
+    img=${parts[$slot]}
     path=$out/disk/$img.img
-    args+=(-drive "if=none,format=raw,id=$img,file=${path//,/,,}" -device "virtio-blk-device,drive=$img")
+    args+=(-drive "if=none,format=raw,id=$img,file=${path//,/,,}" -device "virtio-blk-device,drive=$img,bus=virtio-mmio-bus.$slot")
 done
 prefix=$("$(dirname "$0")/../vm-runtime" "$out/build.lock")
+args+=(-chardev "socket,id=ornnpower,path=$prefix.shutdown,server=on,wait=off" -device virtio-serial-device,id=armserial
+       -device virtserialport,bus=armserial.0,chardev=ornnpower,name=org.tizen.ornn.power)
 args+=(-qmp "unix:$prefix.power,server=on,wait=off")
 if [[ -n ${TIZEN_QMP:-} ]]; then args+=(-qmp "unix:${TIZEN_QMP//,/,,},server=on,wait=off"); fi
-exec "$qemu" -machine virt -cpu "$cpu" -accel tcg -m "${TIZEN_RAM:-1536}" -smp "${TIZEN_CPUS:-2}" \
+display=${TIZEN_ARM_DISPLAY:-sdl,gl=on}
+gpu=virtio-gpu-device
+case ",$display," in
+    *,gl=on,*) gpu=virtio-gpu-gl-device,xres=1024,yres=768 ;;
+esac
+# The GPU and input devices require the modern virtio-mmio transport.
+exec "$qemu" -machine virt -global virtio-mmio.force-legacy=false -cpu "$cpu" -accel tcg -m "${TIZEN_RAM:-3072}" -smp "${TIZEN_CPUS:-2}" \
     -kernel "$out/$kernel" -append 'root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target' \
-    "${args[@]}" -display "${TIZEN_ARM_DISPLAY:-sdl}" -device virtio-gpu-device \
+    "${args[@]}" -display "$display" -device "$gpu" \
     -device virtio-keyboard-device -device virtio-tablet-device -device virtio-rng-device \
-    -netdev user,id=net -device virtio-net-device,netdev=net -serial stdio -monitor none -no-reboot
+    -netdev user,id=net -device virtio-net-device,netdev=net -serial stdio -monitor none

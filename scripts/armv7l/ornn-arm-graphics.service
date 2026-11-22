@@ -1,0 +1,15 @@
+[Unit]
+Description=Prepare Tizen graphics for the QEMU virtio GPU
+DefaultDependencies=no
+After=local-fs.target systemd-tmpfiles-setup.service
+Conflicts=shutdown.target
+Before=shutdown.target
+RequiresMountsFor=/hal /opt
+Before=display-manager.service pkgmgr-info.service
+ConditionPathExists=/etc/ornn-arm-tbm.rpm
+
+[Service]
+Type=oneshot
+SmackProcessLabel=System::Privileged
+ExecStart=/bin/sh /etc/ornn-arm-graphics.sh
+RemainAfterExit=yes

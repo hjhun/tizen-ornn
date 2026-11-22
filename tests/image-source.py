@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check snapshot selection and mirror routing without contacting upstream."""
+import hashlib
 import os
 from pathlib import Path
 import runpy
@@ -12,6 +13,7 @@ from unittest.mock import patch
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from image_source import ImageSource
+from kernel_source import resolve as resolve_kernel
 from image_recipe import package_rows, validate_kickstart, verify_installed
 
 repositories = runpy.run_path(str(SCRIPTS / "tizen-image"))["repositories"]
@@ -67,6 +69,28 @@ class ImageSourceTest(unittest.TestCase):
         with patch("image_recipe.subprocess.check_output", return_value="shell.x86_64 1.1-1\n"):
             with self.assertRaisesRegex(ValueError, "missing or changed"):
                 verify_installed("/image", {("shell.x86_64", "1.0-1")})
+
+    def test_kernel_follows_boot_inventory_version_and_revision(self):
+        vcs = "platform/kernel/linux-rpi#" + "b" * 40
+        version = "6.18.3-4"
+        sha = "c" * 64
+        filename = f"rpi4-linux-kernel-{version}.src.rpm"
+        pkg = ET.fromstring(f'<package><arch>src</arch><version ver="6.18.3" rel="4" vcs="{vcs}"/>'
+                            f'<checksum type="sha256">{sha}</checksum><location href="{filename}"/></package>')
+        for arch, prefix in (("armv7l", "arm"), ("aarch64", "arm64")):
+            profile = f"tizen-boot-{arch}-rpi"
+            name = f"{RELEASE}_{profile}.packages"
+            row = f"{prefix}-rpi4-linux-kernel.{arch} {version} {vcs}".encode()
+            sums = f"{hashlib.sha256(row).hexdigest()}  {name}".encode()
+            with self.subTest(arch=arch), patch("kernel_source.read_url", side_effect=[row, sums]) as read:
+                with patch("kernel_source.primary_index", return_value=(None, None, [pkg])):
+                    url, digest, revision, ver = resolve_kernel(MIRROR, RELEASE, arch)
+                    self.assertEqual((digest, revision, ver), (sha, vcs, "6.18.3"))
+                    self.assertTrue(url.endswith("/source/" + filename))
+                    self.assertTrue(read.call_args_list[0].args[0].endswith(f"/{profile}/{name}"))
+            with patch("kernel_source.read_url", side_effect=[row, sums]), self.assertRaisesRegex(ValueError, "one source RPM"):
+                with patch("kernel_source.primary_index", return_value=(None, None, [pkg, pkg])):
+                    resolve_kernel(MIRROR, RELEASE, arch)
 
     def test_original_build_metadata_on_a_mirror(self):
         build = f"""

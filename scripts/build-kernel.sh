@@ -4,7 +4,14 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=${TIZEN_OUT:-"$root/out"}
-if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 ]]; then
+if [[ -n ${TIZEN_SNAPSHOT_LOCK:-} || -f $out/snapshot.lock.json ]]; then
+    source_url=$(python3 "$root/scripts/snapshot_lock.py" source)
+    snapshot=$(python3 "$root/scripts/snapshot_lock.py" release)
+else
+    source_url=$("$root/scripts/tizen-image" --print-source)
+    snapshot=$("$root/scripts/tizen-image" --print-snapshot)
+fi
+if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 && $source_url == https://download.tizen.org/* ]]; then
     mkdir -p "$out"
     stage=$(mktemp -d "$out/.kernel.XXXXXXXX")
     trap 'rm -rf -- "$stage"' EXIT
@@ -26,24 +33,20 @@ if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 ]]; then
     mv -fT "$stage/bzImage" "$out/bzImage"
     exit 0
 fi
-mkdir -p "$out/work/kernel-6.12.41"
+arch=${TIZEN_ARM_ARCH:-aarch64}
+record=$(python3 "$root/scripts/kernel_source.py" "$source_url" "$snapshot" "$arch")
+mapfile -t fields <<< "$record"
+url=${fields[0]} sha256=${fields[1]} vcs=${fields[2]} version=${fields[3]}
+revision=${vcs##*#}
+mkdir -p "$out/work/$sha256"
 out=$(cd "$out" && pwd)
-work=$out/work/kernel-6.12.41
+work=$out/work/$sha256
 fragment=$root/kernel/qemu-x86_64.config
-revision=b6322b453844b6111e4619615fc65bd29b86c83e
-sha256=f29de2d367d165832402332f73e955cc9a231cd2b0b534e3b8048aea67a4a384
-snapshot=tizen-10.1-unified_20261119.053314
-if [[ -n ${TIZEN_SNAPSHOT_LOCK:-} || -f $out/snapshot.lock.json ]]; then
-    source_url=$(python3 "$root/scripts/snapshot_lock.py" source)
-else
-    source_url=$("$root/scripts/tizen-image" --print-source)
-fi
-url=${source_url}Tizen-10.1-Unified/$snapshot/repos/standard/source/rpi4-linux-kernel-6.12.41-0.src.rpm
 jobs=${JOBS:-$(nproc)}
 
 exec 9>"$work/build.lock"
 flock 9
-if [[ ${1:-} == --reuse && -f $out/.kernel-recipe.sha256 && -f $out/kernel.sha256 ]] &&
+if [[ ${1:-} == --reuse && -f $out/.kernel-recipe.sha256 && -f $out/kernel.sha256 && $(cat "$out/.kernel-source.sha256" 2>/dev/null) == "$sha256" ]] &&
    (cd "$root" && sha256sum --check --status "$out/.kernel-recipe.sha256") &&
    (cd "$out" && sha256sum --check --status kernel.sha256); then
     exit 0
@@ -52,12 +55,12 @@ stage=$(mktemp -d "$work/staging.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 if [[ ! -f $work/source.rpm ]]; then
     curl --fail --location --retry 2 "$url" -o "$stage/source.rpm"
-    printf '%s  %s\n' "$sha256" "$stage/source.rpm" | sha256sum -c -
+    printf '%s  %s\n' "$sha256" "$stage/source.rpm" | sha256sum -c - >&2
     mv "$stage/source.rpm" "$work/source.rpm"
 fi
-printf '%s  %s\n' "$sha256" "$work/source.rpm" | sha256sum -c -
+printf '%s  %s\n' "$sha256" "$work/source.rpm" | sha256sum -c - >&2
 if [[ $(rpm -qp --qf '%{VCS}' "$work/source.rpm") != \
-    "platform/kernel/linux-rpi#$revision" ]]; then
+    "$vcs" ]]; then
     echo 'Unexpected source RPM revision' >&2
     exit 1
 fi
@@ -71,17 +74,14 @@ if [[ ! -f $work/src/.tizen-source-$revision ]]; then
     (
         cd "$stage/srpm"
         rpm2cpio "$work/source.rpm" | cpio --quiet -id
-        tar -xJf linux-kernel-6.12.41.tar.xz -C ../src --strip-components=1
-        gzip -dc 8f5ff97-to-ea12eac.diff.gz | patch -s -d ../src -p1
-        for patchfile in 0*.patch; do
-            patch -s -d ../src -p1 <"$patchfile"
-        done
+        python3 "$root/scripts/kernel_source.py" prepare "$version" ../src
     )
     touch "$stage/src/.tizen-source-$revision"
     mv "$stage/src" "$work/src"
 fi
 
 if [[ ${1:-} == --source-only ]]; then
+    printf '%s\n' "$work/src"
     exit 0
 fi
 
@@ -116,9 +116,10 @@ fi
 install -m 0644 "$work/build/arch/x86/boot/bzImage" "$stage/bzImage"
 install -m 0644 "$work/build/.config" "$stage/kernel.config"
 (cd "$stage" && sha256sum bzImage kernel.config > kernel.sha256)
-(cd "$root" && sha256sum scripts/build-kernel.sh kernel/qemu-x86_64.config > "$stage/.kernel-recipe.sha256")
+(cd "$root" && sha256sum scripts/build-kernel.sh scripts/kernel_source.py kernel/qemu-x86_64.config > "$stage/.kernel-recipe.sha256")
 mv -fT "$stage/kernel.config" "$out/kernel.config"
 mv -fT "$stage/bzImage" "$out/bzImage"
 mv -fT "$stage/kernel.sha256" "$out/kernel.sha256"
 mv -fT "$stage/.kernel-recipe.sha256" "$out/.kernel-recipe.sha256"
+printf '%s\n' "$sha256" > "$out/.kernel-source.sha256"
 sha256sum "$out/bzImage"

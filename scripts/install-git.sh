@@ -4,7 +4,7 @@ set -euo pipefail
 project=$(cd "$(dirname "$0")/.." && pwd -P)
 out=${TIZEN_OUT:-"$project/out"}
 root="$out/root"
-repo="$out/git-repo"
+repo=${1:-"$out/git-repo"}
 
 [[ $EUID == 0 ]] || { echo 'Run as root with the Tizen filesystem mounted.' >&2; exit 1; }
 mountpoint -q "$root"

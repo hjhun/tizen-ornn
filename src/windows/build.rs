@@ -23,37 +23,25 @@ fn verify(file: &Path, expected: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn builder_file(cache: &Path, remote: &str, sha: &str) -> io::Result<PathBuf> {
-    fs::create_dir_all(cache)?;
-    let path = cache.join(format!("ubuntu-{sha}"));
-    if !path.is_file() {
-        let temp = tempfile::NamedTempFile::new_in(cache)?.into_temp_path();
-        checked(
-            Command::new("curl.exe")
-                .args([
-                    "--fail",
-                    "--location",
-                    "--retry",
-                    "2",
-                    "--proto",
-                    "=https",
-                    "--proto-redir",
-                    "=https",
-                    "--output",
-                ])
-                .arg(&temp)
-                .arg(format!("{CLOUD_RELEASE}/{remote}")),
-            "Download Ubuntu builder",
-        )?;
-        verify(&temp, sha)?;
-        if let Err(e) = temp.persist_noclobber(&path) {
-            if e.error.kind() != io::ErrorKind::AlreadyExists {
-                return Err(e.error);
-            }
-        } else {
-            return Ok(path);
-        }
-    }
+fn builder_file(work: &Path, remote: &str, sha: &str) -> io::Result<PathBuf> {
+    let path = work.join(format!("ubuntu-{sha}"));
+    checked(
+        Command::new("curl.exe")
+            .args([
+                "--fail",
+                "--location",
+                "--retry",
+                "2",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                "--output",
+            ])
+            .arg(&path)
+            .arg(format!("{CLOUD_RELEASE}/{remote}")),
+        "Download Ubuntu builder",
+    )?;
     verify(&path, sha)?;
     Ok(path)
 }
@@ -133,21 +121,26 @@ pub(super) fn create(
             .next()
             .unwrap(),
     )?;
-    let cache = home.join("cache");
-    let base = builder_file(&cache, "ubuntu-24.04-server-cloudimg-amd64.img", CLOUD_SHA)?;
+    let work = tempfile::Builder::new()
+        .prefix(".build-")
+        .tempdir_in(&images)?;
+    let downloads = work.path().join("downloads");
+    fs::create_dir(&downloads)?;
+    let base = builder_file(
+        &downloads,
+        "ubuntu-24.04-server-cloudimg-amd64.img",
+        CLOUD_SHA,
+    )?;
     let linux = builder_file(
-        &cache,
+        &downloads,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-vmlinuz-generic",
         "41ba36d860aa0b0cd995f4ca8856d80249b244577e704929b55be13fbd1ebd2f",
     )?;
     let initrd = builder_file(
-        &cache,
+        &downloads,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-initrd-generic",
         "bf276ffc12872256080890698b42db0dc9c5a469c896d8b59af6bc4e723cd186",
     )?;
-    let work = tempfile::Builder::new()
-        .prefix(".build-")
-        .tempdir_in(&images)?;
     let output = work.path().join("output");
     fs::create_dir(&output)?;
     make_seed(&work.path().join("seed.img"), &deb, arch, source)?;
@@ -244,6 +237,7 @@ pub(super) fn create(
             return Err(io::Error::other("Incomplete ARM image output."));
         }
         fs::rename(output, &dest)?;
+        work.close()?;
         println!("Image ready: {}", dest.display());
         return Ok(());
     }
@@ -253,6 +247,7 @@ pub(super) fn create(
         fs::write(output.join("image.toml"), source.config())?;
     }
     fs::rename(output, &dest)?;
+    work.close()?;
     println!("Image ready: {}", dest.display());
     Ok(())
 }
