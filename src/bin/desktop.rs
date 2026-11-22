@@ -2,6 +2,8 @@
 
 #[path = "desktop/design.rs"]
 mod design;
+#[path = "desktop/tray.rs"]
+mod tray;
 use design::{INK, MUTED};
 use eframe::egui::{self, Color32, RichText};
 use std::{
@@ -98,9 +100,56 @@ struct Launcher {
     settings_open: bool,
     status: String,
     processes: Vec<Child>,
+    monitored: std::collections::HashSet<PathBuf>,
+    monitors: Vec<Child>,
+    last_tray_check: Option<std::time::Instant>,
 }
 
 impl Launcher {
+    fn attach_tray(&mut self, dir: &std::path::Path) {
+        if !self.monitored.contains(dir) {
+            match tray::start(dir) {
+                Ok(child) => {
+                    self.monitors.push(child);
+                    self.monitored.insert(dir.to_path_buf());
+                }
+                Err(e) => self.status = format!("Could not start notification icon: {e}"),
+            }
+        }
+    }
+
+    fn update_trays(&mut self) {
+        if self
+            .last_tray_check
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(1))
+        {
+            return;
+        }
+        self.last_tray_check = Some(std::time::Instant::now());
+        self.monitors.retain_mut(|child| match child.try_wait() {
+            Ok(Some(status)) if !status.success() => {
+                self.status = "Desktop notification service unavailable.".into();
+                false
+            }
+            Ok(None) => true,
+            _ => false,
+        });
+        for dir in self
+            .images
+            .iter()
+            .map(|i| i.path.clone())
+            .collect::<Vec<_>>()
+        {
+            match tray::running(&dir) {
+                Ok(true) => self.attach_tray(&dir),
+                Ok(false) => {
+                    self.monitored.remove(&dir);
+                }
+                Err(e) => self.status = e.to_string(),
+            }
+        }
+    }
+
     fn configure(&self, command: &mut Command) -> Result<(), String> {
         let dir = tizen_ornn::workdir::current().map_err(|e| e.to_string())?;
         command.env("TIZEN_ORNN_HOME", dir).env_remove("TIZEN_OUT");
@@ -447,28 +496,7 @@ impl Launcher {
         };
         let arch = guest_arch(&dir).ok_or("Image files are missing.")?;
         let arm = arch != "x86_64";
-        #[cfg(windows)]
-        let lock = dir.join(".ornn-session");
-        #[cfg(target_os = "linux")]
-        let lock = if arm {
-            dir.join("build.lock")
-        } else {
-            let raw = dir.join("tizen-rootfs.ext4");
-            if raw.is_file() {
-                raw
-            } else {
-                dir.join("tizen-rootfs.qcow2")
-            }
-        };
-        let running = match std::fs::File::open(lock) {
-            Ok(file) => match file.try_lock_shared() {
-                Ok(()) => false,
-                Err(std::fs::TryLockError::WouldBlock) => true,
-                Err(std::fs::TryLockError::Error(e)) => return Err(e.to_string()),
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-            Err(e) => return Err(e.to_string()),
-        };
+        let running = tray::running(&dir).map_err(|e| e.to_string())?;
         let stopping = self.stopping.as_ref().is_some_and(|(path, _)| path == &dir);
         let path = dir.to_str().ok_or("Invalid image directory")?;
         design::card()
@@ -512,6 +540,7 @@ impl Launcher {
                                 args.extend(["--arch", arch]);
                             }
                             self.terminal(&args)?;
+                            self.attach_tray(&dir);
                             self.status.clear();
                         }
                         if !arm
@@ -520,6 +549,7 @@ impl Launcher {
                                 .clicked()
                         {
                             self.terminal(&["run", "--headless", "--image-dir", path])?;
+                            self.attach_tray(&dir);
                             self.status.clear();
                         }
                     }
@@ -624,6 +654,7 @@ struct Desktop {
 impl eframe::App for Desktop {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         let app = &mut self.launcher;
+        app.update_trays();
         let mut finished = false;
         app.processes.retain_mut(|p| match p.try_wait() {
             Ok(None) => true,
@@ -833,6 +864,18 @@ impl eframe::App for Desktop {
 }
 
 fn main() -> eframe::Result {
+    let mut args = std::env::args_os().skip(1);
+    let mode = args.next();
+    let image = args.next().map(PathBuf::from);
+    if mode.as_deref() == Some(std::ffi::OsStr::new("--tray-monitor")) {
+        if image
+            .as_deref()
+            .is_none_or(|dir| tray::monitor(dir).is_err())
+        {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let mut app = Launcher::default();
     if let Ok(Some(path)) = tizen_ornn::workdir::setting() {
         app.workdir = path.display().to_string();
@@ -842,6 +885,14 @@ fn main() -> eframe::Result {
     }
     if let Err(e) = app.refresh() {
         app.status = e;
+    }
+    if mode.as_deref() == Some(std::ffi::OsStr::new("--settings")) {
+        app.settings_open = true;
+        if let Some(dir) = image
+            && app.images.iter().any(|i| i.path == dir)
+        {
+            app.selected = Some(dir);
+        }
     }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
