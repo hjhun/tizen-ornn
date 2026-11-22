@@ -52,7 +52,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 ## Share a host directory
 
-Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The guest sees live host files, including edits and deletions.
+Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen/share` with the same read/write or read-only access. Changes through either path are visible on the host.
 
 Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
 
@@ -71,7 +71,7 @@ tizen-ornn share-dir --reset      # restore the default for future boots
 
 Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, these two legacy one-boot flags keep the original guest `owner` identity for host permissions and also expose the folder at `/home/owner/host` when that location is empty. Use `share-dir` or the GUI setting to work on private host files as the interactive `tizen` account. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
 
-Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. Earlier releases’ `/home/tizen/share` and `/home/tizen/share.before-host*` stay on the guest disk.
+Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. The same preservation rules apply to `/home/tizen/share`. Existing files are kept beside the mount at `/home/tizen/share.before-host` or the next available numbered backup.
 
 ## Host networking
 

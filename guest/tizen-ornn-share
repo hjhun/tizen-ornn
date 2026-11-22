@@ -17,31 +17,38 @@ fi
 stage=$(mktemp -d /run/tizen-share.XXXXXX)
 options="$mode,trans=virtio,version=9p2000.L,cache=none,access=any,nosuid,nodev"
 mount -t 9p -o "$options,smackfsroot=User::Shell,smackfsdef=User::Shell" tizen-share "$stage"
-backup=
-if [ -L "$target" ] || { [ -e "$target" ] && [ ! -d "$target" ]; }; then
-    occupied=yes
-elif [ -d "$target" ]; then
-    occupied=$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)
-else
-    occupied=
-fi
-if [ -n "$occupied" ]; then
-    backup=$target.before-host
-    index=0
-    while [ -e "$backup" ] || [ -L "$backup" ]; do
-        index=$((index + 1))
-        backup=$target.before-host.$index
-    done
-    mv -T -- "$target" "$backup"
-    echo "tizen-ornn: preserved $target at $backup" >&2
-fi
-if ! mkdir -p -- "$target" || ! mount --move "$stage" "$target"; then
-    if [ -n "$backup" ]; then
-        if [ -d "$target" ]; then rmdir -- "$target"; fi
-        mv -T -- "$backup" "$target"
+mount_preserving_files() (
+    operation=$1
+    source=$2
+    target=$3
+    backup=
+    if [ -L "$target" ] || { [ -e "$target" ] && [ ! -d "$target" ]; }; then
+        occupied=yes
+    elif [ -d "$target" ]; then
+        occupied=$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)
+    else
+        occupied=
     fi
-    exit 1
-fi
+    if [ -n "$occupied" ]; then
+        backup=$target.before-host
+        index=0
+        while [ -e "$backup" ] || [ -L "$backup" ]; do
+            index=$((index + 1))
+            backup=$target.before-host.$index
+        done
+        mv -T -- "$target" "$backup"
+        echo "tizen-ornn: preserved $target at $backup" >&2
+    fi
+    if ! mkdir -p -- "$target" || ! mount "$operation" "$source" "$target"; then
+        if [ -n "$backup" ]; then
+            if [ -d "$target" ]; then rmdir -- "$target"; fi
+            mv -T -- "$backup" "$target"
+        fi
+        exit 1
+    fi
+)
+
+mount_preserving_files --move "$stage" "$target"
 rmdir -- "$stage"
 if [ "$target" = /opt/mnt/host ]; then
     # PID 1 mounts the stock parent first and then exposes our staged export.
@@ -60,3 +67,12 @@ Options=bind
 UNIT
     ln -s ../mnt-host.mount "$units/local-fs.target.requires/mnt-host.mount"
 fi
+
+# /home is a link to /opt/usr/home on the emulator. Only mount beneath
+# a real account directory, never through a redirected home directory.
+case "$(readlink -f /home/tizen)" in
+    /opt/usr/home/tizen|/home/tizen)
+        if [ -d /home/tizen ] && [ ! -L /home/tizen ]; then
+            mount_preserving_files --bind "$target" /home/tizen/share
+        fi ;;
+esac

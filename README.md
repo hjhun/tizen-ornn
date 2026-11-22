@@ -46,7 +46,7 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 
 Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
 
-Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/mnt/host`. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
+Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/home/tizen/share` or `/mnt/host` to access the same files. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
 
 On Ubuntu, run `./tizen-ornn-ubuntu-amd64-portable.run --install-shortcut` to add the portable launcher and its icon to the application menu.
 

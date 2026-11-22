@@ -211,7 +211,7 @@ impl Launcher {
             }
             ui.separator();
             ui.label(design::heading("Shared folder (x86_64)", 20.0));
-            ui.label("Mounted at /mnt/host when the image starts.");
+            ui.label("Available at /home/tizen/share and /mnt/host when the image starts.");
             ui.add(
                 egui::TextEdit::singleline(&mut self.share)
                     .desired_width(f32::INFINITY)
