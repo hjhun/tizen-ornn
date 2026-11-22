@@ -534,11 +534,11 @@ def execute(args):
         import socket
         lock = picked / 'build.lock'
         prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
-        if Path(prefix + '.shutdown').is_socket():
-            with socket.socket(socket.AF_UNIX) as port:
-                port.settimeout(5)
-                port.connect(prefix + '.shutdown')
-                port.sendall(b'poweroff\n')
+        power_port = Path(prefix + '.shutdown.in')
+        if power_port.is_fifo():
+            fd = os.open(power_port, os.O_WRONLY | os.O_NONBLOCK)
+            with os.fdopen(fd, 'wb') as port:
+                port.write(b'poweroff\n')
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(10)
             client.connect(prefix + '.power')
