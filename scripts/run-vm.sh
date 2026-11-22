@@ -102,7 +102,7 @@ fi
 target=tizen-dev.target
 display=(-display none)
 if (( gui )); then
-    target=tizen-dev-gui.target
+    target=graphical.target
     case ${TIZEN_GUI_GL:-1} in
         1) gpu=virtio-gpu-gl-pci; gl=on ;;
         0) gpu=virtio-gpu-pci; gl=off ;;

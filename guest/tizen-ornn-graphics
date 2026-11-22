@@ -2,6 +2,23 @@
 # Prepare the platform apps before systemd starts the GUI session.
 set -eu
 units=/run/systemd/system
+# Add developer console services alongside the stock graphical boot transaction.
+wants=$units/graphical.target.wants
+mkdir -p "$wants"
+for unit in tizen-dev-console.service tizen-headed-bus.service; do
+    ln -sf "/etc/systemd/system/$unit" "$wants/$unit"
+done
+# Preloaded UI processes retain failed TBM initialization if the user's DRM
+# authentication socket is unavailable when launchpad creates its process pool.
+if [ -f /usr/lib/systemd/user/tbm-drm-auth-user.service ]; then
+    pool=/run/systemd/user/launchpad-process-pool.service.d
+    mkdir -p "$pool"
+    cat > "$pool/display-ready.conf" <<'UNIT'
+[Unit]
+Requires=tbm-drm-auth-user.service
+After=tbm-drm-auth-user.service
+UNIT
+fi
 # The snapshot's default YaGL backend expects the Tizen Studio GPU. DALi
 # clients and Enlightenment must agree on how to render their shared buffers.
 for unit in user@ boot-animation display-manager; do
@@ -11,15 +28,56 @@ for unit in user@ boot-animation display-manager; do
 [Service]
 BindReadOnlyPaths=/hal/lib64/driver:/usr/lib64/driver
 UNIT
+    if [ "$unit" = boot-animation ] &&
+        [ -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/skia/raw ]; then
+        # On Windows virgl the snapshot's Mesa can abort in cso_unbind_context
+        # while destroying the completed animation. Replaying it obscures Home.
+        echo 'RestartPreventExitStatus=SIGABRT' >> "$dir/tizen-ornn-graphics.conf"
+    fi
     if [ ! -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/software-renderer/raw ]; then
         continue
     fi
     echo 'Environment=LIBGL_ALWAYS_SOFTWARE=1' >> "$dir/tizen-ornn-graphics.conf"
     if [ "$unit" = display-manager ]; then
-        # Evas otherwise rejects softpipe and attempts the hardware GBM path.
         echo 'Environment=EVAS_GL_NO_BLACKLIST=1' >> "$dir/tizen-ornn-graphics.conf"
     fi
 done
+
+# The 10.1 homescreen runner enables Impeller whenever the registered
+# manifest flag is true, even with a --enable-impeller=false SDK argument.
+# Software Mesa lacks its four-sample EGL config. Select Flutter's Skia
+# renderer before app metadata is cached. Restore the stock setting when
+# the same disk next boots with virgl.
+if [ -x /usr/apps/org.tizen.homescreen/bin/runner ]; then
+    /usr/bin/python3 - <<'PYTHON'
+from pathlib import Path
+import sqlite3
+
+config = Path("/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn")
+software = any((config / name / "raw").exists() for name in ("software-renderer", "skia"))
+marker = Path("/var/lib/tizen-ornn/homescreen-software-renderer")
+database = Path("/opt/dbspace/.pkgmgr_parser.db")
+if database.is_file() and (software or marker.is_file()):
+    key = ("org.tizen.homescreen", "http://tizen.org/metadata/flutter_tizen/enable_impeller")
+    where = " FROM package_app_app_metadata WHERE app_id=? AND md_key=?"
+    with sqlite3.connect(database.as_uri() + "?mode=rw", uri=True) as db:
+        db.execute("BEGIN IMMEDIATE")
+        values = db.execute("SELECT md_value" + where, key).fetchall()
+        if software and values == [("true",)]:
+            marker.parent.mkdir(exist_ok=True)
+            marker.touch()
+            db.execute("UPDATE package_app_app_metadata SET md_value='false' WHERE app_id=? AND md_key=?", key)
+        elif not software and values == [("false",)]:
+            # A package update can remove or change the declared flag.
+            import xml.etree.ElementTree as ET
+            manifest = ET.parse("/usr/apps/org.tizen.homescreen/tizen-manifest.xml")
+            if any(m.get("key") == key[1] and m.get("value") == "true"
+                   for m in manifest.iterfind(".//{*}ui-application[@appid='org.tizen.homescreen']/{*}metadata")):
+                db.execute("UPDATE package_app_app_metadata SET md_value='true' WHERE app_id=? AND md_key=?", key)
+    if not software:
+        marker.unlink(missing_ok=True)
+PYTHON
+fi
 
 # audio-hal-emul uses pow without linking libm. PulseAudio loads the HAL
 # in a separate linker namespace, so LD_PRELOAD in the daemon cannot fix it.

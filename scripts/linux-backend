@@ -219,11 +219,12 @@ def configure(repository, snapshot):
             initial = config_path()
             previous = ImageSource.load(initial if initial.exists() else ROOT / 'config/image.toml')
             source = ImageSource.validated(repository if repository is not None else previous.base_url,
-                                           snapshot if snapshot is not None else previous.snapshot, dest)
+                                           snapshot if snapshot is not None else previous.snapshot, dest, previous.profile)
             with tempfile.NamedTemporaryFile(dir=dest.parent, mode='w', delete=False) as tmp:
                 pending = Path(tmp.name)
                 try:
                     tmp.write(f'repository = {json.dumps(source.base_url)}\nsnapshot = {json.dumps(source.snapshot)}\n')
+                    tmp.write(f'profile = {json.dumps(source.profile)}\n')
                     tmp.flush()
                     os.fsync(tmp.fileno())
                     pending.replace(dest)
@@ -234,7 +235,7 @@ def configure(repository, snapshot):
     print(f'Configuration: {path}\nRepository: {source.base_url}\nSnapshot: {source.snapshot}')
 
 
-def matches(image, release, source, revision):
+def matches(image, release, source, revision, archive=None):
     marker = image / '.tizen-ornn-image-revision'
     if not marker.exists():
         marker = image / '.tizen-vm-image-revision'
@@ -243,6 +244,8 @@ def matches(image, release, source, revision):
         return False
     lock = json.loads(path.read_text())
     archive_url = lock.get('archive', {}).get('url', '')
+    if archive and archive_url != archive:
+        return False
     return lock.get('release') == release and archive_url.startswith(f'{source}Tizen-10.1-Unified/{release}/')
 
 
@@ -264,14 +267,16 @@ def prepare(home, active, snapshot, *, name=None, previous=None, config=None):
     else:
         release, source = requested_image(snapshot)
     revision = (ROOT / 'config/image-revision').read_text().strip()
-    if active and matches(active, release, source, revision):
+    archive = settings.archive_url(release) if config else None
+    if active and matches(active, release, source, revision, archive):
         print(f'Already up to date: {release} ({active})')
         return
     with stopped(active) if active else nullcontext():
         dependencies(build=True)
         images = home / 'images'
         images.mkdir(exist_ok=True)
-        key = hashlib.sha256(source.encode()).hexdigest()[:12]
+        identity = archive or source
+        key = hashlib.sha256(identity.encode()).hexdigest()[:12]
         stem = f'{release}-v{revision}-{key}'
         if name and os.path.lexists(images / name):
             raise ValueError(f'Image already exists: {images / name}')
@@ -297,7 +302,7 @@ def prepare(home, active, snapshot, *, name=None, previous=None, config=None):
                 build_image(stage, release, config)
             else:
                 build_image(stage, release)
-        if not (stage / '.image-ready').is_file() or not matches(stage, release, source, revision):
+        if not (stage / '.image-ready').is_file() or not matches(stage, release, source, revision, archive):
             raise ValueError(f'Built image does not match the requested source and revision: {stage}')
         new_disk = disk_at(stage)
         with stopped(stage):

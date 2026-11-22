@@ -1,13 +1,12 @@
 # Running the VM and managing storage
 
-From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. The native Windows launcher uses QEMU’s GTK display with guest software rendering. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
+From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. On Windows, the portable launcher uses SDL with a visible pointer, a virtio tablet and the bundled Mesa graphics runtime. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
 
-GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
+Ubuntu GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
 This provides the multisampled EGL surface used by the Flutter home screen.
-The host needs an OpenGL-capable SDL display. On hosts without one, start
+Graphical boots start the snapshot’s graphical target and home app. The sample counter is available through `systemctl start tizen-ui-demo.service`. Ubuntu needs an OpenGL-capable SDL display. On Ubuntu hosts without one, start
 with `TIZEN_GUI_GL=0 tizen-ornn --gui` to use guest software rendering for
-EFL and .NET development. The Flutter home screen requires the default
-3D mode on this snapshot.
+software rendering. On Tizen 10.1, software boots select Skia for the stock Flutter home app. A subsequent virgl boot restores the app’s declared Impeller setting.
 
 On an existing guest using the emulator audio HAL, run
 `tizen-ornn install patchelf` on the host before restarting with `--gui`.
@@ -53,7 +52,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 ## Share a host directory
 
-Windows and Ubuntu mount a host folder at `/home/tizen/share` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The guest sees live host files, including edits and deletions.
+Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The guest sees live host files, including edits and deletions.
 
 Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
 
@@ -72,7 +71,7 @@ tizen-ornn share-dir --reset      # restore the default for future boots
 
 Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, these two legacy one-boot flags keep the original guest `owner` identity for host permissions and also expose the folder at `/home/owner/host` when that location is empty. Use `share-dir` or the GUI setting to work on private host files as the interactive `tizen` account. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
 
-Before mounting, the launcher’s guest startup script renames a populated guest `share` directory to `/home/tizen/share.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. An empty mountpoint needs no backup.
+Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. Earlier releases’ `/home/tizen/share` and `/home/tizen/share.before-host*` stay on the guest disk.
 
 ## Host networking
 

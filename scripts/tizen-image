@@ -13,6 +13,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
+from image_recipe import package_rows, validate_kickstart
 from image_source import DATED, ImageSource, PROJECT, read_url
 
 
@@ -91,6 +92,31 @@ def make_lock(source, release):
     expected = {("/", "emulator-rootfs.img", "ext4"), ("/opt", "emulator-sysdata.img", "ext4")}
     if image.get("arch") != "x86_64" or partitions != expected:
         raise ValueError("this recipe requires x86_64 with ext4 emulator-rootfs and emulator-sysdata")
+    stem = archive.removesuffix(".tar.gz")
+    ks_name, packages_name = stem + ".ks", stem + ".packages"
+    ks = read_url(folder + "/" + ks_name)
+    inventory = read_url(folder + "/" + packages_name)
+    if checksum(inventory) != sums.get(packages_name) or ks_name not in sums:
+        raise ValueError(f"missing kickstart checksum or invalid package inventory in {folder}")
+    packages = package_rows(inventory.decode().splitlines())
+    requested, erased = validate_kickstart(ks.decode(), image, packages)
+    # The publisher sometimes rewrites repo URLs after generating SHA256SUMS.
+    # Never execute this file. Check every consumed directive against the
+    # checksum-verified image XML and inventory, and pin the exact fetched bytes.
+    if checksum(ks) != sums[ks_name]:
+        # Some official snapshots publish a revised kickstart after checksumming.
+        # Only accept those bytes from the canonical dated HTTPS publication.
+        # Other repositories must either match their checksum or this exact copy.
+        canonical = (f"https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/"
+                     f"{release}/images/emulator/{source.profile}/{ks_name}")
+        if folder + "/" + ks_name != canonical and read_url(canonical) != ks:
+            raise ValueError(f"kickstart checksum mismatch and no matching official recipe: {ks_name}")
+        print(f"{ks_name}: published SHA-256 differs; verified package selections and partitions "
+              "against the published RPM inventory and XML", file=sys.stderr)
+    recipe = {"kickstart_sha256": checksum(ks), "published_kickstart_sha256": sums[ks_name],
+              "packages_sha256": sums[packages_name], "selection": requested,
+              "post_erases": erased, "packages": sorted([list(row) for row in packages
+                                                        if row[0].rsplit(".", 1)[0] not in erased])}
     build_xml = read_url(f"{source.base_url}Tizen-10.1-Unified/{release}/build.xml")
     repos = {}
     indexes = {}
@@ -116,7 +142,7 @@ def make_lock(source, release):
                    if ("x86_64", "rust") in indexes[r]), None)
     if native is None or native[2] != version:
         raise ValueError("ARM rust-std-static and the native Rust compiler must have matching versions")
-    return {"format": 1, "release": release, "archive": {"url": url, "sha256": sums[archive]},
+    return {"format": 1, "recipe": recipe, "release": release, "archive": {"url": url, "sha256": sums[archive]},
             "partitions_sha256": sums[image_xml], "build_xml_sha256": checksum(build_xml), "repos": repos, "cross": [list(row) for row in sorted(cross)],
             "rust": {"url": rust_url, "sha256": sha, "version": version}}
 

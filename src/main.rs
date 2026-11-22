@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// Save the host folder mounted at /home/tizen/share (or clear the setting).
+    /// Save the host folder mounted at /mnt/host (or clear the setting).
     ShareDir {
         #[arg(required_unless_present = "reset", conflicts_with = "reset")]
         path: Option<String>,

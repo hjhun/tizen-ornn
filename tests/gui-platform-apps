@@ -1,13 +1,12 @@
 #!/bin/sh
 # Run as root in a booted GUI guest.
 set -eu
-software=/sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/software-renderer/raw
 homescreen() {
     pgrep -f '^/usr/apps/org[.]tizen[.]homescreen/bin/runner( |$)'
 }
 apps() {
     pgrep -x TaskBar.dll && pgrep -x VolumeApp.dll || return 1
-    if [ ! -r "$software" ]; then homescreen; fi
+    homescreen
 }
 for i in $(seq 1 90); do
     if pids=$(apps); then break; fi
@@ -19,20 +18,18 @@ for i in $(seq 1 12); do
     sleep 5
     test "$(apps)" = "$pids" || { echo "Platform app exited or relaunched" >&2; exit 1; }
 done
-systemctl is-active --quiet tizen-dev-gui.target
+systemctl is-active --quiet graphical.target
 systemctl is-active --quiet display-manager.service
-systemctl is-active --quiet tizen-ui-demo.service
+if systemctl is-active --quiet tizen-ui-demo.service; then exit 1; fi
 pactl -s unix:/run/pulse/native list short modules | grep -qw module-tizenaudio-policy
 windows=$(enlightenment_info -topvwins)
 for app in TaskBar VolumeApp; do
     printf '%s\n' "$windows" | grep -Fqi "/$app.dll"
 done
-if [ ! -r "$software" ]; then
-    # The Flutter window is untitled. Match the owner and window dimensions
-    # in the compositor's Evas object list (the EC list has different fields).
-    printf '%s\n' "$windows" | awk -v pid="$(homescreen)" '
-        /Top level windows in EC list/ { exit }
-        $4 == pid && $5 > 0 && $6 > 0 { found=1 }
-        END { exit !found }'
-fi
+# The Flutter window is untitled. Match the owner and window dimensions
+# in the compositor's Evas object list (the EC list has different fields).
+printf '%s\n' "$windows" | awk -v pid="$(homescreen)" '
+    /Top level windows in EC list/ { exit }
+    $4 == pid && $5 > 0 && $6 > 0 { found=1 }
+    END { exit !found }'
 printf 'Platform apps retained their PIDs for 60 seconds and registered compositor windows.\n'

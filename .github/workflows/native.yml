@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    paths: ['Cargo.*', 'build.rs', 'packaging/ornn.rc', 'packaging/art/tizen-ornn.ico', 'src/**', 'guest/tizen-ornn-share', 'packaging/windows-launcher.nsi', 'config/version', 'tests/windows-console.ps1', '.github/workflows/native.yml']
+    paths: ['Cargo.*', 'build.rs', 'packaging/ornn.rc', 'packaging/art/tizen-ornn.ico', 'src/**', 'guest/tizen-ornn-*', 'packaging/windows-launcher.nsi', 'config/version', 'tests/windows-console.ps1', '.github/workflows/native.yml']
 permissions:
   contents: read
 jobs:
@@ -23,19 +23,19 @@ jobs:
           apt-get download busybox-static
           dpkg-deb -x ./busybox-static*.deb busybox
           cp "$(find busybox -type f -name busybox -print -quit)" root/bin/busybox
-          mkdir -p root/{run,opt/usr/home/tizen/share}
+          mkdir -p root/{run,mnt/host,opt/usr/home}
           ln -s opt/usr/home root/home
           for applet in sh mount readlink mktemp find mv mkdir rmdir sync cat tr grep; do
             ln -s busybox "root/bin/$applet"
           done
           printf '#!/bin/sh\nexit 0\n' > root/bin/chsmack
           chmod +x root/bin/chsmack
-          echo preserved >root/opt/usr/home/tizen/share/.original
+          echo preserved >root/mnt/host/.original
           cat > root/usr/lib/systemd/systemd <<'INIT'
           #!/bin/busybox sh
           export PATH=/bin
-          [ "$(cat /home/tizen/share.before-host/.original)" = preserved ] || /bin/busybox poweroff -f
-          echo guest-write > /home/tizen/share/fixture-check || /bin/busybox poweroff -f
+          [ "$(cat /mnt/host.before-host/.original)" = preserved ] || /bin/busybox poweroff -f
+          echo guest-write > /mnt/host/fixture-check || /bin/busybox poweroff -f
           echo ORNN_SERIAL_READY
           read -r input
           case "$input" in ornn-console-check*) echo ORNN_SERIAL_OK ;; esac

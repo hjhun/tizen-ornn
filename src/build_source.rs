@@ -4,6 +4,7 @@ use url::Url;
 pub struct BuildSource {
     pub repository: String,
     pub release: String,
+    pub profile: Option<String>,
 }
 
 fn invalid(message: &str) -> io::Error {
@@ -39,17 +40,41 @@ impl BuildSource {
         let path = url.path().trim_end_matches('/');
         let mut root = url.clone();
         let mut release = "latest";
+        let mut profile = None;
         if let Some((base, tail)) = path.split_once("/Tizen-10.1-Unified/") {
             root.set_path(&format!("{base}/"));
             let (id, suffix) = tail.split_once('/').unwrap_or((tail, ""));
-            let profile = "tizen-headed-emulator64-wayland";
-            let archive = format!("images/emulator/{profile}/{id}_{profile}.tar.gz");
-            if !(dated(id) || id == "latest")
-                || !(suffix.is_empty() || suffix == "build.xml" || suffix == archive)
-            {
-                return Err(invalid(
-                    "Expected a Unified snapshot directory, build.xml or emulator archive URL.",
-                ));
+            if !(dated(id) || id == "latest") {
+                return Err(invalid("Expected a dated Unified snapshot or latest."));
+            }
+            if !suffix.is_empty() && suffix != "build.xml" {
+                let mut parts = suffix.split('/');
+                let (Some("images"), Some("emulator"), Some(name)) =
+                    (parts.next(), parts.next(), parts.next())
+                else {
+                    return Err(invalid("Expected an emulator image profile directory."));
+                };
+                if name.is_empty()
+                    || name.len() > 100
+                    || !name
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+                {
+                    return Err(invalid("Invalid emulator profile name."));
+                }
+                if let Some(file) = parts.next() {
+                    let stem = format!("{id}_{name}.");
+                    if !matches!(
+                        file.strip_prefix(&stem),
+                        Some("ks" | "packages" | "xml" | "tar.gz")
+                    ) || parts.next().is_some()
+                    {
+                        return Err(invalid(
+                            "Expected the selected profile's image or recipe URL.",
+                        ));
+                    }
+                }
+                profile = Some(name.to_owned());
             }
             release = id;
         } else {
@@ -101,15 +126,20 @@ impl BuildSource {
         Ok(Self {
             repository: root.to_string(),
             release: id.to_owned(),
+            profile,
         })
     }
 
     pub fn config(&self) -> String {
-        format!(
+        let mut config = format!(
             "repository = {}\nsnapshot = {}\n",
             serde_json::json!(self.repository),
             serde_json::json!(self.release)
-        )
+        );
+        if let Some(profile) = &self.profile {
+            config.push_str(&format!("profile = {}\n", serde_json::json!(profile)));
+        }
+        config
     }
 }
 

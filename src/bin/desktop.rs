@@ -213,7 +213,7 @@ impl Launcher {
             }
             ui.separator();
             ui.label(RichText::new("Shared folder (x86_64)").size(20.0).strong());
-            ui.label("Mounted at /home/tizen/share when the image starts.");
+            ui.label("Mounted at /mnt/host when the image starts.");
             ui.add(
                 egui::TextEdit::singleline(&mut self.share)
                     .desired_width(f32::INFINITY)

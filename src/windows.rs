@@ -223,6 +223,16 @@ fn boot(
         cmd.args(["-qmp", &format!("pipe:{pipe}")]);
     }
     let target = if graphics {
+        let runtime = Path::new(cmd.get_program()).parent().unwrap();
+        for library in ["libEGL.dll", "libGLESv2.dll", "libgallium_wgl.dll"] {
+            if !runtime.join(library).is_file() {
+                return Err(io::Error::other(format!(
+                    "Missing {library} in {}. Use the Windows portable bundle or install the packaged Mesa runtime beside QEMU for graphical boot.",
+                    runtime.display()
+                )));
+            }
+        }
+        cmd.env("GALLIUM_DRIVER", "llvmpipe");
         let graphics_script = temp.path().join("graphics.sh");
         fs::write(
             &graphics_script,
@@ -235,19 +245,19 @@ fn boot(
                 escaped(&graphics_script)
             ),
             "-fw_cfg",
-            "name=opt/tizen-ornn/software-renderer,string=1",
+            "name=opt/tizen-ornn/skia,string=1",
         ]);
         cmd.args([
             "-display",
-            "gtk,gl=off,show-menubar=off",
+            "sdl,gl=on,show-cursor=on",
             "-device",
-            "virtio-gpu-pci,xres=1024,yres=768",
+            "virtio-gpu-gl-pci,xres=1024,yres=768",
             "-device",
             "virtio-keyboard-pci",
             "-device",
             "virtio-tablet-pci",
         ]);
-        "tizen-dev-gui.target"
+        "graphical.target"
     } else {
         cmd.args(["-display", "none"]);
         "tizen-dev.target"

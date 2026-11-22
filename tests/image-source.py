@@ -5,12 +5,14 @@ from pathlib import Path
 import runpy
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 import unittest
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from image_source import ImageSource
+from image_recipe import package_rows, validate_kickstart, verify_installed
 
 repositories = runpy.run_path(str(SCRIPTS / "tizen-image"))["repositories"]
 RELEASE = "tizen-10.1-unified_20261119.053314"
@@ -48,6 +50,23 @@ class ImageSourceTest(unittest.TestCase):
             read.assert_called_once_with(MIRROR + "Tizen-10.1-Unified/latest/build.xml")
         with patch("image_source.read_url", return_value=b"<build><id>latest</id></build>"), self.assertRaises(ValueError):
             source.resolve("latest")
+
+    def test_profile_recipe_and_package_verification(self):
+        profile = "alternate-emulator"
+        source = ImageSource.validated(MIRROR, RELEASE, "test", profile)
+        self.assertIn(f"/images/emulator/{profile}/{RELEASE}_{profile}.tar.gz", source.archive_url(RELEASE))
+        image = ET.fromstring('<image><partition mountpoint="/" fstype="ext4" fslabel="root" size="42"/></image>')
+        recipe = ("part / --fstype=ext4 --size=42 --label=root\n%packages\nshell\n%end\n"
+                  "%post\nrpm -e tool --nodeps\n%end\n%post --nochroot\nrpm -e shell --nodeps\n%end")
+        inventory = package_rows(["shell.x86_64 1.0-1", "tool.noarch 2-1"])
+        self.assertEqual(validate_kickstart(recipe, image, inventory), (["shell"], ["tool"]))
+        with self.assertRaises(ValueError):
+            validate_kickstart(recipe.replace("size=42", "size=40"), image, inventory)
+        with self.assertRaises(ValueError):
+            validate_kickstart(recipe.replace("\nshell\n", "\nabsent\n"), image, inventory)
+        with patch("image_recipe.subprocess.check_output", return_value="shell.x86_64 1.1-1\n"):
+            with self.assertRaisesRegex(ValueError, "missing or changed"):
+                verify_installed("/image", {("shell.x86_64", "1.0-1")})
 
     def test_original_build_metadata_on_a_mirror(self):
         build = f"""

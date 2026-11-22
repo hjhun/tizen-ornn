@@ -6,7 +6,9 @@ root=$(cd "${1:?usage: configure-platform.sh MOUNTED_GUEST}" && pwd -P)
 mountpoint -q "$root"
 units="$root/etc/systemd/system"
 # This VM has one ext4 volume and uses the development console instead of a serial getty.
-ln -sfn tizen-dev.target "$units/default.target"
+if [[ -L $units/default.target && $(readlink "$units/default.target") == tizen-dev.target ]]; then
+    unlink "$units/default.target"
+fi
 ln -sfn /dev/null "$units/"'dev-disk-by\x2dlabel-emulator\x2dswap.swap'
 ln -sfn /dev/null "$units/serial-getty@ttyS0.service"
 

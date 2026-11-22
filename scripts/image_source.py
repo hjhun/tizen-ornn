@@ -43,18 +43,19 @@ def config_path():
 class ImageSource:
     base_url: str
     snapshot: str
+    profile: str = PROFILE
 
     @classmethod
     def load(cls, path=None):
         path = path or config_path()
         with path.open("rb") as config:
             values = tomllib.load(config)
-        if set(values) != {"repository", "snapshot"}:
+        if set(values) not in ({"repository", "snapshot"}, {"repository", "snapshot", "profile"}):
             raise ValueError(f"{path}: expected repository and snapshot")
-        return cls.validated(values["repository"], values["snapshot"], path)
+        return cls.validated(values["repository"], values["snapshot"], path, values.get("profile", PROFILE))
 
     @classmethod
-    def validated(cls, url, release, path):
+    def validated(cls, url, release, path, profile=PROFILE):
         parts = urlsplit(url) if isinstance(url, str) else None
         if (not parts or parts.scheme != "https" or not parts.hostname
                 or parts.username is not None or parts.password is not None
@@ -62,11 +63,13 @@ class ImageSource:
             raise ValueError(f"{path}: repository must be an HTTPS base URL without credentials, query or fragment")
         if not isinstance(release, str) or not re.fullmatch(RELEASE, release):
             raise ValueError(f"{path}: snapshot must be a dated Tizen 10.1 Unified ID")
-        return cls(url.rstrip("/") + "/", release)
+        if not isinstance(profile, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", profile):
+            raise ValueError(f"{path}: invalid emulator profile")
+        return cls(url.rstrip("/") + "/", release, profile)
 
     def archive_url(self, release):
-        return (f"{self.base_url}Tizen-10.1-Unified/{release}/images/emulator/{PROFILE}/"
-                f"{release}_{PROFILE}.tar.gz")
+        return (f"{self.base_url}Tizen-10.1-Unified/{release}/images/emulator/{self.profile}/"
+                f"{release}_{self.profile}.tar.gz")
 
     def latest(self):
         url = self.base_url + "Tizen-10.1-Unified/latest/build.xml"

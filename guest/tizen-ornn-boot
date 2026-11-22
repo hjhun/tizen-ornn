@@ -37,7 +37,9 @@ if [ -r "$config/owner-share/raw" ]; then
     if [ "$(readlink -f "$legacy")" = "$legacy" ] && [ ! -L "$legacy" ]; then
         mkdir -p -- "$legacy"
         if [ -z "$(find "$legacy" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-            mount --bind /home/tizen/share "$legacy"
+            source=/mnt/host
+            if [ -e /run/systemd/system/mnt-host.mount ]; then source=/opt/mnt/host; fi
+            mount --bind "$source" "$legacy"
         fi
     fi
 fi

@@ -55,5 +55,9 @@ if [[ ! -e "$work/opt-merged" ]]; then
      rsync -aHAXx --numeric-ids "$sysdata/" "$root/opt/")
     touch "$work/opt-merged"
 fi
+if [[ ! -e "$work/original-packages-verified" ]]; then
+    python3 "$project/scripts/image_recipe.py" "$root"
+    touch "$work/original-packages-verified"
+fi
 if [[ "${1:-}" = --extract-only ]]; then exit 0; fi
 "$project/scripts/bootstrap-packages.sh" "$root" "$cache" "$work"

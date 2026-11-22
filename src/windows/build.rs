@@ -239,6 +239,7 @@ mod tests {
         fs::write(&deb, b"recipe").unwrap();
         let seed = temp.path().join("seed.img");
         let source = crate::build_source::BuildSource {
+            profile: None,
             repository: "https://mirror.example/Tizen-10.1/".into(),
             release: "tizen-10.1-unified_20261119.053314".into(),
         };

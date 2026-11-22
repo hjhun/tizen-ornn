@@ -52,6 +52,9 @@ set failed [catch {
     required {root:root:600}
     required {UPLOAD-CLEAN}
     if {$argv eq "--gui"} {
+        send -- {systemctl start tizen-ui-demo.service && echo DEMO-STARTED}
+        send -- "\r"
+        required {DEMO-STARTED}
         # The optional display assertion uses python3-pil on the host.
         puts [exec python3 $root/tests/guest-counter.py $env(TIZEN_QMP)]
     }

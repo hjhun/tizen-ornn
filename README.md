@@ -46,7 +46,7 @@ Run the CLI as your normal user. The first build downloads the dated snapshot an
 
 Open **Settings**, enter the work directory and click **Save work directory**. Images, downloads and intermediate build files use that directory. Saving a blank value restores the default, `%LOCALAPPDATA%\Tizen Ornn` on Windows or `~/.local/tizen-ornn` on Ubuntu. Changing the setting switches the image list and future builds. Existing files stay in their original directory.
 
-Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/home/tizen/share`. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
+Set **Shared folder (x86_64)** to an existing absolute host path, or leave it blank to use the work directory’s `share` folder. The CLI uses the same setting through `tizen-ornn share-dir PATH` and `tizen-ornn share-dir --reset`. Inside the guest, open `/mnt/host`. [First-boot preservation and one-time overrides](docs/running.md#share-a-host-directory)
 
 On Ubuntu, run `./tizen-ornn-ubuntu-amd64-portable.run --install-shortcut` to add the portable launcher and its icon to the application menu.
 
@@ -135,7 +135,7 @@ If HTTPS fails while downloading the image or installing guest tools, check the 
 |---|---|---|
 | Host | `tizen-ornn` | In a terminal, choose an installed image by number when several are ready. Enter accepts the first image and q cancels. A single image opens directly. |
 | Host | `tizen-ornn run` | Start the currently selected x86_64 VM or reconnect to its console |
-| Host | `tizen-ornn run --share "$PWD"` | Open the host project at `/home/tizen/share` inside Tizen |
+| Host | `tizen-ornn run --share "$PWD"` | Open the host project at `/mnt/host` inside Tizen |
 | Host | `tizen-ornn run --host-browser` | Let guest tools such as `agy` open HTTPS links in the host browser |
 | Host | `tizen-ornn run --share-ro "$PWD"` | Open the same directory read-only |
 | Host | `tizen-ornn --headless` | Start with a console only |
@@ -187,11 +187,13 @@ Fresh x86_64 images include the terminfo-aware `clear` command. For an existing 
 
 ## Choose the snapshot source
 
-On Windows or Ubuntu, open **Build image…** and paste the HTTPS snapshot repository, Unified snapshot directory, or its `build.xml` into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata with dots replaced by hyphens. Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
+On Windows or Ubuntu, open **Build image…** and paste the HTTPS snapshot repository, Unified snapshot directory, its `build.xml`, an emulator profile directory, or its dated `.ks`, `.packages`, or archive URL into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata with dots replaced by hyphens. Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
 
 ```sh
 tizen-ornn build --repository https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/
 ```
+
+The builder starts with the published x86_64 emulator archive. Before installing development tools it compares the kickstart partition labels, sizes and package selections with the image XML and package list. It checks the original filesystem’s RPM names, architectures and versions after accounting for literal package erasures in the kickstart post-install step. The input hashes and resulting inventory are saved in `snapshot.lock.json`. Profiles must provide the supported ext4 root and sysdata layout. The builder reads the kickstart as data and does not execute its scripts.
 
 `tizen-ornn config` shows the effective source and initial snapshot. The default source is **download.tizen.org**. Choose a different initial snapshot or a compatible HTTPS mirror before building:
 

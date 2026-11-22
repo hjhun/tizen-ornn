@@ -43,7 +43,7 @@ try {
         Wait-Console 'tizen@[^\r\n]*\$ '
         Send-Console 'id; test "$(id -un)" = tizen && test "$(id -u)" != 0 && id -G | tr " " "\n" | grep -qx 0 && rpm -q git >/dev/null && printf "ORNN_%s_OK\n" ROOTGROUP'
         Wait-Console '(?m)^ORNN_ROOTGROUP_OK\r?$'
-        Send-Console 'test "$(cat /home/tizen/share/host.txt)" = from-host && echo guest-write > /home/tizen/share/fixture-check && printf "ORNN_%s_OK\n" SHARE'
+        Send-Console 'test "$(cat /mnt/host/host.txt)" = from-host && echo guest-write > /mnt/host/fixture-check && printf "ORNN_%s_OK\n" SHARE'
         Wait-Console '(?m)^ORNN_SHARE_OK\r?$'
         Send-Console 'su -c "sync; systemctl --force poweroff"'
     } else {

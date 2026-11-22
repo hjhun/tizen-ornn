@@ -3,11 +3,15 @@
 set -eu
 mode=$1
 case "$mode" in rw|ro) ;; *) exit 1 ;; esac
-home=/opt/usr/home/tizen
-target=$home/share
-[ "$(readlink -f /home/tizen)" = "$home" ] &&
-    [ "$(readlink -f "$home")" = "$home" ] && [ -d "$home" ] ||
-    { echo 'Unexpected guest tizen home directory' >&2; exit 1; }
+target=/mnt/host
+[ ! -L /mnt ] && mkdir -p /mnt || exit 1
+# The stock emulator publishes /opt/mnt at /mnt during local-fs.target.
+# Preserve files at its backing directory before the platform starts.
+if [ -f /usr/lib/systemd/system/mnt.mount ] &&
+    grep -Fxq 'What=/opt/mnt' /usr/lib/systemd/system/mnt.mount; then
+    [ "$(readlink -f /opt/mnt)" = /opt/mnt ] && [ -d /opt/mnt ] || exit 1
+    target=/opt/mnt/host
+fi
 
 # Verify the export first. A failed connection leaves the guest files in place.
 stage=$(mktemp -d /run/tizen-share.XXXXXX)
@@ -22,14 +26,14 @@ else
     occupied=
 fi
 if [ -n "$occupied" ]; then
-    backup=$home/share.before-host
+    backup=$target.before-host
     index=0
     while [ -e "$backup" ] || [ -L "$backup" ]; do
         index=$((index + 1))
-        backup=$home/share.before-host.$index
+        backup=$target.before-host.$index
     done
     mv -T -- "$target" "$backup"
-    echo "tizen-ornn: preserved /home/tizen/share at /home/tizen/${backup##*/}" >&2
+    echo "tizen-ornn: preserved $target at $backup" >&2
 fi
 if ! mkdir -p -- "$target" || ! mount --move "$stage" "$target"; then
     if [ -n "$backup" ]; then
@@ -39,3 +43,20 @@ if ! mkdir -p -- "$target" || ! mount --move "$stage" "$target"; then
     exit 1
 fi
 rmdir -- "$stage"
+if [ "$target" = /opt/mnt/host ]; then
+    # PID 1 mounts the stock parent first and then exposes our staged export.
+    units=/run/systemd/system
+    mkdir -p "$units/local-fs.target.requires"
+    cat > "$units/mnt-host.mount" <<'UNIT'
+[Unit]
+Description=Ornn host folder
+Requires=mnt.mount
+After=mnt.mount
+[Mount]
+What=/opt/mnt/host
+Where=/mnt/host
+Type=none
+Options=bind
+UNIT
+    ln -s ../mnt-host.mount "$units/local-fs.target.requires/mnt-host.mount"
+fi
