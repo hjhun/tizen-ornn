@@ -59,7 +59,7 @@ struct Launcher {
     images: Vec<Image>,
     selected: Option<PathBuf>,
     stopping: Option<(PathBuf, Child)>,
-    folder_dialog: egui_file_dialog::FileDialog,
+    folder_dialog: Option<egui_file_dialog::FileDialog>,
     name: String,
     repository: String,
     build_open: bool,
@@ -184,8 +184,6 @@ impl Launcher {
     }
 
     fn settings(&mut self, ui: &mut egui::Ui) {
-        ui.label(RichText::new("Settings").size(31.0).strong());
-        ui.add_space(10.0);
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new("Work directory").size(20.0).strong());
@@ -238,10 +236,22 @@ impl Launcher {
             ui.label(RichText::new("Images").size(28.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(design::secondary("Build image…")).clicked() {
-                    self.build_open = true;
+                    open_popup(ui.ctx(), "Build x86_64 image", &mut self.build_open);
                 }
                 if ui.add(design::secondary("Open folder…")).clicked() {
-                    self.folder_dialog.pick_directory();
+                    if self.folder_dialog.is_some() {
+                        ui.ctx().send_viewport_cmd_to(
+                            popup_id("Open image folder"),
+                            egui::ViewportCommand::Focus,
+                        );
+                    } else {
+                        let mut dialog = egui_file_dialog::FileDialog::new()
+                            .title_bar(false)
+                            .fixed_pos(egui::Pos2::ZERO)
+                            .resizable(false);
+                        dialog.pick_directory();
+                        self.folder_dialog = Some(dialog);
+                    }
                 }
                 if ui.button("Refresh").clicked() {
                     self.status = self.refresh().err().unwrap_or_default();
@@ -387,6 +397,38 @@ impl Launcher {
     }
 }
 
+fn popup_id(title: &str) -> egui::ViewportId {
+    egui::ViewportId::from_hash_of(title)
+}
+
+fn open_popup(ctx: &egui::Context, title: &str, open: &mut bool) {
+    if *open {
+        ctx.send_viewport_cmd_to(popup_id(title), egui::ViewportCommand::Focus);
+    }
+    *open = true;
+}
+
+fn popup(
+    ctx: &egui::Context,
+    title: &str,
+    size: [f32; 2],
+    minimum: [f32; 2],
+    mut draw: impl FnMut(&egui::Context),
+) -> bool {
+    ctx.show_viewport_immediate(
+        popup_id(title),
+        egui::ViewportBuilder::default()
+            .with_title(title)
+            .with_inner_size(size)
+            .with_min_inner_size(minimum)
+            .with_resizable(true),
+        |child, _| {
+            draw(child);
+            child.input(|i| i.viewport().close_requested())
+        },
+    )
+}
+
 struct Desktop {
     logo: egui::TextureHandle,
     launcher: Launcher,
@@ -445,14 +487,8 @@ impl eframe::App for Desktop {
                     ui.label(RichText::new("Tizen Ornn").size(19.0));
                     ui.label(RichText::new(tizen_ornn::VERSION).size(13.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let label = if app.settings_open {
-                            "Back to library"
-                        } else {
-                            "Settings"
-                        };
-                        if ui.add(design::secondary(label)).clicked() {
-                            app.settings_open = !app.settings_open;
-                            app.status.clear();
+                        if ui.add(design::secondary("Settings")).clicked() {
+                            open_popup(ctx, "Settings", &mut app.settings_open);
                         }
                     });
                 });
@@ -468,9 +504,7 @@ impl eframe::App for Desktop {
                     .id_salt("page")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        if app.settings_open {
-                            app.settings(ui);
-                        } else if let Err(error) = app.library(ui) {
+                        if let Err(error) = app.library(ui) {
                             app.status = error;
                         }
                         if !app.status.is_empty() {
@@ -479,48 +513,83 @@ impl eframe::App for Desktop {
                         }
                     });
             });
-        if app.build_open {
-            let mut open = true;
-            egui::Window::new("Build x86_64 image")
-                .open(&mut open)
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    ui.label("Snapshot repository URL");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.repository)
-                            .desired_width(400.0)
-                            .hint_text("Leave blank for the configured snapshot"),
-                    );
-                    ui.label("Image name");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut app.name)
-                            .desired_width(400.0)
-                            .hint_text("Use the snapshot ID when a URL is supplied"),
-                    );
-                    if ui.add(design::action("Build")).clicked() {
-                        let repository = app.repository.trim().to_owned();
-                        let name = app.name.trim().to_owned();
-                        let mut args = vec!["build"];
-                        if !repository.is_empty() {
-                            args.extend(["--repository", &repository]);
+        if app.settings_open {
+            let closed = popup(ctx, "Settings", [560.0, 420.0], [380.0, 250.0], |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        app.settings(ui);
+                        if !app.status.is_empty() {
+                            ui.label(&app.status);
                         }
-                        if !name.is_empty() {
-                            args.extend(["--name", &name]);
-                        }
-                        match app.terminal(&args) {
-                            Ok(()) => app.build_open = false,
-                            Err(e) => app.status = e,
-                        }
-                    }
+                    });
                 });
-            app.build_open &= open;
+            });
+            app.settings_open = !closed;
         }
-        app.folder_dialog.update(ctx);
-        if let Some(path) = app.folder_dialog.take_picked() {
-            app.status = match app.connect_directory(path) {
-                Ok(()) => String::new(),
-                Err(error) => error.to_string(),
-            };
+        if app.build_open {
+            let closed = popup(
+                ctx,
+                "Build x86_64 image",
+                [480.0, 210.0],
+                [320.0, 180.0],
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.label("Snapshot repository URL");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut app.repository)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Leave blank for the configured snapshot"),
+                        );
+                        ui.label("Image name");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut app.name)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Use the snapshot ID when a URL is supplied"),
+                        );
+                        if ui.add(design::action("Build")).clicked() {
+                            let repository = app.repository.trim().to_owned();
+                            let name = app.name.trim().to_owned();
+                            let mut args = vec!["build"];
+                            if !repository.is_empty() {
+                                args.extend(["--repository", &repository]);
+                            }
+                            if !name.is_empty() {
+                                args.extend(["--name", &name]);
+                            }
+                            match app.terminal(&args) {
+                                Ok(()) => app.build_open = false,
+                                Err(e) => app.status = e,
+                            }
+                        }
+                    });
+                },
+            );
+            app.build_open &= !closed;
+        }
+        if let Some(dialog) = &mut app.folder_dialog {
+            let closed = popup(
+                ctx,
+                "Open image folder",
+                [780.0, 540.0],
+                [540.0, 350.0],
+                |ctx| {
+                    let frame = egui::Frame::window(&ctx.style());
+                    let size = ctx.screen_rect().size() - frame.total_margin().sum();
+                    dialog.config_mut().min_size = size;
+                    dialog.config_mut().max_size = Some(size);
+                    dialog.update(ctx);
+                },
+            );
+            if let Some(path) = dialog.take_picked() {
+                app.folder_dialog = None;
+                app.status = app
+                    .connect_directory(path)
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_default();
+            } else if closed || dialog.state() != egui_file_dialog::DialogState::Open {
+                app.folder_dialog = None;
+            }
         }
     }
 }
