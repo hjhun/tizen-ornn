@@ -54,7 +54,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen/share` with the same read/write or read-only access. Changes through either path are visible on the host.
 
-Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+Use **Add image…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. Use **Disconnect image…** to remove an external folder from the library while keeping its files. For an image built in the managed store, stop the guest and choose **Delete image…** to review its path and delete its guest disk.
 
 Set **Settings → Shared folder (x86_64) → Save shared folder** in the desktop launcher, then select an image in **Image library** and choose **Start with display** or **Start terminal only**. The CLI accepts the same persistent setting. Supply an existing absolute directory. In a portable installation, run the CLI beside the GUI binary inside `Tizen Ornn Portable/runtime-…` to use that installation’s settings and bundled Windows QEMU.
 

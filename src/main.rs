@@ -97,7 +97,6 @@ enum Action {
         #[arg(requires = "packages")]
         names: Vec<String>,
     },
-    #[cfg(target_os = "linux")]
     /// Delete a managed disk.
     Delete {
         image: Option<String>,

@@ -54,9 +54,45 @@ fn connected_directories(store: &std::path::Path) -> std::io::Result<Vec<PathBuf
     }
 }
 
+fn update_connection(
+    store: &std::path::Path,
+    path: &std::path::Path,
+    add: bool,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(store)?;
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(store.join(".connected-images.lock"))?;
+    lock.lock()?;
+    let mut paths = connected_directories(store)?;
+    if paths.iter().any(|entry| entry == path) != add {
+        if add {
+            paths.push(path.to_owned());
+        } else {
+            paths.retain(|entry| entry != path);
+        }
+        let mut tmp = tempfile::NamedTempFile::new_in(store)?;
+        serde_json::to_writer(&mut tmp, &paths)?;
+        tmp.persist(store.join("connected-images.json"))?;
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
+struct Removal {
+    store: PathBuf,
+    image: PathBuf,
+    external: bool,
+}
+
 #[derive(Default)]
 struct Launcher {
     images: Vec<Image>,
+    external: Vec<PathBuf>,
+    removal: Option<Removal>,
     selected: Option<PathBuf>,
     stopping: Option<(PathBuf, Child)>,
     folder_dialog: Option<egui_file_dialog::FileDialog>,
@@ -90,12 +126,14 @@ impl Launcher {
             return Err(String::from_utf8_lossy(&output.stderr).into_owned());
         }
         self.images = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+        self.external.clear();
         for path in connected_directories(std::path::Path::new(&self.active_workdir))
             .map_err(|e| e.to_string())?
         {
             if !self.images.iter().any(|image| image.path == path)
                 && let Some(arch) = guest_arch(&path)
             {
+                self.external.push(path.clone());
                 self.images.push(Image {
                     path,
                     arch: arch.into(),
@@ -118,21 +156,8 @@ impl Launcher {
         })?;
         if !self.images.iter().any(|image| image.path == path) {
             let store = std::path::Path::new(&self.active_workdir);
-            std::fs::create_dir_all(store)?;
-            let lock = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .read(true)
-                .write(true)
-                .open(store.join(".connected-images.lock"))?;
-            lock.lock()?;
-            let mut paths = connected_directories(store)?;
-            if !paths.contains(&path) {
-                paths.push(path.clone());
-                let mut tmp = tempfile::NamedTempFile::new_in(store)?;
-                serde_json::to_writer(&mut tmp, &paths)?;
-                tmp.persist(store.join("connected-images.json"))?;
-            }
+            update_connection(store, &path, true)?;
+            self.external.push(path.clone());
             self.images.push(Image {
                 path: path.clone(),
                 arch: arch.into(),
@@ -294,9 +319,9 @@ impl Launcher {
 
     fn library_actions(&mut self, ui: &mut egui::Ui) {
         let open_button = if self.images.is_empty() {
-            design::action("Open folder…")
+            design::action("Add image…")
         } else {
-            design::secondary("Open folder…")
+            design::secondary("Add image…")
         };
         let open = ui.add(open_button).clicked();
         let build = ui.add(design::secondary("Build image…")).clicked();
@@ -471,6 +496,36 @@ impl Launcher {
                 ui.add(egui::Label::new(path).wrap());
                 ui.label(RichText::new("Architecture").color(MUTED).size(13.0));
                 ui.label(if arm { "armv7l" } else { "x86_64" });
+                let store = PathBuf::from(&self.active_workdir);
+                let external = self.external.contains(&dir);
+                let expected_parent = if arm {
+                    store.clone()
+                } else {
+                    store.join("images")
+                };
+                let managed = dir
+                    .parent()
+                    .and_then(|p| p.canonicalize().ok())
+                    .is_some_and(|parent| Some(parent) == expected_parent.canonicalize().ok())
+                    && (!arm || dir.ends_with("armv7l-headed"));
+                if (external || managed)
+                    && ui
+                        .add_enabled(
+                            !running && !stopping,
+                            design::secondary(if external {
+                                "Disconnect image…"
+                            } else {
+                                "Delete image…"
+                            }),
+                        )
+                        .clicked()
+                {
+                    self.removal = Some(Removal {
+                        store,
+                        image: dir.clone(),
+                        external,
+                    });
+                }
                 Ok(())
             })
             .inner?;
@@ -605,6 +660,76 @@ impl eframe::App for Desktop {
                         }
                     });
             });
+        if let Some(removal) = app.removal.clone() {
+            let title = if removal.external {
+                "Disconnect image"
+            } else {
+                "Delete image"
+            };
+            let mut confirm = false;
+            let mut cancel = false;
+            let closed = popup(ctx, title, [460.0, 205.0], [320.0, 170.0], |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.label(design::heading(title, 22.0));
+                        ui.label(if removal.external {
+                            "Remove this folder from the library and keep its files."
+                        } else {
+                            "Permanently delete the guest disk and all data stored inside it?"
+                        });
+                        ui.add(egui::Label::new(removal.image.display().to_string()).wrap());
+                        ui.horizontal(|ui| {
+                            cancel = ui.add(design::secondary("Cancel")).clicked();
+                            confirm = ui
+                                .add(design::secondary(if removal.external {
+                                    "Disconnect"
+                                } else {
+                                    "Delete disk"
+                                }))
+                                .clicked();
+                        });
+                    });
+                });
+            });
+            if closed || cancel || confirm {
+                app.removal = None;
+            }
+            if confirm && !closed {
+                app.status = (|| -> Result<String, String> {
+                    if removal.external {
+                        update_connection(&removal.store, &removal.image, false)
+                            .map_err(|e| e.to_string())?;
+                    } else {
+                        let name = removal.image.file_name().ok_or("Missing image name")?;
+                        let mut cmd = cli()?;
+                        cmd.env("TIZEN_ORNN_HOME", &removal.store)
+                            .env_remove("TIZEN_OUT");
+                        #[cfg(target_os = "linux")]
+                        cmd.args([
+                            "--arch",
+                            guest_arch(&removal.image)
+                                .ok_or("Image has changed. Refresh the library.")?,
+                        ]);
+                        let out = cmd
+                            .args(["delete", "--yes", "--"])
+                            .arg(name)
+                            .output()
+                            .map_err(|e| e.to_string())?;
+                        if !out.status.success() {
+                            return Err(String::from_utf8_lossy(&out.stderr).trim().into());
+                        }
+                    }
+                    app.refresh()?;
+                    Ok(if removal.external {
+                        "Image disconnected."
+                    } else {
+                        "Guest disk deleted."
+                    }
+                    .into())
+                })()
+                .unwrap_or_else(|error| error);
+            }
+        }
         if app.settings_open {
             let closed = popup(ctx, "Settings", [560.0, 420.0], [380.0, 250.0], |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {

@@ -36,7 +36,7 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-Use **Open folder…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. The disk stays in its original folder.
+Use **Add image…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. Use **Disconnect image…** to remove an external folder from the library while keeping its files. For an image built in the managed store, stop the guest and choose **Delete image…** to review its path and delete its guest disk.
 
 Select an image and click **Start with display** to open its Tizen graphical session and console. Close the terminal window at any time. Click **Open terminal** on the running image to reconnect to the same shell and its running jobs. From the CLI, use `tizen-ornn console --image-dir PATH`. **Shut down** asks that guest to power off cleanly. Choose **Start terminal only** for an x86_64 console-only boot. **Build image…** opens a terminal for build progress and Ubuntu sudo prompts.
 

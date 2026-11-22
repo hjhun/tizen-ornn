@@ -86,6 +86,60 @@ fn images() -> io::Result<Vec<Image>> {
     Ok(result)
 }
 
+fn delete_disk(name: &str) -> io::Result<()> {
+    use std::os::windows::fs::MetadataExt;
+    crate::build_source::validate_name(name)?;
+    let root = home()?.join("images");
+    let image = root.join(name);
+    let (filename, _) = disk(&image)?;
+    let target = image.join(filename);
+    // A managed path must not redirect deletion through a junction or symlink.
+    for path in [&root, &image, &target] {
+        if fs::symlink_metadata(path)?.file_attributes() & 0x400 != 0 {
+            return Err(io::Error::other("Cannot delete through a reparse point."));
+        }
+    }
+    if image.join("tizen-rootfs.ext4").exists() && image.join("tizen-rootfs.qcow2").exists() {
+        return Err(io::Error::other("Expected exactly one guest disk."));
+    }
+    let session = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(image.join(".ornn-session"))?;
+    session
+        .try_lock()
+        .map_err(|_| io::Error::other("This image is in use."))?;
+    let canonical = target.canonicalize()?;
+    for item in fs::read_dir(&root)? {
+        let overlay = item?.path().join("tizen-rootfs.qcow2");
+        if !overlay.is_file() || overlay.canonicalize()? == canonical {
+            continue;
+        }
+        let info = qemu("qemu-img")?
+            .args(["info", "-U", "--output=json", "--backing-chain"])
+            .arg(&overlay)
+            .output()?;
+        if !info.status.success() {
+            return Err(io::Error::other(
+                String::from_utf8_lossy(&info.stderr).into_owned(),
+            ));
+        }
+        let layers: Vec<serde_json::Value> = serde_json::from_slice(&info.stdout)?;
+        for layer in layers {
+            if let Some(backing) = layer["full-backing-filename"].as_str()
+                && Path::new(backing).canonicalize()? == canonical
+            {
+                return Err(io::Error::other(format!(
+                    "{} uses this disk as a backing image.",
+                    overlay.display()
+                )));
+            }
+        }
+    }
+    fs::remove_file(target)
+}
+
 fn select_image(image: Option<PathBuf>) -> io::Result<PathBuf> {
     Ok(match image {
         Some(path) => path,
@@ -353,6 +407,13 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                 }
             }
         }
+        Some(Action::Delete {
+            image: Some(name),
+            yes: true,
+        }) => delete_disk(&name),
+        Some(Action::Delete { .. }) => Err(io::Error::other(
+            "Specify delete IMAGE --yes to delete its disk.",
+        )),
         Some(Action::Images) => {
             println!("{}", serde_json::to_string(&images()?)?);
             Ok(())
