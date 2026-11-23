@@ -28,12 +28,6 @@ for unit in user@ boot-animation display-manager; do
 [Service]
 BindReadOnlyPaths=/hal/lib64/driver:/usr/lib64/driver
 UNIT
-    if [ "$unit" = boot-animation ] &&
-        [ -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/skia/raw ]; then
-        # On Windows virgl the snapshot's Mesa can abort in cso_unbind_context
-        # while destroying the completed animation. Replaying it obscures Home.
-        echo 'RestartPreventExitStatus=SIGABRT' >> "$dir/tizen-ornn-graphics.conf"
-    fi
     if [ ! -r /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/software-renderer/raw ]; then
         continue
     fi

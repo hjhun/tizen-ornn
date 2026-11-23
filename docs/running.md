@@ -1,12 +1,13 @@
 # Running the VM and managing storage
 
-From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. On Windows, the portable launcher uses SDL with a visible pointer, a virtio tablet and the bundled Mesa graphics runtime. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
+From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. On Windows, x86_64 images use a GTK window and ARM images use SDL. Both use the bundled Mesa runtime and support a visible pointer and a virtio tablet. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
 
 Ubuntu GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
 This provides the multisampled EGL surface used by the Flutter home screen.
 Graphical boots start the snapshot’s graphical target and home app. The sample counter is available through `systemctl start tizen-ui-demo.service`. Ubuntu needs an OpenGL-capable SDL display. On Ubuntu hosts without one, start
-with `TIZEN_GUI_GL=0 tizen-ornn --gui` to use guest software rendering for
-software rendering. On Tizen 10.1, software boots select Skia for the stock Flutter home app. A subsequent virgl boot restores the app’s declared Impeller setting.
+with `TIZEN_GUI_GL=0 tizen-ornn --gui` to use guest software rendering. On Tizen 10.1, software boots select Skia for the stock Flutter home app. A subsequent virgl boot restores the app’s declared Impeller setting.
+
+R26 uses its bundled x86_64 kernel when an existing image contains the previous official kernel. The launcher identifies that kernel by SHA-256 and leaves the image directory intact. The updated kernel limits the number of virgl uniform buffers advertised to the Tizen Mesa driver.
 
 On an existing guest using the emulator audio HAL, run
 `tizen-ornn install patchelf` on the host before restarting with `--gui`.

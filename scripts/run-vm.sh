@@ -62,6 +62,11 @@ if [[ -z ${TIZEN_OUT:-} ]]; then
 fi
 out=$(realpath -- "$out")
 kernel=${TIZEN_KERNEL:-$out/bzImage}
+# Use the repaired packaged kernel for disks created with the public R6 kernel.
+if [[ -z ${TIZEN_KERNEL:-} && -f $project/kernel/bzImage && -r $kernel ]] &&
+    [[ $(sha256sum < "$kernel" | cut -d' ' -f1) == $(awk '$2 == "bzImage"{print $1}' "$project/kernel/r6.sha256") ]]; then
+    kernel=$project/kernel/bzImage
+fi
 default_disk=$out/tizen-rootfs.ext4
 if [[ ! -e $default_disk && -f $out/tizen-rootfs.qcow2 ]]; then
     default_disk=$out/tizen-rootfs.qcow2
@@ -223,7 +228,7 @@ fi
 console_cmdline=" tizen.console_size=${console_size/ /x}"
 if [[ ${TIZEN_CONSOLE_MANAGED:-0} == 1 ]]; then console_cmdline+=' tizen.console=managed'; fi
 exec "${runner[@]}" "$qemu" "${args[@]}" -machine pc -smp "${TIZEN_CPUS:-2}" -m "${TIZEN_RAM:-3072}" \
-    -nodefaults "${display[@]}" -no-reboot -monitor none \
+    -nodefaults "${display[@]}" -monitor none \
     -chardev stdio,id=console,signal=off "${serial[@]}" \
     -kernel "$kernel" \
     -append "root=/dev/vda rootfstype=ext4 rootwait rw console=$console init=$init systemd.unit=$target net.ifnames=0$console_cmdline$init_args" \

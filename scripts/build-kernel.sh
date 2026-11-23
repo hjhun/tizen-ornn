@@ -23,11 +23,11 @@ if [[ ${TIZEN_PREBUILT_KERNEL:-0} == 1 && $source_url == https://download.tizen.
         cp -- "$prebuilt/bzImage" "$prebuilt/kernel.config" "$stage/"
         (cd "$stage" && sha256sum -c "$prebuilt/kernel.sha256")
     else
-        release=https://github.com/hjhun/tizen-ornn/releases/download/10.1-r6
+        release=https://github.com/hjhun/tizen-ornn/releases/download/10.1-r26
         for file in bzImage kernel.config; do
             curl -fLsS --retry 2 "$release/$file" -o "$stage/$file"
         done
-        (cd "$stage" && sha256sum -c "$root/kernel/r6.sha256")
+        (cd "$stage" && sha256sum -c "$root/kernel/r26.sha256")
     fi
     mv -fT "$stage/kernel.config" "$out/kernel.config"
     mv -fT "$stage/bzImage" "$out/bzImage"
@@ -38,11 +38,8 @@ record=$(python3 "$root/scripts/kernel_source.py" "$source_url" "$snapshot" "$ar
 mapfile -t fields <<< "$record"
 url=${fields[0]} sha256=${fields[1]} vcs=${fields[2]} version=${fields[3]}
 revision=${vcs##*#}
-tree=$sha256
-if [[ -n ${TIZEN_ARM_ARCH:-} ]]; then
-    compat=$root/kernel/virgl-tizen-caps.patch
-    tree=$sha256-$(sha256sum "$compat" | cut -d' ' -f1)
-fi
+compat=$root/kernel/virgl-tizen-caps.patch
+tree=$sha256-$(sha256sum "$compat" | cut -d' ' -f1)
 mkdir -p "$out/work/$tree"
 out=$(cd "$out" && pwd)
 work=$out/work/$tree
@@ -80,9 +77,7 @@ if [[ ! -f $work/src/.tizen-source-$revision ]]; then
         cd "$stage/srpm"
         rpm2cpio "$work/source.rpm" | cpio --quiet -id
         python3 "$root/scripts/kernel_source.py" prepare "$version" ../src
-        if [[ -n ${compat:-} ]]; then
-            patch -d ../src -p1 --fuzz=0 < "$compat" >&2
-        fi
+        patch -d ../src -p1 --fuzz=0 < "$compat" >&2
     )
     touch "$stage/src/.tizen-source-$revision"
     mv "$stage/src" "$work/src"
@@ -124,7 +119,7 @@ fi
 install -m 0644 "$work/build/arch/x86/boot/bzImage" "$stage/bzImage"
 install -m 0644 "$work/build/.config" "$stage/kernel.config"
 (cd "$stage" && sha256sum bzImage kernel.config > kernel.sha256)
-(cd "$root" && sha256sum scripts/build-kernel.sh scripts/kernel_source.py kernel/qemu-x86_64.config > "$stage/.kernel-recipe.sha256")
+(cd "$root" && sha256sum scripts/build-kernel.sh scripts/kernel_source.py kernel/qemu-x86_64.config kernel/virgl-tizen-caps.patch > "$stage/.kernel-recipe.sha256")
 mv -fT "$stage/kernel.config" "$out/kernel.config"
 mv -fT "$stage/bzImage" "$out/bzImage"
 mv -fT "$stage/kernel.sha256" "$out/kernel.sha256"

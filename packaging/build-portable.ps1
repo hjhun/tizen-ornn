@@ -9,6 +9,8 @@ $devices = & "$QemuDir/qemu-system-x86_64.exe" -device help
 if ($LASTEXITCODE -or !($devices -match 'virtio-9p-pci')) {
     throw 'The Windows QEMU distribution must include virtio-9p-pci (QCW UCRT64).'
 }
+$displays = & "$QemuDir/qemu-system-x86_64.exe" -display help
+if ($LASTEXITCODE -or !($displays -match '^gtk$')) { throw 'QEMU GTK display support is required for x86_64.' }
 $net = & "$QemuDir/qemu-system-x86_64.exe" -netdev help
 if ($LASTEXITCODE -or !($net -match '^user$')) { throw 'QEMU user networking is required.' }
 foreach ($arch in 'arm','aarch64') {

@@ -11,16 +11,42 @@ use std::{
 const CLOUD_RELEASE: &str = "https://cloud-images.ubuntu.com/releases/noble/release-20261017";
 const CLOUD_SHA: &str = "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94";
 
-fn verify(file: &Path, expected: &str) -> io::Result<()> {
+fn digest(file: &Path) -> io::Result<String> {
     let mut hash = Sha256::new();
     io::copy(&mut File::open(file)?, &mut hash)?;
-    if format!("{:x}", hash.finalize()) != expected {
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+fn verify(file: &Path, expected: &str) -> io::Result<()> {
+    if digest(file)? != expected {
         return Err(io::Error::other(format!(
             "SHA-256 mismatch: {}",
             file.display()
         )));
     }
     Ok(())
+}
+
+pub(super) fn kernel_for_boot(image: &Path) -> io::Result<PathBuf> {
+    let local = image.join("bzImage");
+    let bundled = env::current_exe()?
+        .with_file_name("builder")
+        .join("bzImage");
+    let previous = include_str!("../../kernel/r6.sha256")
+        .split_whitespace()
+        .next()
+        .unwrap();
+    if bundled.is_file() && digest(&local)? == previous {
+        verify(
+            &bundled,
+            include_str!("../../kernel/r26.sha256")
+                .split_whitespace()
+                .next()
+                .unwrap(),
+        )?;
+        return Ok(bundled);
+    }
+    Ok(local)
 }
 
 fn builder_file(work: &Path, remote: &str, sha: &str) -> io::Result<PathBuf> {
@@ -116,7 +142,7 @@ pub(super) fn create(
     }
     verify(
         &kernel,
-        include_str!("../../kernel/r6.sha256")
+        include_str!("../../kernel/r26.sha256")
             .split_whitespace()
             .next()
             .unwrap(),

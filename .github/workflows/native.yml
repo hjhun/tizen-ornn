@@ -54,11 +54,12 @@ jobs:
       - name: Package the matching recipe for a full Windows build
         run: |
           mkdir -p kernel-input builder
-          cp fixture/bzImage kernel-input/
-          curl -fsSL https://github.com/hjhun/tizen-ornn/releases/download/10.1-r15/kernel.config -o kernel-input/kernel.config
-          cp kernel/r6.sha256 kernel-input/kernel.sha256
+          sudo apt-get update -qq
+          sudo apt-get install -y rpm rpm2cpio cpio flex bison bc libelf-dev
+          TIZEN_OUT="$PWD/kernel-input" scripts/build-kernel.sh
+          cp kernel-input/kernel.sha256 builder/kernel.sha256
           TIZEN_ORNN_KERNEL_DIR="$PWD/kernel-input" scripts/package-cli.sh builder
-          cp fixture/bzImage builder/
+          cp kernel-input/bzImage builder/
       - uses: actions/upload-artifact@v4
         with:
           name: windows-builder-inputs
@@ -74,6 +75,13 @@ jobs:
         with:
           name: serial-fixture
           path: test image
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-builder-inputs
+          path: target/release/builder
+      - name: Bind the test binaries to the kernel built by this workflow
+        shell: pwsh
+        run: Copy-Item target/release/builder/kernel.sha256 kernel/r26.sha256 -Force
       - run: cargo build --locked --release --features desktop
       - name: Exercise native CLI, window creation and guest serial I/O
         shell: pwsh
@@ -101,10 +109,6 @@ jobs:
           7z x -y $setup "-o$env:TIZEN_ORNN_QEMU_DIR" | Out-Null
           if ($LASTEXITCODE) { throw 'QEMU extraction failed' }
           ./tests/windows-console.ps1 -Cli $cli -Image (Resolve-Path 'test image')
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-builder-inputs
-          path: target/release/builder
       - name: Package and open the standalone executable
         shell: pwsh
         run: |

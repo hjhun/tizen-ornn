@@ -126,9 +126,10 @@ fn delete_disk(name: &str) -> io::Result<()> {
         .create(true)
         .truncate(false)
         .open(image.join(".ornn-session"))?;
-    session
-        .try_lock()
-        .map_err(|_| io::Error::other("This image is in use."))?;
+    session.try_lock().map_err(|error| match error {
+        fs::TryLockError::WouldBlock => io::Error::other("This image is in use."),
+        fs::TryLockError::Error(error) => error,
+    })?;
     let canonical = targets
         .iter()
         .map(|p| p.canonicalize())
@@ -196,8 +197,10 @@ fn boot(
         .truncate(false)
         .write(true)
         .open(image.join(".ornn-session"))?;
-    lock.try_lock()
-        .map_err(|_| io::Error::other("This image is already running."))?;
+    lock.try_lock().map_err(|error| match error {
+        fs::TryLockError::WouldBlock => io::Error::other("This image is already running."),
+        fs::TryLockError::Error(error) => error,
+    })?;
     let stop = image.join(".ornn-shutdown");
     if stop.exists() {
         fs::remove_file(&stop)?;
@@ -261,11 +264,11 @@ fn boot(
         "-smp",
         "2",
         "-nodefaults",
-        "-no-reboot",
         "-monitor",
         "none",
-        "-kernel",
-        "bzImage",
+    ]);
+    cmd.arg("-kernel").arg(build::kernel_for_boot(&image)?);
+    cmd.args([
         "-drive",
         &format!("file={name},format={format},if=virtio"),
         "-netdev",
@@ -358,6 +361,9 @@ fn boot(
             }
         }
         cmd.env("GALLIUM_DRIVER", "llvmpipe");
+        // Virgl emits gl_SampleID without the extension directive on Windows.
+        // Let the bundled Mesa compiler use its supported GLSL extensions.
+        cmd.env("force_glsl_extensions_warn", "true");
         let graphics_script = temp.path().join("graphics.sh");
         fs::write(
             &graphics_script,
@@ -374,7 +380,8 @@ fn boot(
         ]);
         cmd.args([
             "-display",
-            "sdl,gl=on,show-cursor=on",
+            // SDL can deadlock while the x86 vCPU updates the Windows title.
+            "gtk,gl=on,show-cursor=on",
             "-device",
             "virtio-gpu-gl-pci,xres=1024,yres=768",
             "-device",

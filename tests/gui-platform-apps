@@ -5,22 +5,39 @@ homescreen() {
     pgrep -f '^/usr/apps/org[.]tizen[.]homescreen/bin/runner( |$)'
 }
 apps() {
-    pgrep -x TaskBar.dll && pgrep -x VolumeApp.dll || return 1
-    homescreen
+    taskbar=$(pgrep -x TaskBar.dll) || taskbar=
+    volume=$(pgrep -x VolumeApp.dll) || volume=
+    home=$(homescreen) || home=
+    printf 'TaskBar=%s VolumeApp=%s homescreen=%s\n' \
+        "${taskbar:-missing}" "${volume:-missing}" "${home:-missing}"
+    test -n "$taskbar" && test -n "$volume" && test -n "$home"
 }
 for i in $(seq 1 90); do
     if pids=$(apps); then break; fi
-    pids=
+    if [ "$i" -eq 90 ]; then
+        echo "Platform apps failed to start: $pids" >&2
+        exit 1
+    fi
     sleep 1
 done
-test -n "${pids:-}"
 for i in $(seq 1 12); do
     sleep 5
-    test "$(apps)" = "$pids" || { echo "Platform app exited or relaunched" >&2; exit 1; }
+    if current=$(apps) && [ "$current" = "$pids" ]; then continue; fi
+    printf 'Platform app exited or relaunched\nBefore: %s\nAfter:  %s\n' \
+        "$pids" "$current" >&2
+    exit 1
 done
 systemctl is-active --quiet graphical.target
 systemctl is-active --quiet display-manager.service
 if systemctl is-active --quiet tizen-ui-demo.service; then exit 1; fi
+test "$(systemctl show --value -p Result boot-animation.service)" = success
+test "$(systemctl show --value -p ExecMainStatus boot-animation.service)" = 0
+# A restarted animation can report success after an earlier fatal signal.
+kernel_log=$(dmesg)
+if printf '%s\n' "$kernel_log" | grep -E 'type=1701 audit'; then
+    echo "Guest reported a fatal signal during this boot" >&2
+    exit 1
+fi
 pactl -s unix:/run/pulse/native list short modules | grep -qw module-tizenaudio-policy
 windows=$(enlightenment_info -topvwins)
 for app in TaskBar VolumeApp; do
