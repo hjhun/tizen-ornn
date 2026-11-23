@@ -8,6 +8,13 @@ mkdir -p "$wants"
 for unit in tizen-dev-console.service tizen-headed-bus.service; do
     ln -sf "/etc/systemd/system/$unit" "$wants/$unit"
 done
+# The stock owner session starts its platform apps through starter.path.
+# Activate the watcher with the display manager's .wm_ready file in place.
+if [ -f /usr/lib/systemd/user/starter.path ] && uid=$(id -u owner); then
+    dir=$units/user@$uid.service.d
+    mkdir -p "$dir"
+    printf '[Unit]\nAfter=display-manager.service\n' > "$dir/display-ready.conf"
+fi
 # Preloaded UI processes retain failed TBM initialization if the user's DRM
 # authentication socket is unavailable when launchpad creates its process pool.
 if [ -f /usr/lib/systemd/user/tbm-drm-auth-user.service ]; then
