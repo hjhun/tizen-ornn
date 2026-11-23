@@ -1,0 +1,15 @@
+Types: deb
+URIs: https://raw.githubusercontent.com/hjhun/tizen-ornn/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By:
+ -----BEGIN PGP PUBLIC KEY BLOCK-----
+ .
+ mDMEawPr+xYJKwYBBAHaRw8BAQdASL44BRFOXB8OAVZSKUkoStWzDVK/hIThiRKm
+ /zroOP+0FlRpemVuIE9ybm4gQVBUIEFyY2hpdmWImQQTFgoAQRYhBI+HWddeqQ4/
+ DiIxK9cy0Q2NQ/0lBQJrA+v7AhsDBQkDwmcABQsJCAcCAiICBhUKCQgLAgQWAgMB
+ Ah4HAheAAAoJENcy0Q2NQ/0lewYA/jaC+WSwXiC5Qf2SGyg9fTPeeXT+rMIwBAZ5
+ uayy/dXlAPwKXVE1+n8OUBzhreWS0GXzTREeIQy4GgFVMqfTnDjHBw==
+ =WudY
+ -----END PGP PUBLIC KEY BLOCK-----

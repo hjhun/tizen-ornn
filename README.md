@@ -21,6 +21,14 @@ Each [release](https://github.com/hjhun/tizen-ornn/releases) includes a `SHA256S
 
 ### Ubuntu 24.04 x86_64
 
+Add the signed Ornn APT repository once for installation and subsequent updates. For CLI-only use, omit `tizen-ornn-gui`.
+
+```sh
+sudo curl -fsSL https://raw.githubusercontent.com/hjhun/tizen-ornn/main/packaging/apt/tizen-ornn.sources -o /etc/apt/sources.list.d/tizen-ornn.sources
+sudo apt update
+sudo apt install tizen-ornn tizen-ornn-gui
+```
+
 Install the CLI for terminal use:
 
 ```sh

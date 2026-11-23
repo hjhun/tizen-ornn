@@ -26,6 +26,14 @@ For PowerShell, open the `Tizen Ornn Portable\runtime-…` folder created on fir
 
 ### Ubuntu
 
+Add the signed APT repository once. Future versions are available through `sudo apt update && sudo apt upgrade`. Omit `tizen-ornn-gui` for a CLI-only installation.
+
+```sh
+sudo curl -fsSL https://raw.githubusercontent.com/hjhun/tizen-ornn/main/packaging/apt/tizen-ornn.sources -o /etc/apt/sources.list.d/tizen-ornn.sources
+sudo apt update
+sudo apt install tizen-ornn tizen-ornn-gui
+```
+
 In the download directory, choose one setup.
 
 **CLI only**

@@ -364,8 +364,10 @@ def confirm_delete(path, name, yes):
     if yes:
         return
     try:
-        if sys.stdin.isatty() and input(f'Delete {path}? Type {name} to confirm: ') == name:
-            return
+        if sys.stdin.isatty():
+            answer = input(f'Delete {path}? Type y, yes, or {name} to confirm: ')
+            if answer == name or answer.strip().lower() in ('y', 'yes'):
+                return
     except EOFError:
         pass
     raise ValueError('Deletion cancelled. For non-interactive use specify --yes.')

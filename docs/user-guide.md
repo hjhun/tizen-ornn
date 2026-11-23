@@ -26,6 +26,14 @@ PowerShell을 쓰려면 처음 실행한 뒤 생성된 `Tizen Ornn Portable\runt
 
 ### Ubuntu
 
+아래 명령으로 서명된 APT 저장소를 한 번 등록하면 이후에는 `sudo apt update && sudo apt upgrade`로 업데이트할 수 있습니다. CLI만 필요하면 마지막 명령에서 `tizen-ornn-gui`를 생략하세요.
+
+```sh
+sudo curl -fsSL https://raw.githubusercontent.com/hjhun/tizen-ornn/main/packaging/apt/tizen-ornn.sources -o /etc/apt/sources.list.d/tizen-ornn.sources
+sudo apt update
+sudo apt install tizen-ornn tizen-ornn-gui
+```
+
 다운로드한 폴더에서 원하는 방식 하나를 선택하세요.
 
 **CLI만 설치**
