@@ -4,6 +4,8 @@
 
 Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Both launchers have headed ARMv7l and AArch64 build recipes. Ubuntu also supports x86_64 image updates and package management.
 
+Install Ornn, build a Tizen image, and run your first app inside the guest. [한국어 가이드](docs/user-guide.md) · [English guide](docs/user-guide_en.md)
+
 ## Downloads
 
 | Host | Release files | First step |
