@@ -169,3 +169,19 @@ Open **Settings → Build CA certificate → Browse…**, select your public PEM
 CA certificate (`.crt`), and click **Save certificate**. The GUI and CLI use
 the saved file for new image builds. Clear the field and save to fall back
 to `TIZEN_BUILD_CA_CERT`. [HTTPS certificate guide](https-certificates.md)
+
+### Download and build proxy
+
+In **Settings → Build proxy**, **System settings** uses the inherited HTTP,
+HTTPS, ALL and NO_PROXY environment variables (lowercase first), then the
+desktop's static proxy settings on Windows or GNOME when no proxy endpoint
+variable is set. WSL can also read Windows settings. Choose **Manual proxy**
+to specify one HTTP(S) proxy for both protocols and a comma-separated bypass
+list. Click **Save proxy**. Select **System settings** and save to reset.
+Manual addresses accept a hostname and optional port. Use the environment
+for proxy credentials. PAC/WPAD and the Windows `<local>` bypass pattern
+are outside the static proxy configuration supported by the builder.
+
+The setting applies to the Ornn CLI and GUI, including the temporary Windows
+builder VM and build-time Tizen package downloads. Running guest applications
+use their normal runtime settings.

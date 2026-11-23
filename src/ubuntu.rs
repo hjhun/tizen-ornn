@@ -19,6 +19,12 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         "arch":cli.arch, "headless":cli.headless, "pick":env::args_os().len()==1,
         "directory":null, "command":null
     });
+    let proxy = match &cli.command {
+        Some(Action::Build { .. } | Action::Update { .. } | Action::Install { .. }) => {
+            Some(tizen_ornn::proxy::BuildProxy::load()?)
+        }
+        _ => None,
+    };
     let (name, fields) = match cli.command {
         Some(Action::ShareDir { path, .. }) => {
             return tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""));
@@ -32,7 +38,9 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             }
             let source = repository
                 .as_deref()
-                .map(crate::build_source::BuildSource::resolve)
+                .map(|input| {
+                    crate::build_source::BuildSource::resolve(input, proxy.as_ref().unwrap())
+                })
                 .transpose()?;
             let name = name.or_else(|| source.as_ref().map(|s| s.release.clone()));
             (
@@ -87,6 +95,9 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         && let Some(path) = tizen_ornn::workdir::ca_setting()?
     {
         backend.env("TIZEN_BUILD_CA_CERT", path);
+    }
+    if let Some(proxy) = proxy {
+        proxy.apply(&mut backend);
     }
     Err(backend.arg(req.to_string()).exec())
 }

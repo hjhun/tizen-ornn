@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{env, io, path::PathBuf};
 
+pub mod proxy;
+
 pub const VERSION: &str = include_str!("../config/version").trim_ascii_end();
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -59,7 +61,7 @@ pub mod workdir {
         read_setting("workdir.json")
     }
 
-    fn read_setting(name: &str) -> io::Result<Option<PathBuf>> {
+    fn read_setting<T: serde::de::DeserializeOwned>(name: &str) -> io::Result<Option<T>> {
         let path = settings_dir()?.join(name);
         match fs::read(path) {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
@@ -89,6 +91,27 @@ pub mod workdir {
             return Err(io::Error::other("Choose an existing certificate file"));
         }
         save_setting("build-ca.json", value)
+    }
+
+    pub fn proxy_setting() -> io::Result<Option<crate::proxy::Manual>> {
+        read_setting("build-proxy.json")
+    }
+
+    pub fn save_proxy(proxy: Option<&crate::proxy::Manual>) -> io::Result<()> {
+        let base = settings_dir()?;
+        let path = base.join("build-proxy.json");
+        if let Some(proxy) = proxy {
+            proxy.validate()?;
+            fs::create_dir_all(&base)?;
+            let mut temp = tempfile::NamedTempFile::new_in(base)?;
+            serde_json::to_writer(&mut temp, proxy)?;
+            temp.persist(path)?;
+        } else if let Err(e) = fs::remove_file(path)
+            && e.kind() != io::ErrorKind::NotFound
+        {
+            return Err(e);
+        }
+        Ok(())
     }
 
     pub fn shared_directory() -> io::Result<Option<PathBuf>> {

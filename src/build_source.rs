@@ -22,7 +22,7 @@ fn dated(id: &str) -> bool {
 }
 
 impl BuildSource {
-    pub fn resolve(input: &str) -> io::Result<Self> {
+    pub fn resolve(input: &str, proxy: &tizen_ornn::proxy::BuildProxy) -> io::Result<Self> {
         let url =
             Url::parse(input).map_err(|_| invalid("Enter a full HTTPS Tizen snapshot URL."))?;
         if url.scheme() != "https"
@@ -89,7 +89,9 @@ impl BuildSource {
             .join(&format!("Tizen-10.1-Unified/{release}/build.xml"))
             .map_err(io::Error::other)?;
         let curl = if cfg!(windows) { "curl.exe" } else { "curl" };
-        let output = Command::new(curl)
+        let mut command = Command::new(curl);
+        proxy.apply(&mut command);
+        let output = command
             .args([
                 "--disable",
                 "-fsSL",

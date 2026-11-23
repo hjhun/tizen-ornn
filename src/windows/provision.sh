@@ -9,6 +9,12 @@ work=/var/tmp/ornn
 mkdir -p /mnt/ornn-seed "$work"
 mount -o ro /dev/disk/by-label/CIDATA /mnt/ornn-seed
 cp /mnt/ornn-seed/ornn.deb /var/tmp/tizen-ornn.deb
+for key in http_proxy https_proxy all_proxy no_proxy; do
+    if [[ -f /mnt/ornn-seed/$key ]]; then
+        value=$(cat "/mnt/ornn-seed/$key")
+        export "$key=$value" "${key^^}=$value"
+    fi
+done
 export DEBIAN_FRONTEND=noninteractive TIZEN_PREBUILT_KERNEL=1 JOBS=4
 if [[ -f /mnt/ornn-seed/build-ca.crt ]]; then
     export TIZEN_BUILD_CA_CERT=/mnt/ornn-seed/build-ca.crt

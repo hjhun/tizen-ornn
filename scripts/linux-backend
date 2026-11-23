@@ -178,8 +178,13 @@ def select(home, image, previous):
     link.replace(selection_link(home))
 
 
-def run_as_root(cmd):
+def run_as_root(cmd, *, build_network=False):
     prefix = [] if os.geteuid() == 0 else ['sudo']
+    if prefix and build_network:
+        names = ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')
+        keys = [key for name in names for key in (name, name.upper()) if key in os.environ]
+        if keys:
+            prefix.append('--preserve-env=' + ','.join(keys))
     subprocess.run([*prefix, *cmd], check=True)
 
 
@@ -202,8 +207,8 @@ def dependencies(build, gui=False):
     installed = {line.split()[0] for line in query.stdout.splitlines() if line.endswith(' installed')}
     missing = [p for p in packages if p not in installed]
     if missing:
-        run_as_root(['apt-get', 'update'])
-        run_as_root(['apt-get', 'install', '-y', *missing])
+        run_as_root(['apt-get', 'update'], build_network=build)
+        run_as_root(['apt-get', 'install', '-y', *missing], build_network=build)
 
 
 def requested_image(snapshot):
@@ -261,7 +266,7 @@ def build_image(stage, release, config=None):
     settings['TIZEN_IMAGE_CONFIG'] = str((config or config_path()).resolve(strict=True))
     cmd = ['env', *(f'{key}={val}' for key, val in settings.items()), BUILDER,
            '--snapshot', release, '--out', stage]
-    run_as_root(cmd)
+    run_as_root(cmd, build_network=True)
 
 
 def prepare(home, active, snapshot, *, name=None, previous=None, config=None):

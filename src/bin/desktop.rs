@@ -106,6 +106,8 @@ struct Launcher {
     stopping: Option<(PathBuf, Child)>,
     picker: Option<(Picker, egui_file_dialog::FileDialog)>,
     ca_path: String,
+    manual_proxy: bool,
+    proxy: tizen_ornn::proxy::Manual,
     name: String,
     repository: String,
     build_open: bool,
@@ -382,6 +384,27 @@ impl Launcher {
                     };
                 }
             });
+            ui.separator();
+            ui.label(design::heading("Build proxy", 20.0));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut self.manual_proxy, false, "System settings");
+                ui.radio_value(&mut self.manual_proxy, true, "Manual proxy");
+            });
+            if self.manual_proxy {
+                ui.label("HTTP / HTTPS proxy address");
+                ui.add(egui::TextEdit::singleline(&mut self.proxy.url)
+                    .desired_width(f32::INFINITY).hint_text("http://proxy.example.org:8080"));
+                ui.label("Bypass proxy for");
+                ui.add(egui::TextEdit::singleline(&mut self.proxy.bypass)
+                    .desired_width(f32::INFINITY).hint_text("localhost,.example.org"));
+            }
+            if ui.add(design::action("Save proxy")).clicked() {
+                self.status = match tizen_ornn::workdir::save_proxy(self.manual_proxy.then_some(&self.proxy)) {
+                    Ok(()) if self.manual_proxy => "Manual proxy saved for downloads and builds.".into(),
+                    Ok(()) => "Downloads and builds will use the system proxy settings.".into(),
+                    Err(e) => e.to_string(),
+                };
+            }
             ui.separator();
             ui.label(design::heading("Shared folder (x86_64)", 20.0));
             ui.label("Available at /home/tizen/share and /mnt/host when the image starts.");
@@ -922,6 +945,10 @@ fn main() -> eframe::Result {
     let mut app = Launcher::default();
     if let Ok(Some(path)) = tizen_ornn::workdir::setting() {
         app.workdir = path.display().to_string();
+    }
+    if let Ok(Some(proxy)) = tizen_ornn::workdir::proxy_setting() {
+        app.manual_proxy = true;
+        app.proxy = proxy;
     }
     if let Ok(Some(path)) = tizen_ornn::workdir::ca_setting() {
         app.ca_path = path.display().to_string();

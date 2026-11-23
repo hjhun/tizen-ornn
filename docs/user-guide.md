@@ -170,3 +170,13 @@ tizen-ornn shutdown --image-dir "IMAGE_DIR"
 GUI와 CLI에서 새 이미지를 빌드할 때 환경변수 `TIZEN_BUILD_CA_CERT`보다
 우선합니다. 입력란을 비우고 저장하면 환경변수 경로를 사용합니다.
 [HTTPS 인증서 안내](https-certificates.md)
+
+### 다운로드 및 빌드 프록시
+
+**Settings → Build proxy**의 기본값은 **System settings**입니다.
+`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy` 환경변수를 우선하며,
+프록시 주소 환경변수가 없으면 Ubuntu의 GNOME 또는 Windows의 고정 프록시
+설정을 읽습니다. **Manual proxy**를 선택하면 HTTP·HTTPS 요청에 사용할 주소와
+프록시를 거치지 않을 호스트 목록(쉼표 구분)을 지정할 수 있습니다.
+**Save proxy**로 저장하면 다음 Ornn 다운로드와 이미지 빌드부터 적용됩니다.
+시스템 설정으로 돌아가려면 **System settings → Save proxy**를 누르세요.

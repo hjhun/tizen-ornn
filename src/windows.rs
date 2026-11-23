@@ -510,6 +510,7 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             Ok(())
         }
         Some(Action::Build { name, repository }) => {
+            let proxy = tizen_ornn::proxy::BuildProxy::load()?;
             let arch = cli.arch.as_deref().unwrap_or("x86_64");
             if arch != "x86_64" {
                 if name.is_some() || repository.is_some() {
@@ -517,19 +518,19 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                         "ARM builds use the pinned headed snapshot and its generic HAL.",
                     ));
                 }
-                return build::create(&home()?, &format!("{arch}-headed"), arch, None);
+                return build::create(&home()?, &format!("{arch}-headed"), arch, None, &proxy);
             }
             if let Some(name) = &name {
                 crate::build_source::validate_name(name)?;
             }
             let source = repository
                 .as_deref()
-                .map(crate::build_source::BuildSource::resolve)
+                .map(|input| crate::build_source::BuildSource::resolve(input, &proxy))
                 .transpose()?;
             let name = name
                 .or_else(|| source.as_ref().map(|s| s.release.clone()))
                 .unwrap_or_else(|| "default".into());
-            build::create(&home()?, &name, arch, source.as_ref())
+            build::create(&home()?, &name, arch, source.as_ref(), &proxy)
         }
         Some(Action::ShareDir { path, .. }) => {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))

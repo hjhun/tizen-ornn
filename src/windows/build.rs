@@ -49,10 +49,17 @@ pub(super) fn kernel_for_boot(image: &Path) -> io::Result<PathBuf> {
     Ok(local)
 }
 
-fn builder_file(work: &Path, remote: &str, sha: &str) -> io::Result<PathBuf> {
+fn builder_file(
+    work: &Path,
+    remote: &str,
+    sha: &str,
+    proxy: &tizen_ornn::proxy::BuildProxy,
+) -> io::Result<PathBuf> {
     let path = work.join(format!("ubuntu-{sha}"));
+    let mut command = Command::new("curl.exe");
+    proxy.apply(&mut command);
     checked(
-        Command::new("curl.exe")
+        command
             .args([
                 "--fail",
                 "--location",
@@ -78,6 +85,7 @@ fn make_seed(
     arch: &str,
     source: Option<&crate::build_source::BuildSource>,
     ca: Option<&Path>,
+    proxy: &tizen_ornn::proxy::BuildProxy,
 ) -> io::Result<()> {
     let file = fs::OpenOptions::new()
         .read(true)
@@ -98,6 +106,9 @@ fn make_seed(
         if let Some(source) = source {
             root.create_file("image.toml")?
                 .write_all(source.config().as_bytes())?;
+        }
+        for (key, value) in proxy.builder_values()? {
+            root.create_file(&key)?.write_all(value.as_bytes())?;
         }
         if let Some(ca) = ca {
             let mut file = File::open(ca).map_err(|err| {
@@ -128,6 +139,7 @@ pub(super) fn create(
     name: &str,
     arch: &str,
     source: Option<&crate::build_source::BuildSource>,
+    proxy: &tizen_ornn::proxy::BuildProxy,
 ) -> io::Result<()> {
     let images = home.join("images");
     fs::create_dir_all(&images)?;
@@ -178,6 +190,7 @@ pub(super) fn create(
         arch,
         source,
         ca.as_deref(),
+        proxy,
     )?;
     let downloads = work.path().join("downloads");
     fs::create_dir(&downloads)?;
@@ -185,16 +198,19 @@ pub(super) fn create(
         &downloads,
         "ubuntu-24.04-server-cloudimg-amd64.img",
         CLOUD_SHA,
+        proxy,
     )?;
     let linux = builder_file(
         &downloads,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-vmlinuz-generic",
         "41ba36d860aa0b0cd995f4ca8856d80249b244577e704929b55be13fbd1ebd2f",
+        proxy,
     )?;
     let initrd = builder_file(
         &downloads,
         "unpacked/ubuntu-24.04-server-cloudimg-amd64-initrd-generic",
         "bf276ffc12872256080890698b42db0dc9c5a469c896d8b59af6bc4e723cd186",
+        proxy,
     )?;
     let output = work.path().join("output");
     fs::create_dir(&output)?;
@@ -323,7 +339,15 @@ mod tests {
         };
         let ca = temp.path().join("company root.crt");
         fs::write(&ca, b"public certificate").unwrap();
-        make_seed(&seed, &deb, "x86_64", Some(&source), Some(&ca)).unwrap();
+        make_seed(
+            &seed,
+            &deb,
+            "x86_64",
+            Some(&source),
+            Some(&ca),
+            &Default::default(),
+        )
+        .unwrap();
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)

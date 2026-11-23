@@ -1,6 +1,6 @@
 [package]
 name = "tizen-ornn"
-version = "10.1.27"
+version = "10.1.28"
 license = "Apache-2.0"
 edition = "2024"
 default-run = "tizen-ornn"
