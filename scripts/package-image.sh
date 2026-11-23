@@ -18,7 +18,10 @@ fi
 [[ $release =~ ^tizen-10\.1-unified_([0-9]{8}\.[0-9]{6})$ ]] || { echo "Invalid snapshot ID" >&2; exit 1; }
 snapshot=${BASH_REMATCH[1]}
 version=$(<"$project/config/version")
-[[ $version =~ ^(0|[1-9][0-9]*)([.](0|[1-9][0-9]*)){2}$ ]] || { echo "Invalid host package version: $version" >&2; exit 1; }
+number='(0|[1-9][0-9]*)'
+identifier='[a-zA-Z0-9-]+'
+version_pattern="^${number}([.]${number}){2}([+]${identifier}([.]${identifier})*)?$"
+[[ $version =~ $version_pattern ]] || { echo "Invalid host package version: $version" >&2; exit 1; }
 bundle=tizen-dev-10.1-x86_64-${snapshot}-${version}
 archive="$dest/$bundle.tar.zst"
 [[ -f "$out/bzImage" && -f "$out/kernel.config" ]]

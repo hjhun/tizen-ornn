@@ -7,11 +7,8 @@ fn main() {
         "config/version must match Cargo.toml"
     );
     assert!(
-        version.split('.').count() == 3
-            && version
-                .split('.')
-                .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
-        "expected MAJOR.MINOR.RELEASE"
+        env!("CARGO_PKG_VERSION_PRE").is_empty(),
+        "expected MAJOR.MINOR.RELEASE with optional +build metadata"
     );
     println!("cargo:rerun-if-changed=packaging/ornn.rc");
     println!("cargo:rerun-if-changed=packaging/art/tizen-ornn.ico");
