@@ -4,12 +4,32 @@ set -eu
 [ "$(id -un)" = tizen ] && [ "$HOME" = /home/tizen ] || exit 1
 [ -w "$HOME" ] || exit 0
 cd "$HOME"
-if [ ! -e dev-setup ] && [ ! -L dev-setup ]; then
-    stage=$(mktemp -d .ornn-setup.XXXXXXXX)
-    trap 'rm -rf -- "$stage"' EXIT
-    cp -R /usr/share/tizen-dev/dev-setup/. "$stage/"
-    mv -iT "$stage" dev-setup </dev/null || [ -d dev-setup ]
-fi
+# Install only shipped entries. Never traverse a host symlink as a directory.
+sync_kit() (
+    src=$1
+    dest=$2
+    [ ! -L "$dest" ] || { echo "Cannot install tools through $dest" >&2; exit 1; }
+    mkdir -p -- "$dest"
+    for entry in "$src"/* "$src"/.[!.]* "$src"/..?*; do
+        [ -e "$entry" ] || continue
+        target=$dest/${entry##*/}
+        if [ -d "$entry" ]; then
+            sync_kit "$entry" "$target"
+        elif [ ! -L "$target" ] && [ -f "$target" ] &&
+             cmp -s "$entry" "$target" &&
+             { [ ! -x "$entry" ] || [ -x "$target" ]; }; then
+            continue
+        else
+            # Publish a complete file even if two guests log in at the same time.
+            tmp=$(mktemp "$dest/.ornn-tool.XXXXXXXX")
+            trap 'rm -f -- "$tmp"' EXIT
+            cp --preserve=mode -- "$entry" "$tmp"
+            mv -fT -- "$tmp" "$target"
+            trap - EXIT
+        fi
+    done
+)
+sync_kit /usr/share/tizen-dev/dev-setup dev-setup
 for file in bashrc bash_profile vimrc; do
     if [ -f "dev-setup/$file" ] && [ ! -e ".$file" ] && [ ! -L ".$file" ]; then
         ln -sT "dev-setup/$file" ".$file" || [ -L ".$file" ]

@@ -67,7 +67,7 @@ Architecture: amd64
 Section: devel
 Priority: optional
 Maintainer: Tizen Ornn maintainers <36876573+hjhun@users.noreply.github.com>
-Depends: tizen-ornn (= $version), x-terminal-emulator, qemu-system-gui, python3-gi, gir1.2-ayatanaappindicator3-0.1, gir1.2-gtk-3.0, libgl1, libegl1, libxkbcommon0, libx11-6
+Depends: tizen-ornn (= $version), x-terminal-emulator, qemu-system-gui, fonts-noto-cjk, python3-gi, gir1.2-ayatanaappindicator3-0.1, gir1.2-gtk-3.0, libgl1, libegl1, libxkbcommon0, libx11-6
 Description: Graphical image launcher for Tizen Ornn
  Select a development image and open its guest console.
 CONTROL

@@ -39,6 +39,9 @@ proc guest {command} {
 set failed [catch {
     write_file [file join $share host.txt] from-host
     file attributes [file join $share host.txt] -permissions 0600
+    file mkdir [file join $share dev-setup bin]
+    write_file [file join $share dev-setup bin install-ai-clis] outdated
+    write_file [file join $share dev-setup personal.txt] keep
     foreach option {--share --share-ro} {
         if {$option eq "--share-ro"} {
             # Leave the caller's test disk reusable after seeding the failure case.
@@ -51,6 +54,7 @@ set failed [catch {
         send -- "stty -echo\r"
         guest {findmnt -nr -o FSTYPE -T /mnt/host | grep -x 9p}
         if {$option eq "--share"} {
+            guest {su - tizen -c 'set -e; cmp /usr/share/tizen-dev/dev-setup/bin/install-ai-clis ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/install.sh; test "$(cat ~/dev-setup/personal.txt)" = keep'}
             guest {su - tizen -c 'set -e; cd /mnt/host; test "$(id -u)" = 10000; test "$(cat host.txt)" = from-host; echo from-guest > guest.txt'}
             guest {su - tizen -c 'set -e; cd /home/tizen; test "$(cat host.txt)" = from-host; echo legacy > owner.txt'}
             if {[contents [file join $share owner.txt]] ne "legacy"} {error "Shared home failed"}

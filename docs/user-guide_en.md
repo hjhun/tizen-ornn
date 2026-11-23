@@ -49,7 +49,7 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-**Portable GUI**. The `.run` file uses the host’s QEMU and build tools. On a fresh Ubuntu system, the GUI package installation above also installs those dependencies.
+**Portable GUI**. The `.run` file uses the host’s QEMU and build tools. Korean text uses the host’s `fonts-noto-cjk` package. Installing the GUI package above also installs this font and the runtime dependencies.
 
 ```sh
 chmod +x tizen-ornn-ubuntu-amd64-portable.run
@@ -60,7 +60,9 @@ chmod +x tizen-ornn-ubuntu-amd64-portable.run
 
 The first build needs internet access. The guest defaults to a 16 GiB disk with an ext4 root filesystem. On Windows, the builder also uses 4 GiB of RAM and a temporary sparse disk of up to 64 GiB. On Ubuntu, run Ornn as your regular user and enter your sudo password when prompted.
 
-1. Set the storage location in **Settings → Work directory** and click **Save work directory**. On Ubuntu and WSL2, use a Linux filesystem such as your home directory.
+Choose English or 한국어 under **Settings → Language**. The launcher remembers your choice.
+
+1. Choose the storage location with **Settings → Work directory → Browse…** and click **Save work directory**. On Ubuntu and WSL2, use a Linux filesystem such as your home directory.
 2. Open **Build image…**. Choose **x86_64** and the default snapshot. Name the image `dev-x86` and click **Build**.
 3. When the build finishes, select `dev-x86` in the library. To use an existing image, open its directory with **Add image…**.
 
@@ -75,7 +77,7 @@ Select a stopped x86_64 image and click **Update image** to check the latest sna
 
 ## 3. Set up the shared folder and boot Tizen
 
-Before boot, choose a host folder in **Settings → Shared folder (x86_64)**. Leave it blank to use `share` under the work directory. To set a folder from the Ubuntu CLI, run these commands.
+Before boot, choose a host folder with **Settings → Shared folder (x86_64) → Browse…** and click **Save shared folder**. Leave it blank to use `share` under the work directory. To set a folder from the Ubuntu CLI, run these commands.
 
 ```sh
 mkdir -p "$HOME/ornn-share"

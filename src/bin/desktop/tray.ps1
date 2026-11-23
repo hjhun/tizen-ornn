@@ -11,15 +11,15 @@ function Add-Action($title, $action) {
     $item.add_Click({ param($sender, $eventArgs) [Console]::WriteLine($sender.Tag) })
 }
 try {
-    $name = "Tizen Ornn - $env:ORNN_TRAY_IMAGE (running)"
+    $name = "Tizen Ornn - $env:ORNN_TRAY_IMAGE ($env:ORNN_TRAY_RUNNING)"
     $icon.Text = $name.Substring(0, [Math]::Min(63, $name.Length))
     $icon.Icon = [Drawing.Icon]::ExtractAssociatedIcon($env:ORNN_TRAY_GUI)
     $header = $menu.Items.Add($name.Replace('&', '&&'))
     $header.Enabled = $false
-    Add-Action 'Open terminal' 'terminal'
-    Add-Action 'Settings' 'settings'
+    Add-Action $env:ORNN_TRAY_TERMINAL 'terminal'
+    Add-Action $env:ORNN_TRAY_SETTINGS 'settings'
     $null = $menu.Items.Add('-')
-    Add-Action 'Shut down guest' 'shutdown'
+    Add-Action $env:ORNN_TRAY_SHUTDOWN 'shutdown'
     $icon.ContextMenuStrip = $menu
     $icon.add_DoubleClick({ [Console]::WriteLine('terminal') })
     $timer = New-Object Windows.Forms.Timer

@@ -82,15 +82,26 @@ pub fn monitor(dir: &Path) -> Result<(), String> {
         cmd.args(["-c", include_str!("tray.py")]);
         cmd
     };
-    cmd.env(
-        "ORNN_TRAY_IMAGE",
-        dir.file_name().unwrap_or(dir.as_os_str()),
-    )
-    .env(
-        "ORNN_TRAY_GUI",
-        std::env::current_exe().map_err(|e| e.to_string())?,
-    )
-    .env("ORNN_TRAY_PARENT", std::process::id().to_string());
+    let language = tizen_ornn::workdir::language().unwrap_or_default();
+    cmd.env("ORNN_TRAY_RUNNING", language.text("running", "실행 중"))
+        .env(
+            "ORNN_TRAY_TERMINAL",
+            language.text("Open terminal", "터미널 열기"),
+        )
+        .env("ORNN_TRAY_SETTINGS", language.text("Settings", "설정"))
+        .env(
+            "ORNN_TRAY_SHUTDOWN",
+            language.text("Shut down guest", "게스트 종료"),
+        )
+        .env(
+            "ORNN_TRAY_IMAGE",
+            dir.file_name().unwrap_or(dir.as_os_str()),
+        )
+        .env(
+            "ORNN_TRAY_GUI",
+            std::env::current_exe().map_err(|e| e.to_string())?,
+        )
+        .env("ORNN_TRAY_PARENT", std::process::id().to_string());
     let mut helper = cmd
         .stdout(Stdio::piped())
         .spawn()

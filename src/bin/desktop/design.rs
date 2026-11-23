@@ -46,6 +46,20 @@ pub fn configure(ctx: &egui::Context) {
             .or_default()
             .insert(0, "system".into());
     }
+    #[cfg(windows)]
+    let korean = faces[0].with_file_name("malgun.ttf");
+    #[cfg(not(windows))]
+    let korean = std::path::PathBuf::from("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
+    if let Ok(data) = std::fs::read(korean) {
+        let face = egui::FontData::from_owned(data);
+        // The second face in Noto Sans CJK is the Korean variant.
+        #[cfg(not(windows))]
+        let face = egui::FontData { index: 1, ..face };
+        fonts.font_data.insert("korean".into(), face.into());
+        for list in fonts.families.values_mut() {
+            list.push("korean".into());
+        }
+    }
     let mut headings = fonts.families[&family].clone();
     if let Ok(data) = std::fs::read(&faces[1]) {
         fonts

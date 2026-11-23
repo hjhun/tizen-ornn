@@ -132,6 +132,40 @@ pub mod workdir {
         save_setting("build-ca.json", value)
     }
 
+    #[derive(Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum Language {
+        #[default]
+        En,
+        Ko,
+    }
+
+    impl Language {
+        pub fn text<'a>(self, en: &'a str, ko: &'a str) -> &'a str {
+            match self {
+                Self::En => en,
+                Self::Ko => ko,
+            }
+        }
+    }
+
+    pub fn language() -> io::Result<Language> {
+        Ok(read_setting("language.json")?.unwrap_or_default())
+    }
+
+    pub fn save_language(language: Language) -> io::Result<()> {
+        write_json("language.json", &language)
+    }
+
+    fn write_json(name: &str, value: &impl serde::Serialize) -> io::Result<()> {
+        let base = settings_dir()?;
+        fs::create_dir_all(&base)?;
+        let mut temp = tempfile::NamedTempFile::new_in(&base)?;
+        serde_json::to_writer(&mut temp, value)?;
+        temp.persist(base.join(name))?;
+        Ok(())
+    }
+
     pub fn proxy_setting() -> io::Result<Option<crate::proxy::Manual>> {
         read_setting("build-proxy.json")
     }
@@ -141,10 +175,7 @@ pub mod workdir {
         let path = base.join("build-proxy.json");
         if let Some(proxy) = proxy {
             proxy.validate()?;
-            fs::create_dir_all(&base)?;
-            let mut temp = tempfile::NamedTempFile::new_in(base)?;
-            serde_json::to_writer(&mut temp, proxy)?;
-            temp.persist(path)?;
+            write_json("build-proxy.json", proxy)?;
         } else if let Err(e) = fs::remove_file(path)
             && e.kind() != io::ErrorKind::NotFound
         {

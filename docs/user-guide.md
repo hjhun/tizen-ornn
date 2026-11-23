@@ -49,7 +49,7 @@ sudo apt install ./tizen-ornn_amd64.deb ./tizen-ornn-gui_amd64.deb
 tizen-ornn-gui
 ```
 
-**포터블 GUI 실행**. `.run` 파일은 호스트의 QEMU와 빌드 도구를 사용합니다. 새 Ubuntu에서 의존성도 함께 설치하려면 위의 GUI 패키지 설치 방법을 사용하세요.
+**포터블 GUI 실행**. `.run` 파일은 호스트의 QEMU와 빌드 도구를 사용합니다. 한국어 표시에는 호스트의 `fonts-noto-cjk`가 필요합니다. 위의 GUI 패키지 설치 방법을 사용하면 이 글꼴과 의존성도 함께 설치됩니다.
 
 ```sh
 chmod +x tizen-ornn-ubuntu-amd64-portable.run
@@ -60,7 +60,9 @@ chmod +x tizen-ornn-ubuntu-amd64-portable.run
 
 첫 빌드에는 인터넷 연결이 필요합니다. 게스트의 기본 디스크는 16 GiB이며 루트 파일시스템은 ext4입니다. Windows 빌더는 추가로 메모리 4 GiB와 최대 64 GiB의 임시 희소 디스크를 사용합니다. Ubuntu에서는 일반 사용자로 Ornn을 실행하고 요청 시 sudo 인증을 하세요.
 
-1. **Settings → Work directory**에서 저장 위치를 지정하고 **Save work directory**를 누르세요. Ubuntu와 WSL2에서는 홈 디렉터리 등 Linux 파일시스템을 사용하세요.
+**Settings → Language → 한국어**를 선택하면 메뉴와 경로 탐색기가 한국어로 표시됩니다. 다음 실행에도 선택한 언어를 사용합니다.
+
+1. **설정 → 작업 폴더 → 찾아보기…**에서 저장 위치를 선택하고 **작업 폴더 저장**을 누르세요. Ubuntu와 WSL2에서는 홈 디렉터리 등 Linux 파일시스템을 사용하세요.
 2. **Build image…**에서 **x86_64**와 기본 스냅샷을 선택하세요. 이름에 `dev-x86`을 입력하고 **Build**를 누르세요.
 3. 빌드가 끝나면 이미지 목록에서 `dev-x86`을 선택하세요. 기존 이미지가 있다면 **Add image…**에서 해당 디렉터리를 열 수 있습니다.
 
@@ -75,7 +77,7 @@ tizen-ornn images
 
 ## 3. 공유 폴더 설정 후 부팅하기
 
-부팅 전에 **Settings → Shared folder (x86_64)**에서 호스트 폴더를 선택하세요. 비워 두면 작업 디렉터리 아래의 `share`를 사용합니다. Ubuntu CLI에서 직접 지정하려면 다음을 실행하세요.
+부팅 전에 **설정 → 공유 폴더 (x86_64) → 찾아보기…**에서 호스트 폴더를 선택하고 **공유 폴더 저장**을 누르세요. 비워 두면 작업 디렉터리 아래의 `share`를 사용합니다. Ubuntu CLI에서 직접 지정하려면 다음을 실행하세요.
 
 ```sh
 mkdir -p "$HOME/ornn-share"

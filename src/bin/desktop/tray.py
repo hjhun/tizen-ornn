@@ -8,11 +8,11 @@ from gi.repository import AyatanaAppIndicator3 as Indicator, GLib, Gtk
 parent = int(os.environ["ORNN_TRAY_PARENT"])
 name = os.environ["ORNN_TRAY_IMAGE"]
 menu = Gtk.Menu()
-header = Gtk.MenuItem(label=f"{name} (running)")
+header = Gtk.MenuItem(label=f"{name} ({os.environ['ORNN_TRAY_RUNNING']})")
 header.set_sensitive(False)
 menu.append(header)
-for title, action in (("Open terminal", "terminal"), ("Settings", "settings"),
-                      ("Shut down guest", "shutdown")):
+for title, action in ((os.environ["ORNN_TRAY_TERMINAL"], "terminal"), (os.environ["ORNN_TRAY_SETTINGS"], "settings"),
+                      (os.environ["ORNN_TRAY_SHUTDOWN"], "shutdown")):
     item = Gtk.MenuItem(label=title)
     item.connect("activate", lambda _, cmd=action: print(cmd, flush=True))
     menu.append(item)
