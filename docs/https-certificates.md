@@ -13,6 +13,33 @@ openssl x509 -in company-root.pem -noout -subject -issuer -dates -fingerprint -s
 | `tizen-ornn update --packages` | Ubuntu fetches repository metadata. The guest downloads RPM payloads. Check which step failed. |
 | npm or a Node.js CLI inside Tizen | The guest Node.js process's trusted CAs |
 
+### Build a new image with a private CA
+
+In the desktop app, open **Settings → Build CA certificate**, browse to a public
+PEM-encoded CA certificate (for example, `company-root.crt`), and select
+**Save certificate**. The GUI and CLI both use this setting for new builds.
+Clear the field and save to use the environment variable instead.
+
+On Ubuntu or WSL2:
+
+```sh
+export TIZEN_BUILD_CA_CERT="/path/to/company-root.crt"
+tizen-ornn build --name company-dev
+```
+
+On Windows (PowerShell):
+
+```powershell
+$env:TIZEN_BUILD_CA_CERT = 'C:\Certificates\company-root.crt'
+tizen-ornn.exe build --name company-dev
+```
+
+Ornn adds the CA to the Tizen system bundle for new x86_64, armv7l and
+aarch64 images. Windows also installs it in the temporary Ubuntu builder.
+Downloads made directly by the host still use the host trust store. An
+existing image returned by `build` keeps its current trust settings.
+For an existing guest, use the manual instructions below.
+
 ### Ubuntu or WSL2
 
 Install the approved CA in the Ubuntu distribution that runs `tizen-ornn`. Ubuntu expects one PEM certificate per file with a `.crt` extension in this directory. Retry the URL that failed after updating the store. [Ubuntu CA installation guide](https://ubuntu.com/server/docs/how-to/security/install-a-root-ca-certificate-in-the-trust-store/)
@@ -23,7 +50,7 @@ sudo update-ca-certificates
 curl -fsS -o /dev/null https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/Tizen-10.1-Unified/latest/build.xml
 ```
 
-R5 provisions Ubuntu and Tizen trust separately. If an initial build fails during a Tizen chroot RPM download, use a network or mirror whose TLS chain the stock Tizen image trusts, or provision the approved CA in the staging root filesystem before retrying the build.
+For a Tizen chroot RPM download, configure the build CA before starting the image build.
 
 ### Tizen guest
 

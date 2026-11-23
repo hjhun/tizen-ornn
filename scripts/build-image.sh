@@ -68,6 +68,7 @@ TIZEN_OUT="$scratch" "$project/scripts/install-rust-cross.sh" "$root"
 "$project/scripts/install-linux-tools.sh" "$root"
 TIZEN_OUT="$scratch" "$project/scripts/install-ai-prereqs.sh" "$root"
 "$project/scripts/install-guest-control.sh" "$root"
+python3 "$project/scripts/build_ca.py" --root "$root"
 sync -f "$root"
 detach
 # Linux releases autoclear loop devices asynchronously after umount.

@@ -162,3 +162,10 @@ tizen-ornn shutdown --image-dir "IMAGE_DIR"
 ```
 
 Further reading: [VM operation and shared folders](running.md) · [Guest examples, CMake and Rust (Korean)](development.md) · [Snapshot selection and image builds (Korean)](snapshot-build.md)
+
+### Building an image with a private CA
+
+Open **Settings → Build CA certificate → Browse…**, select your public PEM
+CA certificate (`.crt`), and click **Save certificate**. The GUI and CLI use
+the saved file for new image builds. Clear the field and save to fall back
+to `TIZEN_BUILD_CA_CERT`. [HTTPS certificate guide](https-certificates.md)

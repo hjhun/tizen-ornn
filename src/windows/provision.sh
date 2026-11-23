@@ -10,6 +10,11 @@ mkdir -p /mnt/ornn-seed "$work"
 mount -o ro /dev/disk/by-label/CIDATA /mnt/ornn-seed
 cp /mnt/ornn-seed/ornn.deb /var/tmp/tizen-ornn.deb
 export DEBIAN_FRONTEND=noninteractive TIZEN_PREBUILT_KERNEL=1 JOBS=4
+if [[ -f /mnt/ornn-seed/build-ca.crt ]]; then
+    export TIZEN_BUILD_CA_CERT=/mnt/ornn-seed/build-ca.crt
+    python3 /mnt/ornn-seed/build_ca.py --export /usr/local/share/ca-certificates/ornn-build.crt
+    update-ca-certificates
+fi
 apt-get -o Acquire::Retries=3 update
 apt-get -o Acquire::Retries=3 install -y /var/tmp/tizen-ornn.deb
 if [[ -f /mnt/ornn-seed/image.toml ]]; then export TIZEN_IMAGE_CONFIG=/mnt/ornn-seed/image.toml; fi

@@ -46,6 +46,7 @@ FSTAB
     "$here/install-power-button" "$stage/rootfs.img"
     "$here/install-graphics" "$stage/rootfs.img" "$arch"
     "$here/install-audio" "$stage/rootfs.img" "$stage/hal.img" "$arch"
+    python3 "$here/../build_ca.py" --system-data "$stage/system-data.img"
     for img in rootfs system-data; do
         truncate -s "+${TIZEN_ARM_DISK_GROW:-2G}" "$stage/$img.img"
         resize2fs "$stage/$img.img"

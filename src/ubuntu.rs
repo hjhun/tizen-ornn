@@ -82,7 +82,11 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             req["default_share"] = json!(tizen_ornn::workdir::default_share()?);
         }
     }
-    Err(Command::new(root.join("scripts/linux-backend"))
-        .arg(req.to_string())
-        .exec())
+    let mut backend = Command::new(root.join("scripts/linux-backend"));
+    if matches!(name, "build" | "install" | "update")
+        && let Some(path) = tizen_ornn::workdir::ca_setting()?
+    {
+        backend.env("TIZEN_BUILD_CA_CERT", path);
+    }
+    Err(backend.arg(req.to_string()).exec())
 }

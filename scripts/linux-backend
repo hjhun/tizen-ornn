@@ -256,6 +256,8 @@ def build_image(stage, release, config=None):
     for key in ('TIZEN_FS_SIZE', 'JOBS'):
         if key in os.environ:
             settings[key] = os.environ[key]
+    if os.environ.get('TIZEN_BUILD_CA_CERT'):
+        settings['TIZEN_BUILD_CA_CERT'] = str(Path(os.environ['TIZEN_BUILD_CA_CERT']).resolve(strict=True))
     settings['TIZEN_IMAGE_CONFIG'] = str((config or config_path()).resolve(strict=True))
     cmd = ['env', *(f'{key}={val}' for key, val in settings.items()), BUILDER,
            '--snapshot', release, '--out', stage]
@@ -278,6 +280,9 @@ def prepare(home, active, snapshot, *, name=None, previous=None, config=None):
         images = home / 'images'
         images.mkdir(exist_ok=True)
         identity = archive or source
+        if os.environ.get('TIZEN_BUILD_CA_CERT'):
+            from build_ca import certificate
+            identity += hashlib.sha256(certificate()).hexdigest()
         key = hashlib.sha256(identity.encode()).hexdigest()[:12]
         stem = f'{release}-v{revision}-{key}'
         if name and os.path.lexists(images / name):

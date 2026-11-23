@@ -28,6 +28,7 @@ INSTALL
     rmdir "$root/mnt/bootstrap-rpms"
     touch "$work/packages-installed"
 fi
+python3 "$here/build_ca.py" --root "$root"
 if [[ ! -e "$work/repositories-ready" ]]; then
     PYTHONDONTWRITEBYTECODE=1 "$here/prepare-zypp.py" "$root"
     install -m 755 "$here/tizen-refresh-pinned" "$root/usr/bin/tizen-refresh-pinned"

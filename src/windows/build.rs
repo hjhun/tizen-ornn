@@ -77,6 +77,7 @@ fn make_seed(
     deb: &Path,
     arch: &str,
     source: Option<&crate::build_source::BuildSource>,
+    ca: Option<&Path>,
 ) -> io::Result<()> {
     let file = fs::OpenOptions::new()
         .read(true)
@@ -97,6 +98,22 @@ fn make_seed(
         if let Some(source) = source {
             root.create_file("image.toml")?
                 .write_all(source.config().as_bytes())?;
+        }
+        if let Some(ca) = ca {
+            let mut file = File::open(ca).map_err(|err| {
+                io::Error::new(
+                    err.kind(),
+                    format!("TIZEN_BUILD_CA_CERT {}: {err}", ca.display()),
+                )
+            })?;
+            if !file.metadata()?.is_file() || file.metadata()?.len() > 1024 * 1024 {
+                return Err(io::Error::other(
+                    "Expected a public CA certificate file (up to 1 MiB)",
+                ));
+            }
+            root.create_file("build_ca.py")?
+                .write_all(include_bytes!("../../scripts/build_ca.py"))?;
+            io::copy(&mut file, &mut root.create_file("build-ca.crt")?)?;
         }
         // NoCloud shell user-data executes once on each fresh builder overlay.
         root.create_file("user-data")?
@@ -150,6 +167,18 @@ pub(super) fn create(
     let work = tempfile::Builder::new()
         .prefix(".build-")
         .tempdir_in(&images)?;
+    let ca = tizen_ornn::workdir::ca_setting()?.or_else(|| {
+        env::var_os("TIZEN_BUILD_CA_CERT")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    });
+    make_seed(
+        &work.path().join("seed.img"),
+        &deb,
+        arch,
+        source,
+        ca.as_deref(),
+    )?;
     let downloads = work.path().join("downloads");
     fs::create_dir(&downloads)?;
     let base = builder_file(
@@ -169,7 +198,6 @@ pub(super) fn create(
     )?;
     let output = work.path().join("output");
     fs::create_dir(&output)?;
-    make_seed(&work.path().join("seed.img"), &deb, arch, source)?;
     File::create(work.path().join("status.raw"))?.set_len(1024 * 1024)?;
     checked(
         qemu("qemu-img")?
@@ -293,7 +321,9 @@ mod tests {
             repository: "https://mirror.example/Tizen-10.1/".into(),
             release: "tizen-10.1-unified_20261119.053314".into(),
         };
-        make_seed(&seed, &deb, "x86_64", Some(&source)).unwrap();
+        let ca = temp.path().join("company root.crt");
+        fs::write(&ca, b"public certificate").unwrap();
+        make_seed(&seed, &deb, "x86_64", Some(&source), Some(&ca)).unwrap();
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -308,5 +338,13 @@ mod tests {
             .read_to_string(&mut actual)
             .unwrap();
         assert_eq!(actual, source.config());
+        actual.clear();
+        volume
+            .root_dir()
+            .open_file("build-ca.crt")
+            .unwrap()
+            .read_to_string(&mut actual)
+            .unwrap();
+        assert_eq!(actual, "public certificate");
     }
 }

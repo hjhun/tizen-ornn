@@ -79,6 +79,18 @@ pub mod workdir {
         save_setting("workdir.json", value.trim())
     }
 
+    pub fn ca_setting() -> io::Result<Option<PathBuf>> {
+        read_setting("build-ca.json")
+    }
+
+    pub fn save_ca(value: &str) -> io::Result<()> {
+        let path = std::path::Path::new(value);
+        if !value.is_empty() && (!path.is_absolute() || !path.is_file()) {
+            return Err(io::Error::other("Choose an existing certificate file"));
+        }
+        save_setting("build-ca.json", value)
+    }
+
     pub fn shared_directory() -> io::Result<Option<PathBuf>> {
         read_setting("share.json")
     }

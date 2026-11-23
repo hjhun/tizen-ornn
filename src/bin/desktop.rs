@@ -82,6 +82,21 @@ struct Removal {
     external: bool,
 }
 
+#[derive(Clone, Copy)]
+enum Picker {
+    ImageFolder,
+    Certificate,
+}
+
+impl Picker {
+    fn title(self) -> &'static str {
+        match self {
+            Self::ImageFolder => "Open image folder",
+            Self::Certificate => "Choose CA certificate",
+        }
+    }
+}
+
 #[derive(Default)]
 struct Launcher {
     images: Vec<Image>,
@@ -89,7 +104,8 @@ struct Launcher {
     removal: Option<Removal>,
     selected: Option<PathBuf>,
     stopping: Option<(PathBuf, Child)>,
-    folder_dialog: Option<egui_file_dialog::FileDialog>,
+    picker: Option<(Picker, egui_file_dialog::FileDialog)>,
+    ca_path: String,
     name: String,
     repository: String,
     build_open: bool,
@@ -307,6 +323,22 @@ impl Launcher {
         }
     }
 
+    fn open_picker(&mut self, ctx: &egui::Context, purpose: Picker) {
+        if let Some((open, _)) = &self.picker {
+            ctx.send_viewport_cmd_to(popup_id(open.title()), egui::ViewportCommand::Focus);
+            return;
+        }
+        let mut dialog = egui_file_dialog::FileDialog::new()
+            .title_bar(false)
+            .fixed_pos(egui::Pos2::ZERO)
+            .resizable(false);
+        match purpose {
+            Picker::ImageFolder => dialog.pick_directory(),
+            Picker::Certificate => dialog.pick_file(),
+        }
+        self.picker = Some((purpose, dialog));
+    }
+
     fn settings(&mut self, ui: &mut egui::Ui) {
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -333,6 +365,23 @@ impl Launcher {
                     Err(e) => format!("Could not save work directory: {e}"),
                 };
             }
+            ui.separator();
+            ui.label(design::heading("Build CA certificate", 20.0));
+            ui.label("Choose a public PEM certificate for new images. Leave blank to use TIZEN_BUILD_CA_CERT.");
+            ui.add(egui::TextEdit::singleline(&mut self.ca_path)
+                .desired_width(f32::INFINITY).hint_text("Path to company-root.crt"));
+            ui.horizontal(|ui| {
+                if ui.add(design::secondary("Browse…")).clicked() {
+                    self.open_picker(ui.ctx(), Picker::Certificate);
+                }
+                if ui.add(design::action("Save certificate")).clicked() {
+                    self.status = match tizen_ornn::workdir::save_ca(&self.ca_path) {
+                        Ok(()) if self.ca_path.is_empty() => "Certificate setting cleared.".into(),
+                        Ok(()) => "Certificate saved for new image builds.".into(),
+                        Err(error) => error.to_string(),
+                    };
+                }
+            });
             ui.separator();
             ui.label(design::heading("Shared folder (x86_64)", 20.0));
             ui.label("Available at /home/tizen/share and /mnt/host when the image starts.");
@@ -431,19 +480,7 @@ impl Launcher {
             open_popup(ui.ctx(), "Build image", &mut self.build_open);
         }
         if open {
-            if self.folder_dialog.is_some() {
-                ui.ctx().send_viewport_cmd_to(
-                    popup_id("Open image folder"),
-                    egui::ViewportCommand::Focus,
-                );
-            } else {
-                let mut dialog = egui_file_dialog::FileDialog::new()
-                    .title_bar(false)
-                    .fixed_pos(egui::Pos2::ZERO)
-                    .resizable(false);
-                dialog.pick_directory();
-                self.folder_dialog = Some(dialog);
-            }
+            self.open_picker(ui.ctx(), Picker::ImageFolder);
         }
     }
 
@@ -813,7 +850,7 @@ impl eframe::App for Desktop {
             }
         }
         if app.settings_open {
-            let closed = popup(ctx, "Settings", [560.0, 420.0], [380.0, 250.0], |ctx| {
+            let closed = popup(ctx, "Settings", [560.0, 540.0], [380.0, 250.0], |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         app.settings(ui);
@@ -835,10 +872,10 @@ impl eframe::App for Desktop {
             });
             app.build_open &= !closed;
         }
-        if let Some(dialog) = &mut app.folder_dialog {
+        if let Some((purpose, dialog)) = &mut app.picker {
             let closed = popup(
                 ctx,
-                "Open image folder",
+                purpose.title(),
                 [780.0, 540.0],
                 [540.0, 350.0],
                 |ctx| {
@@ -850,14 +887,20 @@ impl eframe::App for Desktop {
                 },
             );
             if let Some(path) = dialog.take_picked() {
-                app.folder_dialog = None;
-                app.status = app
-                    .connect_directory(path)
-                    .err()
-                    .map(|e| e.to_string())
-                    .unwrap_or_default();
+                let purpose = *purpose;
+                app.picker = None;
+                match purpose {
+                    Picker::ImageFolder => {
+                        app.status = app
+                            .connect_directory(path)
+                            .err()
+                            .map(|e| e.to_string())
+                            .unwrap_or_default();
+                    }
+                    Picker::Certificate => app.ca_path = path.display().to_string(),
+                }
             } else if closed || dialog.state() != egui_file_dialog::DialogState::Open {
-                app.folder_dialog = None;
+                app.picker = None;
             }
         }
     }
@@ -879,6 +922,9 @@ fn main() -> eframe::Result {
     let mut app = Launcher::default();
     if let Ok(Some(path)) = tizen_ornn::workdir::setting() {
         app.workdir = path.display().to_string();
+    }
+    if let Ok(Some(path)) = tizen_ornn::workdir::ca_setting() {
+        app.ca_path = path.display().to_string();
     }
     if let Ok(Some(path)) = tizen_ornn::workdir::shared_directory() {
         app.share = path.display().to_string();

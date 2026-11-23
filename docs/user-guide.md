@@ -162,3 +162,11 @@ tizen-ornn shutdown --image-dir "IMAGE_DIR"
 ```
 
 더 읽기: [게스트 개발 예제와 CMake·Rust 빌드](development.md) · [공유 폴더와 VM 실행 옵션](running.md) · [스냅샷 선택과 이미지 빌드](snapshot-build.md)
+
+### 사내 CA 인증서로 이미지 빌드
+
+**Settings → Build CA certificate → Browse…**에서 PEM 형식의 공개 CA
+인증서(`.crt`)를 선택하고 **Save certificate**를 누릅니다. 저장한 경로는
+GUI와 CLI에서 새 이미지를 빌드할 때 환경변수 `TIZEN_BUILD_CA_CERT`보다
+우선합니다. 입력란을 비우고 저장하면 환경변수 경로를 사용합니다.
+[HTTPS 인증서 안내](https-certificates.md)
