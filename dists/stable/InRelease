@@ -5,17 +5,17 @@ Acquire-By-Hash: yes
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Mon, 23 Nov 2026 08:38:29 +0000
+Date: Mon, 23 Nov 2026 09:37:22 +0000
 Label: Tizen Ornn
 Origin: Tizen Ornn
 Suite: stable
 SHA256:
- d2ef8c3d6ac1880b1c69b9bc2b87ae92ec56466fe45faa85ed81a7a7be5098b0             3935 main/binary-amd64/Packages
- cadffea58df873cf62bae9e1485f019efb7b20b859e94db621ad7a7eac1f0577             1510 main/binary-amd64/Packages.gz
+ 0f3f3ca9b551e5c8e14083699d980a6b5e950b78d4d3156a00e461899c23cfb8             5913 main/binary-amd64/Packages
+ 1741ee92d83bdeb40293407c838f46f01669c9b119775820d24ffec22ed83b35             1896 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQSPh1nXXqkOPw4iMSvXMtENjUP9JQUCawP7hQAKCRDXMtENjUP9
-JbuOAQD9/C+cCNxkMLL1HVHQ5E+4bYcJ8nibBZtyafwQbQuxJgD/eNMrU7eccdQD
-TnU7h2r91JQonzghCWQs+gdNAokwkgY=
-=FvHa
+iHUEARYKAB0WIQSPh1nXXqkOPw4iMSvXMtENjUP9JQUCawQJUgAKCRDXMtENjUP9
+Jf+bAQCWCJtc/cjyr+EJGBxyW4Ixwecbml2UeU6jZuNpgxHLvwEAiD4uGiggiSZn
+Nnsa9CTCOclh0+XL6pvUsi5Eb/wpCgU=
+=AndQ
 -----END PGP SIGNATURE-----
