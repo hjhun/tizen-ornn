@@ -1,0 +1,21 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Acquire-By-Hash: yes
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Mon, 23 Nov 2026 07:34:36 +0000
+Label: Tizen Ornn
+Origin: Tizen Ornn
+Suite: stable
+SHA256:
+ 03fae311a7d19f95bd8e4f12b931d78c0f0faba0154aa9ac07efd4d75ce7edc2             1957 main/binary-amd64/Packages
+ a356bfb31563680821f362bcfe2e1c64c2260aeeb467bc3288edd7cc5fe073a5             1095 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQSPh1nXXqkOPw4iMSvXMtENjUP9JQUCawPsjAAKCRDXMtENjUP9
+JfXCAQCSOkU4GNksmtDdY1AcqrurDcI2dHq1cXx3HPyMxkOxjgD/cBe1dwJNC8Ag
+Z3yT26MUYsw70XGLfeBkWWieSej4dQE=
+=bZfB
+-----END PGP SIGNATURE-----
