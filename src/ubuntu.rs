@@ -78,13 +78,14 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         Some(Action::Delete { image, yes }) => ("delete", json!({"image":image,"yes":yes})),
         Some(Action::Install { packages }) => ("install", json!({"packages":packages})),
         Some(Action::Update {
+            image_dir,
             packages,
             snapshot,
             names,
             ..
         }) => (
             "update",
-            json!({"packages":packages,"snapshot":snapshot,"names":names}),
+            json!({"directory":image_dir,"packages":packages,"snapshot":snapshot,"names":names}),
         ),
         Some(Action::Shutdown { image_dir }) => ("shutdown", json!({"directory":image_dir})),
         Some(Action::Rollback) => ("rollback", Value::Null),

@@ -174,9 +174,19 @@ fn select_image(image: Option<PathBuf>) -> io::Result<PathBuf> {
         Some(path) => path,
         None => {
             let images = images()?;
+            let updated: Option<String> = match fs::read(home()?.join("updated-image.json")) {
+                Ok(data) => Some(serde_json::from_slice(&data)?),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e),
+            };
             images
                 .iter()
-                .find(|item| item.path.ends_with("default"))
+                .find(|i| {
+                    updated
+                        .as_deref()
+                        .is_some_and(|name| i.path.file_name() == Some(std::ffi::OsStr::new(name)))
+                })
+                .or_else(|| images.iter().find(|item| item.path.ends_with("default")))
                 .or_else(|| images.first())
                 .ok_or_else(|| io::Error::other("Build or select an image first."))?
                 .path
@@ -408,7 +418,7 @@ fn boot(
         })
         .filter(|(r, c)| *r > 0 && *c > 0)
         .unwrap_or((24, 80));
-    cmd.args(["-append", &format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} init=/bin/sh systemd.unit={target} net.ifnames=0 tizen.console_size={rows}x{cols} -- -c \"{setup}; echo tizen-ornn: shared folder setup failed >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff\"")]);
+    cmd.args(["-append", &format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} loglevel=0 init=/bin/sh systemd.unit={target} net.ifnames=0 tizen.console_size={rows}x{cols} -- -c \"{setup}; echo tizen-ornn: shared folder setup failed >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff\"")]);
     console::run(&mut cmd, &stop, &image, false)?;
     if fs::read(status)?.contains(&b'!') {
         return Err(io::Error::other(
@@ -531,6 +541,24 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                 .or_else(|| source.as_ref().map(|s| s.release.clone()))
                 .unwrap_or_else(|| "default".into());
             build::create(&home()?, &name, arch, source.as_ref(), &proxy)
+        }
+        Some(Action::Update {
+            image_dir,
+            snapshot,
+            ..
+        }) => {
+            if cli.arch.as_deref().is_some_and(|arch| arch != "x86_64") {
+                return Err(io::Error::other("Image updates require x86_64."));
+            }
+            let image = select_image(image_dir)?;
+            disk(&image)?;
+            let session = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(image.join(".ornn-session"))?;
+            session.try_lock().map_err(io::Error::other)?;
+            build::update(&home()?, &image, snapshot.as_deref())
         }
         Some(Action::ShareDir { path, .. }) => {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))

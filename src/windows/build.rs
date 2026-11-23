@@ -134,6 +134,52 @@ fn make_seed(
     volume.unmount()
 }
 
+pub(super) fn update(home: &Path, image: &Path, snapshot: Option<&str>) -> io::Result<()> {
+    let config = match fs::read_to_string(image.join("image.toml")) {
+        Ok(value) => value,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            include_str!("../../config/image.toml").into()
+        }
+        Err(e) => return Err(e),
+    };
+    let previous: crate::build_source::BuildSource =
+        toml::from_str(&config).map_err(io::Error::other)?;
+    let id = snapshot.unwrap_or("latest");
+    if id != "latest" && !crate::build_source::dated(id) {
+        return Err(io::Error::other(
+            "Expected latest or a dated Unified snapshot.",
+        ));
+    }
+    let proxy = tizen_ornn::proxy::BuildProxy::load()?;
+    let mut url = format!(
+        "{}/Tizen-10.1-Unified/{id}",
+        previous.repository.trim_end_matches('/')
+    );
+    if let Some(profile) = previous.profile {
+        url.push_str(&format!("/images/emulator/{profile}"));
+    }
+    let source = crate::build_source::BuildSource::resolve(&url, &proxy)?;
+    let config = source.config();
+    let revision = include_str!("../../config/image-revision").trim();
+    let hash = format!("{:x}", Sha256::digest(config.as_bytes()));
+    let name = format!("{}-v{revision}-{}", source.release, &hash[..12]);
+    let dest = home.join("images").join(&name);
+    if dest.exists() {
+        disk(&dest)?;
+        if fs::read_to_string(dest.join("image.toml"))? != config {
+            return Err(io::Error::other("Existing image has a different source."));
+        }
+        println!("Already up to date: {}", dest.display());
+    } else {
+        create(home, &name, "x86_64", Some(&source), &proxy)?;
+    }
+    let mut selected = tempfile::NamedTempFile::new_in(home)?;
+    serde_json::to_writer(&mut selected, &name)?;
+    selected.persist(home.join("updated-image.json"))?;
+    println!("Selected image: {}", dest.display());
+    Ok(())
+}
+
 pub(super) fn create(
     home: &Path,
     name: &str,

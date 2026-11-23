@@ -71,6 +71,8 @@ tizen-ornn build --name dev-x86
 tizen-ornn images
 ```
 
+정지된 x86_64 이미지를 선택하고 **Update image**를 누르면 최신 스냅샷을 확인합니다. 새 이미지에서도 같은 공유 폴더가 `/home/tizen`으로 연결됩니다. 이전 디스크에만 저장한 홈 파일은 해당 디스크로 부팅해 `/run/ornn-image-home`에서 복사할 수 있습니다.
+
 ## 3. 공유 폴더 설정 후 부팅하기
 
 부팅 전에 **Settings → Shared folder (x86_64)**에서 호스트 폴더를 선택하세요. 비워 두면 작업 디렉터리 아래의 `share`를 사용합니다. Ubuntu CLI에서 직접 지정하려면 다음을 실행하세요.

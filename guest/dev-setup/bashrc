@@ -14,4 +14,3 @@ PS1='\u@\h:\w\[${_tizen_color-}\]${_tizen_branch-}\[${_tizen_reset-}\]\$ '
 # Interactive developer shortcuts. Use "command claude" etc. for the normal CLI.
 alias claude='claude --dangerously-skip-permissions'
 alias codex='codex --dangerously-bypass-approvals-and-sandbox'
-alias agy='agy --dangerously-skip-permissions'

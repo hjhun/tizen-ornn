@@ -24,6 +24,9 @@ if ! chroot "$root" /usr/bin/id tizen >/dev/null 2>&1; then
     chroot "$root" /usr/sbin/useradd -m -d /home/tizen -s /bin/bash tizen
 fi
 chroot "$root" /usr/sbin/usermod -a -G root tizen
+install -d "$root/usr/share/tizen-dev/dev-setup"
+cp -R "$project/guest/dev-setup/." "$root/usr/share/tizen-dev/dev-setup/"
+install -m755 "$project/guest/tizen-init-home" "$root/usr/local/bin/"
 for account in root tizen owner; do
     IFS=: read -r _ _ uid gid _ home _ < <(chroot "$root" getent passwd "$account")
     # Resolve /home inside the guest, even when the snapshot uses an absolute symlink.

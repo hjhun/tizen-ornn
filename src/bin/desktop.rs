@@ -118,6 +118,7 @@ struct Launcher {
     settings_open: bool,
     status: String,
     processes: Vec<Child>,
+    update_process: Option<Child>,
     monitored: std::collections::HashSet<PathBuf>,
     monitors: Vec<Child>,
     last_tray_check: Option<std::time::Instant>,
@@ -229,6 +230,12 @@ impl Launcher {
     }
 
     fn terminal(&mut self, args: &[&str]) -> Result<(), String> {
+        let child = self.spawn_terminal(args)?;
+        self.processes.push(child);
+        Ok(())
+    }
+
+    fn spawn_terminal(&self, args: &[&str]) -> Result<Child, String> {
         let path = sibling("tizen-ornn").map_err(|e| e.to_string())?;
         #[cfg(windows)]
         let mut cmd = {
@@ -259,13 +266,10 @@ impl Launcher {
             c
         };
         self.configure(&mut cmd)?;
-        let child = cmd
-            .args(args)
+        cmd.args(args)
             .stdin(Stdio::inherit())
             .spawn()
-            .map_err(|e| e.to_string())?;
-        self.processes.push(child);
-        Ok(())
+            .map_err(|e| e.to_string())
     }
 
     fn build_form(&mut self, ui: &mut egui::Ui) {
@@ -407,7 +411,7 @@ impl Launcher {
             }
             ui.separator();
             ui.label(design::heading("Shared folder (x86_64)", 20.0));
-            ui.label("Available at /home/tizen/share and /mnt/host when the image starts.");
+            ui.label("Available at /home/tizen and /mnt/host when the image starts.");
             ui.add(
                 egui::TextEdit::singleline(&mut self.share)
                     .desired_width(f32::INFINITY)
@@ -613,6 +617,14 @@ impl Launcher {
                             self.status.clear();
                         }
                     }
+                    if !arm && !running && ui
+                        .add_enabled(!stopping && self.update_process.is_none(), design::secondary("Update image"))
+                        .on_hover_text("Build the latest x86_64 snapshot and keep the previous disk.")
+                        .clicked()
+                    {
+                        self.update_process = Some(self.spawn_terminal(&["update", "--image", "--image-dir", path])?);
+                        self.status = "Updating the selected image. The library refreshes when the terminal finishes.".into();
+                    }
                     if running
                         && ui
                             .add_enabled(self.stopping.is_none(), design::secondary("Shut down"))
@@ -730,6 +742,21 @@ impl eframe::App for Desktop {
                 false
             }
         });
+        if let Some(result) = app
+            .update_process
+            .as_mut()
+            .and_then(|p| p.try_wait().transpose())
+        {
+            app.update_process = None;
+            finished = true;
+            app.status = match result {
+                Ok(status) if status.success() => {
+                    "Update finished. Select the updated image in the library.".into()
+                }
+                Ok(status) => format!("Image update exited with {status}"),
+                Err(e) => e.to_string(),
+            };
+        }
         if finished && let Err(e) = app.refresh() {
             app.status = e;
         }
@@ -750,7 +777,7 @@ impl eframe::App for Desktop {
                 Ok(None) => (),
             }
         }
-        if app.selected.is_some() || !app.processes.is_empty() {
+        if app.selected.is_some() || !app.processes.is_empty() || app.update_process.is_some() {
             ctx.request_repaint_after(Duration::from_secs(1));
         }
         egui::TopBottomPanel::top("header")

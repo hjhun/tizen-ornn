@@ -1,0 +1,18 @@
+#!/bin/sh
+# Run from the developer's login shell with the developer's own permissions.
+set -eu
+[ "$(id -un)" = tizen ] && [ "$HOME" = /home/tizen ] || exit 1
+[ -w "$HOME" ] || exit 0
+cd "$HOME"
+if [ ! -e dev-setup ] && [ ! -L dev-setup ]; then
+    stage=$(mktemp -d .ornn-setup.XXXXXXXX)
+    trap 'rm -rf -- "$stage"' EXIT
+    cp -R /usr/share/tizen-dev/dev-setup/. "$stage/"
+    mv -iT "$stage" dev-setup </dev/null || [ -d dev-setup ]
+fi
+for file in bashrc bash_profile vimrc; do
+    if [ -f "dev-setup/$file" ] && [ ! -e ".$file" ] && [ ! -L ".$file" ]; then
+        ln -sT "dev-setup/$file" ".$file" || [ -L ".$file" ]
+    fi
+done
+mkdir -p workspace

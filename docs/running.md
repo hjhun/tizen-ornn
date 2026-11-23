@@ -30,6 +30,8 @@ At startup the serial console takes the host terminal’s rows and columns, with
 
 Two host terminals running the launcher for the same disk share a serial console with the same input, output and shell. A private tmux server keeps it available while the host is running. An older image with the original console profile needs a guest shutdown and `tizen-ornn update --image` to support detaching via `exit`. A VM already started in foreground mode must also be shut down before the first managed launch. See the [installation and update guide](../README.md).
 
+The x86_64 launcher keeps kernel messages, including SMACK denials, in the guest kernel ring buffer. To inspect them, run `su -c dmesg` in the guest.
+
 The serial console logs in as the ordinary Unix user `tizen` with the `System::Privileged` SMACK label. Run `su -` for a passwordless root login. From root, `su - owner` selects the platform owner's `User::Shell` label. Use `id` and `cat /proc/$$/attr/current` to inspect the login.
 
 The tizen account has its development tools under `~/dev-setup`. Owner uses `~/workspace/.ai-home/.local/bin` for the same tools installed by `tizen-ornn install`. Each account can customize its interactive Bash shell in `~/.bashrc`. In a Git worktree the prompt shows the branch in green when clean, red with local changes and cyan when clean and ahead of its upstream.
@@ -53,7 +55,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 ## Share a host directory
 
-Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen/share` with the same read/write or read-only access. Changes through either path are visible on the host.
+Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen` with the same read/write or read-only access. Changes through either path are visible on the host.
 
 Use **Add image…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. Use **Disconnect image…** to remove an external folder from the library while keeping its files. For an image built in the managed store, stop the guest and choose **Delete image…** to review its path and delete its guest disk.
 
@@ -70,9 +72,11 @@ tizen-ornn share-dir --reset      # restore the default for future boots
 .\tizen-ornn.exe run --gui --image-dir 'D:\Tizen Images\my-image'
 ```
 
-Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, these two legacy one-boot flags keep the original guest `owner` identity for host permissions and also expose the folder at `/home/owner/host` when that location is empty. Use `share-dir` or the GUI setting to work on private host files as the interactive `tizen` account. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
+Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, saved and one-boot shares map the host user to the guest developer account `tizen`. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
 
-Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. The same preservation rules apply to `/home/tizen/share`. Existing files are kept beside the mount at `/home/tizen/share.before-host` or the next available numbered backup.
+Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. While the host home is mounted, the original on-disk home is accessible at `/run/ornn-image-home`. Copy any older projects you want into `$HOME` as the `tizen` user. A new writable shared home gets the development setup kit on login. An existing kit and user settings are reused. Use a dedicated host folder: shell profiles, credentials you create and tools installed under this home are shared by the images that use it.
+
+If you bring an older or customized `~/dev-setup` into the shared home, its scripts are kept. To install Gemini with the current image recipe while retaining that kit, run `/usr/share/tizen-dev/dev-setup/bin/install-ai-clis gemini` as `tizen`. The executable is installed under `~/dev-setup/cli/bin`.
 
 ## Host networking
 

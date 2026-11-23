@@ -21,6 +21,9 @@ _tizen_prepend() {
 _tizen_prepend /usr/local/bin
 [ -z "$_tizen_bin" ] || _tizen_prepend "$_tizen_bin"
 if [ "$(id -un)" = tizen ]; then
+    if [ -d /run/ornn-image-home ] && [ -x /usr/local/bin/tizen-init-home ]; then
+        /usr/local/bin/tizen-init-home
+    fi
     _tizen_prepend "$HOME/dev-setup/cli/bin"
     _tizen_prepend "$HOME/dev-setup/bin"
 fi

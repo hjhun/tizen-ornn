@@ -2,7 +2,7 @@
 proc root_login {} {
     global spawn_id timeout
     expect {
-        -re {tizen@[^\r\n]*\$ $} {}
+        -re {tizen(?:@[^\r\n]*\$|:[^\r\n]*>) $} {}
         timeout {error "Guest developer login timed out"}
         eof {error "Guest exited before developer login"}
     }

@@ -1,6 +1,6 @@
 # Tizen development account
 
-From the guest console run `~/dev-setup/install.sh`. The installer offers the selected snapshot RPMs through zypper, configures Bash and Vim, and installs agy, Claude Code, Codex and Herdr in `~/dev-setup/cli/bin`. Open another login shell after setup. In Vim, F7 opens the tag list and F9 opens the file tree.
+From the guest console run `~/dev-setup/install.sh`. The installer offers the selected snapshot RPMs through zypper, configures Bash and Vim, and installs Gemini CLI, Claude Code, Codex and Herdr in `~/dev-setup/cli/bin`. Open another login shell after setup. In Vim, F7 opens the tag list and F9 opens the file tree.
 
 ## Gerrit
 
@@ -17,7 +17,7 @@ Use `tizen-dev-packages list` to view package groups and `tizen-dev-packages pla
 
 Run `install-ai-clis` to reinstall the three AI clients, or pass one name such as `install-ai-clis codex`. Run `setup-herdr` to reinstall the pinned Herdr release.
 
-The interactive Bash commands `claude`, `codex` and `agy` use their permission-bypass flags. Invoke `command claude`, `command codex` or `command agy` for the upstream defaults. Installing Claude merges the display command from `claude/statusline.sh` into the user's Claude settings. It shows the model, working directory and branch, context usage, cost, duration and available rate limits.
+The interactive Bash commands `claude` and `codex` use their permission-bypass flags. Invoke `command claude` or `command codex` for the upstream defaults. Installing Claude merges the display command from `claude/statusline.sh` into the user's Claude settings. It shows the model, working directory and branch, context usage, cost, duration and available rate limits.
 
 The installer links the coding-style and development-style skills from `~/dev-setup/skills` into `~/.agents/skills`, `~/.agent/skills`, and `~/.claude/skills`. The distributed copies contain reusable engineering rules.
 

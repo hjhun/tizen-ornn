@@ -41,7 +41,7 @@ for key in ui branch status diff commit; do
     fi
 done
 
-for name in agy claude codex herdr; do
+for name in gemini claude codex herdr; do
     if "$base/cli/bin/$name" --version 2>/dev/null; then
         if [[ $name == claude ]]; then "$base/bin/setup-claude-statusline"; fi
         continue

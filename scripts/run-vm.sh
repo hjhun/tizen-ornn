@@ -146,16 +146,12 @@ if [[ -n $share_mode ]]; then
            -device virtio-9p-pci,fsdev=hostshare,mount_tag=tizen-share
            -fw_cfg "name=opt/tizen-ornn/share,string=$share_mode"
            -fw_cfg "name=opt/tizen-ornn/share-script,file=${project//,/,,}/guest/tizen-ornn-share")
-    mapped_user=10000
-    mapped_group=10000
     if (( ! implicit_share )) && [[ ${TIZEN_ORNN_IMPLICIT_SHARE:-0} != 1 ]]; then
-        mapped_user=5001
-        mapped_group=100
         args+=(-fw_cfg name=opt/tizen-ornn/owner-share,string=1)
     fi
     # Map the developer's existing host identity to the development account for 9P stat
     # and access checks, including private source trees.
-    runner=(unshare --user --map-user="$mapped_user" --map-group="$mapped_group" --)
+    runner=(unshare --user --map-user=10000 --map-group=10000 --)
 fi
 init=/usr/lib/systemd/systemd
 init_args=
@@ -231,7 +227,7 @@ exec "${runner[@]}" "$qemu" "${args[@]}" -machine pc -smp "${TIZEN_CPUS:-2}" -m 
     -nodefaults "${display[@]}" -monitor none \
     -chardev stdio,id=console,signal=off "${serial[@]}" \
     -kernel "$kernel" \
-    -append "root=/dev/vda rootfstype=ext4 rootwait rw console=$console init=$init systemd.unit=$target net.ifnames=0$console_cmdline$init_args" \
+    -append "root=/dev/vda rootfstype=ext4 rootwait rw console=$console loglevel=0 init=$init systemd.unit=$target net.ifnames=0$console_cmdline$init_args" \
     -blockdev "driver=file,node-name=file,filename=${disk//,/,,}" \
     -blockdev "driver=$format,node-name=root,file=file" \
     -device virtio-blk-pci,drive=root \

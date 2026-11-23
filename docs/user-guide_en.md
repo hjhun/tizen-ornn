@@ -71,6 +71,8 @@ tizen-ornn build --name dev-x86
 tizen-ornn images
 ```
 
+Select a stopped x86_64 image and click **Update image** to check the latest snapshot. Both disks use the same host folder as `/home/tizen`. Boot the older disk to copy any files kept only in its original home from `/run/ornn-image-home`.
+
 ## 3. Set up the shared folder and boot Tizen
 
 Before boot, choose a host folder in **Settings → Shared folder (x86_64)**. Leave it blank to use `share` under the work directory. To set a folder from the Ubuntu CLI, run these commands.

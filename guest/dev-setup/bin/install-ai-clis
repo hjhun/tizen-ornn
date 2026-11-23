@@ -4,9 +4,9 @@ base=$HOME/dev-setup
 export NPM_CONFIG_PREFIX=$base/cli NPM_CONFIG_CACHE=$base/cache/npm
 export PATH=$base/cli/bin:$PATH
 mkdir -p "$NPM_CONFIG_PREFIX/bin" "$NPM_CONFIG_CACHE"
-if (( $# == 0 )); then set -- agy claude codex; fi
+if (( $# == 0 )); then set -- gemini claude codex; fi
 for name do
-    case "$name" in agy|claude|codex) ;; *) echo "Unknown CLI: $name" >&2; exit 2;; esac
+    case "$name" in gemini|claude|codex) ;; *) echo "Unknown CLI: $name" >&2; exit 2;; esac
 done
 exec 9>"$base/.install.lock"
 flock -x 9
@@ -14,27 +14,7 @@ for name do
     case "$name" in
         codex) npm install --global --no-audit --no-fund @openai/codex ;;
         claude) npm install --global --no-audit --no-fund --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code ;;
-        agy)
-            stage=$(mktemp -d "$base/cli/.agy-XXXXXXXX")
-            trap 'rm -rf -- "$stage"' EXIT
-            fetch=(curl -fsSL --retry 2 --proto '=https' --proto-redir '=https')
-            "${fetch[@]}" https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json -o "$stage/manifest"
-            url=$(jq -er .url "$stage/manifest")
-            sum=$(jq -er .sha512 "$stage/manifest")
-            [[ $url == https://* && $sum =~ ^[[:xdigit:]]{128}$ ]]
-            "${fetch[@]}" "$url" -o "$stage/payload"
-            printf '%s  %s\n' "$sum" "$stage/payload" | sha512sum --check --status
-            if [[ ${url%%\?*} == *.tar.gz ]]; then
-                tar -xzOf "$stage/payload" antigravity > "$stage/agy"
-            else
-                mv "$stage/payload" "$stage/agy"
-            fi
-            chmod 755 "$stage/agy"
-            "$stage/agy" --version
-            mv -f "$stage/agy" "$NPM_CONFIG_PREFIX/bin/agy"
-            rm -rf -- "$stage"
-            trap - EXIT
-            ;;
+        gemini) npm install --global --no-audit --no-fund @google/gemini-cli ;;
     esac
     "$NPM_CONFIG_PREFIX/bin/$name" --version
     if [[ $name == claude ]]; then "$base/bin/setup-claude-statusline"; fi

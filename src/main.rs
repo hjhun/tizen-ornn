@@ -25,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// Save the host folder mounted at /mnt/host (or clear the setting).
+    /// Save the host folder mounted at /home/tizen on x86_64 (or clear the setting).
     ShareDir {
         #[arg(required_unless_present = "reset", conflicts_with = "reset")]
         path: Option<String>,
@@ -84,15 +84,21 @@ enum Action {
     #[cfg(target_os = "linux")]
     /// Install packages in the guest.
     Install { packages: Vec<String> },
-    #[cfg(target_os = "linux")]
-    /// Update the selected image or its packages.
+    /// Update an x86_64 image to the latest snapshot.
     Update {
-        #[arg(long, conflicts_with = "packages")]
+        #[cfg_attr(target_os = "linux", arg(conflicts_with = "packages"))]
+        #[arg(long)]
         image: bool,
+        /// Use this stopped image as the update source.
+        #[cfg_attr(target_os = "linux", arg(conflicts_with = "packages"))]
+        #[arg(long)]
+        image_dir: Option<PathBuf>,
+        #[cfg(target_os = "linux")]
         #[arg(long)]
         packages: bool,
         #[arg(long)]
         snapshot: Option<String>,
+        #[cfg(target_os = "linux")]
         #[arg(requires = "packages")]
         names: Vec<String>,
     },

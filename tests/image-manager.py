@@ -246,6 +246,12 @@ class ImageSelection(unittest.TestCase):
         manager.rollback(self.home, current)
         self.assertEqual(manager.active_image(self.home), self.old)
 
+    def test_explicit_update_uses_selected_disk_without_prompt(self):
+        previous = self.update()
+        self.interactive(['update', '--image', '--image-dir', str(self.old)], [])
+        self.assertEqual(self.copy.call_args.args[0][-2], manager.disk_at(self.old))
+        self.assertTrue(manager.disk_at(previous).is_file())
+
     def test_package_menu_dispatches_selected_disk_and_can_cancel(self):
         self.update()
         with patch.object(manager.os, 'execv', side_effect=SystemExit(0)) as run:

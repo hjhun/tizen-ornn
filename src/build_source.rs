@@ -1,8 +1,10 @@
 use std::{io, process::Command};
 use url::Url;
 
+#[derive(serde::Deserialize)]
 pub struct BuildSource {
     pub repository: String,
+    #[serde(rename = "snapshot")]
     pub release: String,
     pub profile: Option<String>,
 }
@@ -11,7 +13,7 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 
-fn dated(id: &str) -> bool {
+pub(crate) fn dated(id: &str) -> bool {
     let Some(stamp) = id.strip_prefix("tizen-10.1-unified_") else {
         return false;
     };
