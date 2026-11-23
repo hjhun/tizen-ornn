@@ -3,7 +3,7 @@ use std::{env, io, path::PathBuf};
 
 pub mod proxy;
 
-pub const VERSION: &str = include_str!("../config/version").trim_ascii_end();
+pub const VERSION: &str = concat!("r", include_str!("../config/version")).trim_ascii_end();
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Image {

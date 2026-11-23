@@ -16,7 +16,7 @@ sequenceDiagram
 
 ## 1. 호스트에 Ornn 설치하기
 
-이미지 관리 창을 사용하려면 GUI를, 터미널에서 관리하려면 CLI를 선택하세요. 두 방식 모두 게스트의 Tizen 화면을 열 수 있습니다. [R26 설치 파일과 체크섬](https://github.com/hjhun/tizen-ornn/releases/tag/10.1-r26)
+이미지 관리 창을 사용하려면 GUI를, 터미널에서 관리하려면 CLI를 선택하세요. 두 방식 모두 게스트의 Tizen 화면을 열 수 있습니다. [최신 설치 파일과 체크섬](https://github.com/hjhun/tizen-ornn/releases/latest)
 
 ### Windows
 

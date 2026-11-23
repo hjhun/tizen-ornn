@@ -16,7 +16,7 @@ sequenceDiagram
 
 ## 1. Install Ornn on the host
 
-Choose the GUI to manage images in a window, or the CLI to manage them in a terminal. Both can open the Tizen guest display. [R26 downloads and checksums](https://github.com/hjhun/tizen-ornn/releases/tag/10.1-r26)
+Choose the GUI to manage images in a window, or the CLI to manage them in a terminal. Both can open the Tizen guest display. [Latest downloads and checksums](https://github.com/hjhun/tizen-ornn/releases/latest)
 
 ### Windows
 
