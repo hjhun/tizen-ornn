@@ -29,7 +29,9 @@ sudo apt update
 sudo apt install tizen-ornn tizen-ornn-gui
 ```
 
-Install the CLI for terminal use:
+After registration, run `sudo apt update && sudo apt upgrade` to receive new Ornn releases with your other Ubuntu packages. This also updates Ornn packages previously installed from a downloaded `.deb`.
+
+To install the CLI directly from a release file:
 
 ```sh
 curl -fLO https://github.com/hjhun/tizen-ornn/releases/latest/download/tizen-ornn_amd64.deb
@@ -93,6 +95,8 @@ check the active login. For operations requiring UID 0, use `su -`. To apply
 the new account setup to an existing managed Ubuntu image, shut down its guest
 and run `tizen-ornn update --image`.
 
+The host tools follow the [Ornn version and release policy](docs/versioning.md).
+
 ### Build the host tools with Cargo
 
 Use a current stable Rust toolchain. Run the following in the source checkout on Ubuntu or Windows:
@@ -107,37 +111,33 @@ Cargo writes the executables to `target/release`. For Windows image creation the
 ### Upgrade from tizen-vm
 
 Shut down any running guest with the old CLI before installing the new package.
-APT replaces the old host package. Tizen Ornn reuses the existing image store
-in place when the new store does not exist. An existing `TIZEN_VM_HOME`
-override still works; `TIZEN_ORNN_HOME` takes precedence. Existing per-user
-snapshot settings are read until you save a new configuration. If you customized
-`/etc/tizen-vm/image.toml`, copy those settings to `/etc/tizen-ornn/image.toml`.
+APT replaces the old host package. To keep using disks under
+`~/.local/share/tizen-vm`, choose that directory in **Settings**. For a CLI
+override, change `TIZEN_VM_HOME` to `TIZEN_ORNN_HOME` and keep its value.
+Copy any customized `image.toml` from the old `tizen-vm` configuration
+directory to `~/.config/tizen-ornn/` (per user) or `/etc/tizen-ornn/`
+(system-wide). For an existing disk with a `.tizen-vm-image-revision` file,
+copy that file to `.tizen-ornn-image-revision` alongside the disk to retain
+its build revision.
 The guest's native RPM builder is still called `ornn`.
 
 ### Find the VM disk
 
-For a standard package installation, `current` points to the selected image. Run these commands in Ubuntu to see its directory and disk file. Fresh builds use `tizen-rootfs.ext4`. A compressed image uses `tizen-rootfs.qcow2`.
+On Linux, the GUI and CLI use the same work directory. The default is
+`~/.local/tizen-ornn`. Managed x86_64 disks are under `images/<name>/`;
+ARM images use `armv7l-headed/disk/` or `aarch64-headed/disk/`. A work directory
+saved in **Settings** takes effect for both tools. Portable installations keep
+their settings beside the launcher. The CLI also honors explicit
+`TIZEN_ORNN_HOME` and legacy `TIZEN_OUT` overrides.
 
-```sh
-data=${XDG_DATA_HOME:-$HOME/.local/share}
-store=${TIZEN_ORNN_HOME:-${TIZEN_VM_HOME:-}}
-if [ -z "$store" ]; then
-    store=$data/tizen-ornn
-    if [ ! -e "$store" ] && [ -d "$data/tizen-vm" ]; then store=$data/tizen-vm; fi
-fi
-realpath "$store/current"
-ls -lh "$store/current"/tizen-rootfs.*
-```
+Run `tizen-ornn images` to see the actual image paths. With no saved work
+directory and no images in the default store, both tools can reuse an older
+XDG image store. To use a previous checkout's `out/` directory, select it in
+**Settings** or set `TIZEN_OUT` for the CLI.
 
-In a terminal, `tizen-ornn delete` lets you pick a managed disk and asks you to type its name before deletion. Enter picks the first menu entry and q cancels. With redirected input or output, this command lists the disks. For automation, use `tizen-ornn delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
+In an Ubuntu or WSL terminal, run `tizen-ornn delete` to pick a managed disk. At the selection menu, Enter picks the first entry and `q` cancels. At the deletion prompt, type `y`, `yes`, or the exact image name to delete it. Press Enter at this prompt to cancel. With redirected input or output, this command lists the disks. For automation, use `tizen-ornn delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
 
-For Windows File Explorer, resolve the Linux symlinks in WSL2 first and paste the printed path into the address bar.
-
-```sh
-wslpath -w "$(realpath "$store/current")"
-```
-
-A source checkout normally keeps images under `out/`. When the installed CLI shares that store, `realpath` follows the link to the same disk.
+In WSL, `wslpath -w /path/from/the/image/list` prints the Windows Explorer path.
 
 If HTTPS fails while downloading the image or installing guest tools, check the CA store of the system making the connection. [HTTPS and private CA setup](docs/https-certificates.md)
 

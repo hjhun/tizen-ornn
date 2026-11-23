@@ -18,8 +18,8 @@ fi
 [[ $release =~ ^tizen-10\.1-unified_([0-9]{8}\.[0-9]{6})$ ]] || { echo "Invalid snapshot ID" >&2; exit 1; }
 snapshot=${BASH_REMATCH[1]}
 version=$(<"$project/config/version")
-[[ $version =~ ^[0-9]+$ ]] || { echo "Invalid host package version: $version" >&2; exit 1; }
-bundle=tizen-dev-10.1-x86_64-${snapshot}-r${version}
+[[ $version =~ ^(0|[1-9][0-9]*)([.](0|[1-9][0-9]*)){2}$ ]] || { echo "Invalid host package version: $version" >&2; exit 1; }
+bundle=tizen-dev-10.1-x86_64-${snapshot}-${version}
 archive="$dest/$bundle.tar.zst"
 [[ -f "$out/bzImage" && -f "$out/kernel.config" ]]
 disk="$out/tizen-rootfs.ext4"
@@ -53,12 +53,9 @@ fi
 (cd "$base/kernel" && sha256sum -c kernel.sha256)
 cp "$out/bzImage" "$out/kernel.config" "$base/out/"
 if [[ -f "$out/snapshot.lock.json" ]]; then cp "$out/snapshot.lock.json" "$base/out/"; fi
-for marker in .tizen-ornn-image-revision .tizen-vm-image-revision; do
-    if [[ -f $out/$marker ]]; then
-        cp "$out/$marker" "$base/out/.tizen-ornn-image-revision"
-        break
-    fi
-done
+if [[ -f $out/.tizen-ornn-image-revision ]]; then
+    cp "$out/.tizen-ornn-image-revision" "$base/out/"
+fi
 if [[ -f "$out/.tizen-virtio-console" ]]; then touch "$base/out/.tizen-virtio-console"; fi
 # A qcow2 may have a backing file. Always export a standalone raw filesystem.
 raw="$disk"

@@ -20,6 +20,44 @@ source = 'https://mirror.example/Tizen-10.1/'
 release = 'tizen-10.1-unified_20261119.053314'
 
 
+def cli_binary():
+    default = root / ('target/release/tizen-ornn' if (root / 'Cargo.toml').is_file() else 'tizen-ornn')
+    return Path(os.environ.get('TIZEN_ORNN_TEST_CLI', default))
+
+
+class WorkDirectory(unittest.TestCase):
+    def test_cli_uses_gui_store_and_preserves_overrides(self):
+        with TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            default = home / '.local/tizen-ornn'
+            legacy = home / 'xdg/tizen-ornn'
+            env = {'HOME': tmp, 'PATH': os.environ['PATH'], 'XDG_DATA_HOME': str(legacy.parent)}
+
+            def add_image(store):
+                image = store / 'images/dev'
+                image.mkdir(parents=True)
+                (image / 'bzImage').touch()
+                (image / 'tizen-rootfs.ext4').touch()
+                return str(image)
+
+            def images(**settings):
+                output = subprocess.check_output([cli_binary(), 'images'], env=env | settings)
+                return [entry['path'] for entry in json.loads(output)]
+
+            old_image = add_image(legacy)
+            self.assertEqual(images(), [old_image])
+            main_image = add_image(default)
+            self.assertEqual(images(), [main_image])
+            custom_image = add_image(default / 'custom store')
+            setting = default / 'workdir.json'
+            setting.write_text(json.dumps('custom store'))
+            self.assertEqual(images(), [custom_image])
+            self.assertEqual(images(TIZEN_ORNN_HOME=str(legacy)), [old_image])
+            self.assertEqual(images(TIZEN_OUT=str(legacy)), [old_image])
+            setting.unlink()
+            self.assertEqual(images(), [main_image])
+
+
 class ImageSelection(unittest.TestCase):
     def setUp(self):
         self.stack = ExitStack()
@@ -38,8 +76,7 @@ class ImageSelection(unittest.TestCase):
     def invoke(self):
         # Exercise the compiled parser, then apply its request to the fixture
         # backend in-process so locks, prompts and selected disks are observable.
-        default = root / ('target/release/tizen-ornn' if (root / 'Cargo.toml').is_file() else 'tizen-ornn')
-        binary = Path(os.environ.get('TIZEN_ORNN_TEST_CLI', default))
+        binary = cli_binary()
         directory = self.home / 'parser'
         backend = directory / 'scripts/linux-backend'
         if not backend.exists():

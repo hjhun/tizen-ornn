@@ -15,7 +15,7 @@ mkdir -p "$pool" "$index/by-hash/SHA256"
 for name in tizen-ornn tizen-ornn-gui; do
     deb="$assets/${name}_amd64.deb"
     [[ $(dpkg-deb -f "$deb" Package) == "$name" &&
-       $(dpkg-deb -f "$deb" Version) == "$version" &&
+       $(dpkg-deb -f "$deb" Version) == "1:$version" &&
        $(dpkg-deb -f "$deb" Architecture) == amd64 ]]
     dest="$pool/${name}_${version}_amd64.deb"
     if [[ -e $dest ]]; then cmp "$deb" "$dest"; else install -m644 "$deb" "$dest"; fi

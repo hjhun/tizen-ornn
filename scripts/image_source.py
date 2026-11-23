@@ -34,9 +34,6 @@ def config_path():
     user = user_config()
     if os.environ.get("TIZEN_IMAGE_CONFIG") or user.exists():
         return user
-    legacy = user.parent.parent / "tizen-vm/image.toml"
-    if legacy.is_file():
-        return legacy
     system = Path("/etc/tizen-ornn/image.toml")
     return system if system.exists() else PROJECT / "config/image.toml"
 

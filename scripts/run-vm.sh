@@ -80,7 +80,7 @@ console_size=${TIZEN_CONSOLE_SIZE:-$(stty size 2>/dev/null || :)}
 [[ $console_size =~ ^[1-9][0-9]{0,3}\ [1-9][0-9]{0,3}$ ]] || console_size='24 80'
 if (( managed )) && [[ -t 0 && -t 1 ]]; then
     export TIZEN_CONSOLE_SIZE="$console_size"
-    if [[ ! -f $out/.tizen-ornn-image-revision && ! -f $out/.tizen-vm-image-revision ]]; then
+    if [[ ! -f $out/.tizen-ornn-image-revision ]]; then
         echo "Legacy image: upgrade with tizen-ornn update --image to detach by typing exit." >&2
     fi
     # The pane owns the disk lock. A client can leave without releasing it.

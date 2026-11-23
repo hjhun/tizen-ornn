@@ -28,7 +28,7 @@ ln -s ../lib/tizen-ornn/tizen-ornn "$root/usr/bin/tizen-ornn"
 install -m644 "$project/config/image.toml" "$root/etc/tizen-ornn/image.toml"
 echo /etc/tizen-ornn/image.toml > "$root/DEBIAN/conffiles"
 depends=$(awk '{for (i=1;i<=NF;i++) {printf "%s%s", sep, ($i=="python3" ? "python3 (>= 3.11)" : $i); sep=", "}}' "$project/config/host-packages")
-version=$(cat "$project/config/version")
+version=1:$(cat "$project/config/version")
 cat > "$root/DEBIAN/control" <<CONTROL
 Package: tizen-ornn
 Version: $version

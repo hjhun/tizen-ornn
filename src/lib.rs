@@ -3,7 +3,7 @@ use std::{env, io, path::PathBuf};
 
 pub mod proxy;
 
-pub const VERSION: &str = concat!("r", include_str!("../config/version")).trim_ascii_end();
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Image {
@@ -74,7 +74,46 @@ pub mod workdir {
         if let Some(path) = setting()? {
             return Ok(settings_dir()?.join(path));
         }
-        default_dir()
+        let default = default_dir()?;
+        #[cfg(target_os = "linux")]
+        if !has_images(&default) {
+            let data = env::var_os("XDG_DATA_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| default.parent().unwrap().join("share"));
+            let legacy = data.join("tizen-ornn");
+            if has_images(&legacy) {
+                return Ok(legacy);
+            }
+        }
+        Ok(default)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn has_images(store: &std::path::Path) -> bool {
+        let is_x86_image = |dir: PathBuf| {
+            dir.join("bzImage").is_file()
+                && ["tizen-rootfs.ext4", "tizen-rootfs.qcow2"]
+                    .iter()
+                    .any(|disk| dir.join(disk).is_file())
+        };
+        if ["current", ".tizen-current", "dev", ""]
+            .iter()
+            .any(|entry| is_x86_image(store.join(entry)))
+        {
+            return true;
+        }
+        ["armv7l-headed", "aarch64-headed"]
+            .iter()
+            .any(|name| super::arm_arch(&store.join(name)).is_some())
+            || fs::read_dir(store.join("images")).is_ok_and(|mut images| {
+                images.any(|item| {
+                    item.is_ok_and(|item| {
+                        !item.file_name().to_string_lossy().starts_with('.')
+                            && is_x86_image(item.path())
+                    })
+                })
+            })
     }
 
     pub fn save(value: &str) -> io::Result<()> {
@@ -120,8 +159,6 @@ pub mod workdir {
 
     pub fn default_share() -> io::Result<PathBuf> {
         let home = env::var_os("TIZEN_ORNN_HOME");
-        #[cfg(target_os = "linux")]
-        let home = home.or_else(|| env::var_os("TIZEN_VM_HOME"));
         Ok(match home {
             Some(dir) => std::path::absolute(dir)?,
             None => current()?,

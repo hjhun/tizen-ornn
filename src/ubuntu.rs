@@ -15,6 +15,15 @@ pub fn execute(cli: Cli) -> io::Result<()> {
                 io::Error::other("Install the Ubuntu package with its runtime helpers.")
             })?
     };
+    let helper = root.join("scripts/linux-backend");
+    if env::var("SUDO_UID").is_ok_and(|uid| !uid.is_empty() && uid != "0") {
+        // Resolve per-user settings after switching back to the invoking user.
+        return Err(Command::new(&helper)
+            .arg("--as-caller")
+            .arg(&exe)
+            .args(env::args_os().skip(1))
+            .exec());
+    }
     let mut req = json!({
         "arch":cli.arch, "headless":cli.headless, "pick":env::args_os().len()==1,
         "directory":null, "command":null
@@ -90,7 +99,13 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             req["default_share"] = json!(tizen_ornn::workdir::default_share()?);
         }
     }
-    let mut backend = Command::new(root.join("scripts/linux-backend"));
+    let mut backend = Command::new(helper);
+    if ["TIZEN_ORNN_HOME", "TIZEN_OUT"]
+        .iter()
+        .all(|key| env::var_os(key).is_none_or(|value| value.is_empty()))
+    {
+        backend.env("TIZEN_ORNN_HOME", tizen_ornn::workdir::current()?);
+    }
     if matches!(name, "build" | "install" | "update")
         && let Some(path) = tizen_ornn::workdir::ca_setting()?
     {

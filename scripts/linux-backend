@@ -22,25 +22,19 @@ from image_source import ImageSource, config_path, user_config
 def legacy_store():
     if os.environ.get('TIZEN_OUT'):
         return Path(os.environ['TIZEN_OUT']).expanduser().resolve()
-    if ROOT != Path('/usr/lib/tizen-ornn'):
-        return ROOT / 'out'
     return None
 
 
 def configured_home():
-    return os.environ.get('TIZEN_ORNN_HOME') or os.environ.get('TIZEN_VM_HOME')
+    return os.environ.get('TIZEN_ORNN_HOME')
 
 
 def data_home():
     if configured_home():
         return Path(configured_home()).expanduser().resolve()
     legacy = legacy_store()
-    xdg = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share') / 'tizen-ornn'
-    old = xdg.with_name('tizen-vm')
-    if not xdg.exists() and old.is_dir():
-        xdg = old
     if legacy is None:
-        return xdg
+        return Path.home() / '.local/tizen-ornn'
     parent = legacy
     while not parent.exists():
         parent = parent.parent
@@ -48,6 +42,7 @@ def data_home():
         return legacy
     # A sudo-built legacy output can be read-only. Keep distinct installations
     # separate while managing each one's future versions under the user's home.
+    xdg = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share') / 'tizen-ornn'
     return xdg / 'imports' / hashlib.sha256(os.fsencode(legacy)).hexdigest()[:16]
 
 
@@ -244,8 +239,6 @@ def configure(repository, snapshot):
 
 def matches(image, release, source, revision, archive=None):
     marker = image / '.tizen-ornn-image-revision'
-    if not marker.exists():
-        marker = image / '.tizen-vm-image-revision'
     path = image / 'snapshot.lock.json'
     if not marker.is_file() or marker.read_text().strip() != revision or not path.is_file():
         return False
@@ -453,7 +446,7 @@ def rollback(home, active):
     print(f'Selected previous image at {previous}. The other disk is still at {active}.')
 
 
-def execute(args):
+def drop_sudo_privileges():
     # Even when invoked via sudo, the VM and its selection belong to the
     # developer. Elevate only the package installation and filesystem build.
     if os.geteuid() == 0 and os.environ.get('SUDO_UID', '0') != '0':
@@ -462,6 +455,9 @@ def execute(args):
         os.setgid(account.pw_gid)
         os.setuid(account.pw_uid)
         os.environ.update(HOME=account.pw_dir, USER=account.pw_name, LOGNAME=account.pw_name)
+
+
+def execute(args):
     headless = args.headless
     if args.command == 'images':
         print(json.dumps([{'arch': arch, 'path': str(path)}
@@ -658,6 +654,10 @@ def execute(args):
 
 if __name__ == '__main__':
     try:
+        drop_sudo_privileges()
+        if sys.argv[1] == '--as-caller':
+            os.environ.pop('SUDO_UID', None)
+            os.execv(sys.argv[2], sys.argv[2:])
         execute(SimpleNamespace(**json.loads(sys.argv[1])))
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         sys.exit(f'tizen-ornn: {error}')

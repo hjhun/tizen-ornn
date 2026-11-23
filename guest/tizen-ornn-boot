@@ -12,10 +12,14 @@ dropin=/run/systemd/system/systemd-udev-trigger.service.d
 mkdir -p "$dropin"
 printf '[Unit]\nAfter=tizen-dev-setup.service\n' > "$dropin/tizen-ornn-policy.conf"
 
-# Older disks bind their control service to the historical device alias.
-if grep -Fq 'dev-tizen\x2dvm\x2dpackages.device' /etc/systemd/system/tizen-guest-control.service 2>/dev/null; then
-    mkdir -p /run/udev/rules.d
-    echo 'SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.vm.packages", SYMLINK+="tizen-vm-packages"' > /run/udev/rules.d/89-tizen-ornn-compat.rules
+# Keep the package port accessible under the device name baked into older disks.
+unit=/etc/systemd/system/tizen-guest-control.service
+if [ -r "$unit" ]; then
+    product=$(sed -n 's/^BindsTo=dev-tizen\\x2d\([a-z0-9][a-z0-9]*\)\\x2dpackages\.device$/\1/p' "$unit")
+    if [ -n "$product" ] && [ "$product" != ornn ]; then
+        mkdir -p /run/udev/rules.d
+        printf 'SUBSYSTEM=="virtio-ports", ATTR{name}=="org.tizen.vm.packages", SYMLINK+="tizen-%s-packages"\n' "$product" > /run/udev/rules.d/89-tizen-ornn-compat.rules
+    fi
 fi
 
 if [ -r "$config/graphics/raw" ]; then
