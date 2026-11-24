@@ -44,14 +44,12 @@ step ".ssh/config" link_setting ssh/config .ssh/config
 
 step "development packages" tizen-dev-packages install basic build debug editor
 step Vim "$base/bin/setup-vim"
-for key in ui branch status diff commit; do
-    if ! git config --global --get "color.$key" >/dev/null; then
-        step "git color.$key" git config --global "color.$key" auto
-    fi
-done
+step "Git colors" "$base/bin/setup-git-colors"
 
 for name in gemini claude codex herdr; do
-    if "$base/cli/bin/$name" --version 2>/dev/null; then
+    tool=$base/cli/bin/$name
+    if [[ $name == claude ]]; then tool=$base/bin/claude; fi
+    if "$tool" --version 2>/dev/null; then
         if [[ $name == claude ]]; then step "Claude status line" "$base/bin/setup-claude-statusline"; fi
         continue
     fi

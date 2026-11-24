@@ -12,6 +12,8 @@ if ! "$venv/bin/python" -Ic 'import tree_sitter, tree_sitter_cpp; from importlib
 fi
 "$venv/bin/python" -Ic 'import tree_sitter, tree_sitter_cpp'
 ln -sfn "$venv/bin/graphify" "$base/cli/bin/graphify"
-"$venv/bin/python" -c 'from importlib.resources import files; import sys; sys.stdout.buffer.write(files("graphify").joinpath("skill.md").read_bytes())' > "$base/skills/graphify/SKILL.md.new"
-mv "$base/skills/graphify/SKILL.md.new" "$base/skills/graphify/SKILL.md"
+tmp=$(mktemp /tmp/ornn-skill.XXXXXXXX)
+trap 'rm -f -- "$tmp"' EXIT
+"$venv/bin/python" -c 'from importlib.resources import files; import sys; sys.stdout.buffer.write(files("graphify").joinpath("skill.md").read_bytes())' > "$tmp"
+python3 "$HOME/dev-setup/lib/setup_file.py" "$tmp" "$base/skills/graphify/SKILL.md"
 "$base/cli/bin/graphify" --help >/dev/null

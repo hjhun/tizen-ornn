@@ -1,0 +1,27 @@
+#!/bin/bash
+# Execute the npm binary from the guest filesystem. Native Bun startup can
+# fault when its executable is mapped directly from a Windows 9p export.
+set -eu
+binary=$HOME/dev-setup/cli/bin/claude
+if [[ $binary -ef $HOME/dev-setup/bin/claude ]]; then
+    binary=$HOME/dev-setup/cli/libexec/claude
+fi
+[[ -x $binary ]] || { echo 'Install Claude Code with install-ai-clis claude.' >&2; exit 127; }
+if [[ ! -d /run/ornn-image-home || $(findmnt -n -o FSTYPE -T "$binary") != 9p ]]; then
+    exec "$binary" "$@"
+fi
+
+cache=/run/ornn-image-home/.cache/ornn/claude
+mkdir -p -m 700 "$cache"
+(
+    flock -x 9
+    signature=$(stat -Lc '%d:%i:%s:%y:%z' "$binary")
+    if [[ ! -x $cache/claude || ! -r $cache/source || $(cat "$cache/source") != "$signature" ]]; then
+        tmp=$(mktemp "$cache/claude.XXXXXXXX")
+        trap 'rm -f -- "$tmp"' EXIT
+        install -m 755 "$binary" "$tmp"
+        mv -fT -- "$tmp" "$cache/claude"
+        printf '%s\n' "$signature" > "$cache/source"
+    fi
+) 9>"$cache/lock"
+exec "$cache/claude" "$@"

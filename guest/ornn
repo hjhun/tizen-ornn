@@ -35,7 +35,26 @@ out=$(readlink -e -- "$out")
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 arch=$(rpm -q --qf '%{ARCH}' filesystem)
-rpmbuild --target "$arch" --define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")" -bb "$spec"
+options=(--target "$arch" --define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")")
+# Let RPM evaluate versioned/virtual dependencies and architecture conditionals.
+if ! LC_ALL=C rpmbuild "${options[@]}" --nobuild -bp "$spec" >"$work/check" 2>&1; then
+    cat "$work/check" >&2
+    grep -qx 'error: Failed build dependencies:' "$work/check" || exit 1
+    rpmspec "${options[@]}" -q --buildrequires "$spec" >"$work/requires"
+    requires=()
+    while IFS= read -r capability; do
+        [[ -z $capability ]] || requires+=("$capability")
+    done < "$work/requires"
+    (( ${#requires[@]} )) || exit 1
+    # Only the package transaction needs root. Parse and build the spec as the caller.
+    resolver=(/usr/bin/zypper --non-interactive install --no-recommends --capability --)
+    if (( EUID == 0 )); then
+        "${resolver[@]}" "${requires[@]}"
+    else
+        su - root -c 'exec "$@"' -- sh "${resolver[@]}" "${requires[@]}"
+    fi
+fi
+rpmbuild "${options[@]}" -bb "$spec"
 # Publish only packages from this successful invocation, retaining subpackages.
 shopt -s nullglob
 artifacts=("$work"/RPMS/*/*.rpm)
@@ -44,7 +63,12 @@ for rpm in "${artifacts[@]}"; do
     destination=$out/${rpm##*/RPMS/}
     mkdir -p -- "$(dirname -- "$destination")"
     pending=$(mktemp -- "$destination.XXXXXXXX")
-    if ! install -m 0644 -- "$rpm" "$pending" || ! mv -fT -- "$pending" "$destination"; then
+    publish=(mv -fT --)
+    helper=/usr/share/tizen-dev/dev-setup/lib/setup_file.py
+    if [[ -e $destination && -f $helper ]]; then
+        publish=(python3 -B "$helper" --replace-closed)
+    fi
+    if ! install -m 0644 -- "$rpm" "$pending" || ! "${publish[@]}" "$pending" "$destination"; then
         rm -f -- "$pending"
         exit 1
     fi

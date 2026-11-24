@@ -1,8 +1,10 @@
 #!/bin/bash
 set -eu
 mkdir -p "$HOME/dev-setup/skills/herdr"
-"$HOME/dev-setup/cli/bin/herdr" --skill > "$HOME/dev-setup/skills/herdr/SKILL.md.new"
-mv "$HOME/dev-setup/skills/herdr/SKILL.md.new" "$HOME/dev-setup/skills/herdr/SKILL.md"
+tmp=$(mktemp /tmp/ornn-skill.XXXXXXXX)
+trap 'rm -f -- "$tmp"' EXIT
+"$HOME/dev-setup/cli/bin/herdr" --skill > "$tmp"
+python3 "$HOME/dev-setup/lib/setup_file.py" "$tmp" "$HOME/dev-setup/skills/herdr/SKILL.md"
 for dir in "$HOME/.agents/skills" "$HOME/.agent/skills" "$HOME/.claude/skills"; do
     mkdir -p "$dir"
     for name in coding-style development-style graphify herdr; do

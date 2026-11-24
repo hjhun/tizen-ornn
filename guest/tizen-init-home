@@ -24,7 +24,12 @@ sync_kit() (
             tmp=$(mktemp "$dest/.ornn-tool.XXXXXXXX")
             trap 'rm -f -- "$tmp"' EXIT
             cp --preserve=mode -- "$entry" "$tmp"
-            mv -fT -- "$tmp" "$target"
+            if [ -e "$target" ] || [ -L "$target" ]; then
+                python3 -B /usr/share/tizen-dev/dev-setup/lib/setup_file.py \
+                    --replace-closed "$tmp" "$target"
+            else
+                mv -T -- "$tmp" "$target"
+            fi
             trap - EXIT
         fi
     done

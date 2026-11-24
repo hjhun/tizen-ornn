@@ -13,6 +13,8 @@ From the guest console run `~/dev-setup/install.sh`. The installer offers the se
 
 ## Tools
 
+To build native RPMs inside the x86_64 guest, run `ornn build` from the checkout containing the spec and its source files. Use `--spec FILE` to select a spec and `--out DIR` to choose the output directory (default `./RPMS`). If RPM reports missing `BuildRequires`, Ornn uses the guest's configured Zypper repositories to install the requirements and their dependencies, then builds as the calling user. A requirement with no provider stops the build.
+
 Use `tizen-dev-packages list` to view package groups and `tizen-dev-packages plan build ctags` to resolve a selection. Use `download` to cache individual RPMs and `install` to install with dependencies.
 
 Run `install-ai-clis` to reinstall the three AI clients, or pass one name such as `install-ai-clis codex`. Run `setup-herdr` to reinstall the pinned Herdr release.

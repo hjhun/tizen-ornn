@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+"""Set missing color defaults while preserving the user's global Git configuration."""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from setup_file import replace_closed
+
+home = Path.home()
+xdg = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "git/config"
+target = home / ".gitconfig"
+if not target.exists() and xdg.exists():
+    target = xdg
+if "GIT_CONFIG_GLOBAL" in os.environ:
+    target = Path(os.environ["GIT_CONFIG_GLOBAL"])
+target = target.resolve()
+lock = target.with_name(target.name + ".lock")
+# Coordinate with ordinary git config writers. A stale lock needs manual review.
+lock.touch(mode=0o600, exist_ok=False)
+published = False
+try:
+    with tempfile.TemporaryDirectory(dir="/tmp") as staging:
+        config = Path(staging) / "config"
+        if target.exists():
+            shutil.copyfile(target, config)
+        changed = False
+        for key in ("ui", "branch", "status", "diff", "commit"):
+            key = "color." + key
+            result = subprocess.run(["git", "config", "--global", "--includes", "--get", key],
+                                    stdout=subprocess.DEVNULL)
+            if result.returncode == 1:
+                subprocess.run(["git", "config", "--file", config, key, "auto"], check=True)
+                changed = True
+            else:
+                result.check_returncode()
+        if changed:
+            shutil.copyfile(config, lock)
+            if target.exists():
+                shutil.copymode(target, lock)
+            replace_closed(lock, target)
+            published = True
+finally:
+    if not published:
+        lock.unlink(missing_ok=True)
