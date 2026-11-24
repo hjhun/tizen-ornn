@@ -5,17 +5,17 @@ Acquire-By-Hash: yes
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Mon, 23 Nov 2026 23:53:14 +0000
+Date: Tue, 24 Nov 2026 01:25:30 +0000
 Label: Tizen Ornn
 Origin: Tizen Ornn
 Suite: stable
 SHA256:
- a4920c29171494e7e9722e744ba421c2eec057d91eb916a402edad3c7036daa8             7907 main/binary-amd64/Packages
- 2dc2d8797a4adb322439e54eac9e5620d6c370616bb1f6384ebf3699e7a8c881             2292 main/binary-amd64/Packages.gz
+ 600f9b309f432597580201d899e16d0e21a48734d087c0164710730c99a741ca             9901 main/binary-amd64/Packages
+ 57f9b1dfcf03d3051386524687912fcff0b24bff787261a34d7698491307e1c2             2670 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQSPh1nXXqkOPw4iMSvXMtENjUP9JQUCawTR6gAKCRDXMtENjUP9
-JVBdAQCg46xf2s0RXZxcRdl49kXv4rD7oIRPymgmiiAOSTCZHQEAv5EmdChdyE/g
-iu/I2shaBllP4l3n1IO7OW6Vnt3aYgA=
-=pHEi
+iHUEARYKAB0WIQSPh1nXXqkOPw4iMSvXMtENjUP9JQUCawTnigAKCRDXMtENjUP9
+JRDpAPwPwhT7HGqJ+QiaDrJIr0qPuHgYo1dxHBl9F6dp7KTu/wEA4VVdnMIY+tM2
+XxkfrdduH4D5gvHLsqTC3cGUqL1MNwE=
+=wB5p
 -----END PGP SIGNATURE-----
