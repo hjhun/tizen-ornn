@@ -2,6 +2,11 @@
 # Called before systemd, while no guest user processes can modify these paths.
 set -eu
 mode=$1
+access=any
+# Windows mapped-xattr records the uid from the creating 9p connection.
+case "$mode" in
+    rw:user|ro:user) mode=${mode%:user}; access=user ;;
+esac
 case "$mode" in rw|ro) ;; *) exit 1 ;; esac
 target=/mnt/host
 [ ! -L /mnt ] && mkdir -p /mnt || exit 1
@@ -15,7 +20,7 @@ fi
 
 # Verify the export first. A failed connection leaves the guest files in place.
 stage=$(mktemp -d /run/tizen-share.XXXXXX)
-options="$mode,trans=virtio,version=9p2000.L,cache=none,access=any,nosuid,nodev"
+options="$mode,trans=virtio,version=9p2000.L,cache=none,access=$access,nosuid,nodev"
 mount -t 9p -o "$options,smackfsroot=User::Shell,smackfsdef=User::Shell" tizen-share "$stage"
 mount_preserving_files() (
     operation=$1

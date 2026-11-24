@@ -7,6 +7,9 @@ $state = New-Item -ItemType Directory (Join-Path $env:TEMP ([guid]::NewGuid()))
 $env:TIZEN_ORNN_PORTABLE_DIR = $state.FullName
 $share = New-Item -ItemType Directory "$state/shared folder"
 Set-Content "$share/host.txt" 'from-host' -Encoding ascii -NoNewline
+if ($Development) {
+    $share.Attributes = $share.Attributes -bor [IO.FileAttributes]::ReadOnly
+}
 & $Cli share-dir $share.FullName
 if ($LASTEXITCODE) { throw 'Failed to save the shared folder' }
 $info = New-Object System.Diagnostics.ProcessStartInfo
@@ -45,6 +48,8 @@ try {
         Wait-Console '(?m)^ORNN_ROOTGROUP_OK\r?$'
         Send-Console 'test "$(cat /mnt/host/host.txt)" = from-host && echo guest-write > /home/tizen/fixture-check && test "$(cat /mnt/host/fixture-check)" = guest-write && printf "ORNN_%s_OK\n" SHARE'
         Wait-Console '(?m)^ORNN_SHARE_OK\r?$'
+        Send-Console 'f=$(mktemp "$HOME/.private.XXXXXX") && test "$(stat -c %u "$f")" = "$(id -u)" && echo private > "$f" && rm "$f" && test -x ~/dev-setup/install.sh && test -d ~/workspace && cmp /usr/share/tizen-dev/dev-setup/install.sh ~/dev-setup/install.sh && printf "ORNN_%s_OK\n" DEVHOME'
+        Wait-Console '(?m)^ORNN_DEVHOME_OK\r?$'
         Send-Console 'su -c "sync; systemctl --force poweroff"'
     } else {
         Wait-Console 'ORNN_SERIAL_READY'

@@ -306,6 +306,14 @@ fn boot(
             folder.display()
         )));
     }
+    // Windows directory attributes can make a writable export appear as 0555.
+    let mut permissions = fs::metadata(&folder)?.permissions();
+    if !read_only && permissions.readonly() {
+        // Verify the current account can write before clearing the folder flag.
+        tempfile::NamedTempFile::new_in(&folder)?.close()?;
+        permissions.set_readonly(false);
+        fs::set_permissions(&folder, permissions)?;
+    }
     // QEMU needs a seekable file for fw_cfg. Keep it alive through guest shutdown.
     let temp = tempfile::tempdir()?;
     let script = temp.path().join("share.sh");
@@ -404,7 +412,7 @@ fn boot(
         cmd.args(["-display", "none"]);
         "tizen-dev.target"
     };
-    let mode = if read_only { "ro" } else { "rw" };
+    let mode = if read_only { "ro:user" } else { "rw:user" };
     cmd.args([
         "-fw_cfg",
         &format!("name=opt/tizen-ornn/share,string={mode}"),

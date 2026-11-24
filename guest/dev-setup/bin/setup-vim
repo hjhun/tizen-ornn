@@ -3,8 +3,19 @@
 set -euo pipefail
 base=$HOME/dev-setup/vim
 mkdir -p "$base/pack/development/start"
-stage=$(mktemp -d "$base/.setup-XXXXXXXX")
-trap 'rm -rf -- "$stage"' EXIT
+stage=$(mktemp -d /tmp/ornn-vim.XXXXXXXX)
+pending=
+trap 'rm -rf -- "$stage"; if [[ -n $pending ]]; then rm -rf -- "$pending"; fi' EXIT
+
+publish() {
+    local source=$1 target=$2
+    pending=$(mktemp -d "${target%/*}/.setup-XXXXXXXX")
+    # Windows 9p cannot restore directory timestamps when extracting tar files.
+    tar -C "$source" -cf - . | tar -C "$pending" -mxf -
+    mv -T "$pending" "$target"
+    pending=
+}
+
 if [[ ! -r $base/tizen-runtime/colors/desert.vim ]]; then
     version=$(rpm -q --qf '%{VERSION}-%{RELEASE}' vim)
     zypper --no-refresh --pkg-cache-dir "$stage/rpms" download "vim-data=$version"
@@ -13,15 +24,17 @@ if [[ ! -r $base/tizen-runtime/colors/desert.vim ]]; then
     rpm2cpio "$rpm" | cpio -id --quiet './usr/share/vim/vim*/*'
     runtime=(usr/share/vim/vim[0-9]*)
     test -r "${runtime[0]}/colors/desert.vim"
-    mv -T "${runtime[0]}" "$base/tizen-runtime"
+    publish "${runtime[0]}" "$base/tizen-runtime"
 fi
 plugin() {
     local name=$1 repo=$2 revision=$3
     if [[ ! -d $base/pack/development/start/$name ]]; then
+        # Git needs POSIX config-lock replacement, which Windows 9p lacks.
         git init -q "$stage/$name"
         git -C "$stage/$name" fetch --depth=1 "$repo" "$revision"
         git -C "$stage/$name" checkout --quiet --detach FETCH_HEAD
-        mv "$stage/$name" "$base/pack/development/start/"
+        rm -rf -- "$stage/$name/.git"
+        publish "$stage/$name" "$base/pack/development/start/$name"
     fi
 }
 plugin nerdtree https://github.com/preservim/nerdtree.git 690d061b591525890f1471c6675bcb5bdc8cdff9
