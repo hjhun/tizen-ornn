@@ -98,6 +98,17 @@ findmnt -n -o FSTYPE /
 ls /mnt/host
 ```
 
+### Open an SDB shell from the host
+
+With Tizen Studio’s `sdb` on the host PATH, Ornn automatically connects the x86_64 VM during boot. Run `sdb devices` and copy the serial from the first column. This example uses port 33767. The port can change at each boot.
+
+```sh
+sdb devices
+sdb -s 127.0.0.1:33767 shell
+```
+
+With one connected device, you can also use `sdb shell`. If you installed SDB after starting the VM, run `sdb connect 127.0.0.1:33767` once using the address printed in the Ornn console.
+
 ## 4. Build the counter app in the guest
 
 As the guest user `tizen`, build the sample. The output directory should contain the executable `tizen-ui` and the installable package `org.example.tizencounter-1.0.0-x86_64.tpk`.

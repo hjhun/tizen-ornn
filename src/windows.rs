@@ -237,7 +237,7 @@ fn boot(
         "-drive",
         &format!("file={name},format={format},if=virtio"),
         "-netdev",
-        "user,id=net",
+        "user,id=net,hostfwd=tcp:127.0.0.1:0-:26101",
         "-device",
         "virtio-net-pci,netdev=net,romfile=",
         "-device",
@@ -382,7 +382,7 @@ fn boot(
         .filter(|(r, c)| *r > 0 && *c > 0)
         .unwrap_or((24, 80));
     cmd.args(["-append", &format!("root=/dev/vda rootfstype=ext4 rootwait rw console={console} loglevel=0 init=/bin/sh systemd.unit={target} net.ifnames=0 tizen.console_size={rows}x{cols} -- -c \"{setup}; echo tizen-ornn: shared folder setup failed >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff\"")]);
-    console::run(&mut cmd, &stop, &image, false)?;
+    console::run(&mut cmd, &stop, &image, false, Some(&status))?;
     if fs::read(status)?.contains(&b'!') {
         return Err(io::Error::other(
             "Guest shared folder setup failed. See the guest console.",

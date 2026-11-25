@@ -12,6 +12,25 @@ dropin=/run/systemd/system/systemd-udev-trigger.service.d
 mkdir -p "$dropin"
 printf '[Unit]\nAfter=tizen-dev-setup.service\n' > "$dropin/tizen-ornn-policy.conf"
 
+# Tell the host when SDB can accept a connection on this boot.
+if [ -f /usr/lib/systemd/system/sdbd_tcp.socket ]; then
+    units=/run/systemd/system
+    cat > "$units/ornn-sdb-ready.service" <<'UNIT'
+[Unit]
+Description=Notify the Ornn host when SDB is ready
+Requires=sdbd_tcp.socket sdbd.service
+After=sdbd_tcp.socket sdbd.service network.target tizen-dev-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'printf R > /dev/ttyS1'
+UNIT
+    for target in tizen-dev graphical; do
+        mkdir -p "$units/$target.target.wants"
+        ln -sf ../ornn-sdb-ready.service "$units/$target.target.wants/"
+    done
+fi
+
 # Keep the package port accessible under the device name baked into older disks.
 unit=/etc/systemd/system/tizen-guest-control.service
 if [ -r "$unit" ]; then

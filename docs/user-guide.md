@@ -98,6 +98,17 @@ findmnt -n -o FSTYPE /
 ls /mnt/host
 ```
 
+### 호스트에서 SDB 셸 열기
+
+호스트의 PATH에 Tizen Studio의 `sdb`가 있으면 x86_64 VM이 부팅될 때 자동으로 연결됩니다. 호스트에서 `sdb devices`를 실행하고 첫 열의 값을 복사하세요. 아래는 포트가 33767인 예입니다. 포트는 부팅할 때마다 달라질 수 있습니다.
+
+```sh
+sdb devices
+sdb -s 127.0.0.1:33767 shell
+```
+
+연결된 장치가 하나면 `sdb shell`로도 들어갈 수 있습니다. SDB를 VM 부팅 후 설치했다면 Ornn 콘솔에 표시된 주소로 `sdb connect 127.0.0.1:33767`을 한 번 실행하세요.
+
 ## 4. 게스트에서 카운터 앱 빌드하기
 
 게스트의 `tizen` 계정에서 예제를 빌드하세요. 출력 폴더에 실행 파일 `tizen-ui`와 설치 패키지 `org.example.tizencounter-1.0.0-x86_64.tpk`가 생깁니다.

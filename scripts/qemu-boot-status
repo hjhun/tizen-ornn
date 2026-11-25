@@ -1,19 +1,70 @@
 #!/usr/bin/python3
 """Return a guest boot setup failure to the host after QEMU powers down."""
 from contextlib import ExitStack
+import select
+import shutil
 import signal
 import socket
 import subprocess
 import sys
-from threading import Thread
+from threading import Event, Thread
 
 from host_browser import serve
+
+
+def register_sdb(monitor, ready, stopped):
+    try:
+        # QEMU owns the ephemeral listener before we advertise its address.
+        monitor.settimeout(15)
+        monitor.sendall(b'info usernet\n')
+        with monitor.makefile('rb') as lines:
+            for line in lines:
+                fields = line.split()
+                if (len(fields) >= 6 and fields[0] == b'TCP[HOST_FORWARD]'
+                        and fields[2] == b'127.0.0.1' and fields[5] == b'26101'):
+                    serial = f'127.0.0.1:{int(fields[3])}'
+                    break
+            else:
+                return
+        print(f'Ornn SDB: {serial} (sdb -s {serial} shell)', file=sys.stderr, flush=True)
+        sdb = shutil.which('sdb')
+        if not sdb:
+            print(f'Install SDB and run: sdb connect {serial}', file=sys.stderr)
+            return
+        if ready is not None:
+            while not stopped.is_set():
+                if select.select([ready], [], [], 1)[0]:
+                    if ready.recv(1, socket.MSG_PEEK) != b'R':
+                        return
+                    break
+        for _ in range(90):
+            if stopped.wait(2):
+                return
+            try:
+                subprocess.run([sdb, 'connect', serial], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+                state = subprocess.run([sdb, '-s', serial, 'get-state'], stdin=subprocess.DEVNULL,
+                                       capture_output=True, timeout=5)
+                if state.stdout.strip() == b'device':
+                    return
+            except subprocess.TimeoutExpired:
+                continue
+        print(f'Ornn SDB is not ready. Retry: sdb connect {serial}', file=sys.stderr)
+    except OSError as error:
+        if not stopped.is_set():
+            print(f'Ornn SDB: {error}', file=sys.stderr)
 
 
 def run(command):
     # UART 0 is reserved on both console transports. ttyS1 carries one failure byte
     # on a private socketpair, with no serial transcript or host file.
     receiver, guest = socket.socketpair()
+    sdb_enabled = command[0] == '--sdb'
+    if sdb_enabled:
+        command = command[1:]
+    wait_ready = command[0] == '--wait-sdb-ready'
+    if wait_ready:
+        command = command[1:]
     browser_enabled = command[0] == '--host-browser'
     if browser_enabled:
         command = command[1:]
@@ -39,7 +90,19 @@ def run(command):
             guest_browser.set_inheritable(True)
             command += ['-chardev', f'socket,id=browser,fd={guest_browser.fileno()}',
                         '-device', 'virtserialport,bus=guestbus.0,chardev=browser,name=org.tizen.vm.browser']
+        if sdb_enabled:
+            monitor, guest_monitor = socket.socketpair()
+            stack.enter_context(monitor)
+            stack.enter_context(guest_monitor)
+            guest_monitor.set_inheritable(True)
+            command += ['-chardev', f'socket,id=sdbmon,fd={guest_monitor.fileno()}',
+                        '-mon', 'chardev=sdbmon,mode=readline']
         child = subprocess.Popen(command, close_fds=False)
+        if sdb_enabled:
+            guest_monitor.close()
+            stopped = Event()
+            stack.callback(stopped.set)
+            Thread(target=register_sdb, args=(monitor, receiver if wait_ready else None, stopped), daemon=True).start()
         if browser_enabled:
             guest_browser.close()
             Thread(target=serve, args=(host_browser,), daemon=True).start()
@@ -49,10 +112,10 @@ def run(command):
         code = child.wait()
         receiver.setblocking(False)
         try:
-            marker = receiver.recv(1)
+            marker = receiver.recv(4096)
         except BlockingIOError:
             marker = b''
-        if marker == b'!':
+        if b'!' in marker:
             print('tizen-ornn: guest startup failed while applying host settings. Check the guest console.', file=sys.stderr)
             return 1
         return code if code >= 0 else 128 - code

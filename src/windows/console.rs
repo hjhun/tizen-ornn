@@ -136,6 +136,68 @@ async fn accept_qemu(listener: TcpListener, pid: u32) -> io::Result<TcpStream> {
     }
 }
 
+async fn register_sdb(
+    listener: TcpListener,
+    pid: u32,
+    status: std::path::PathBuf,
+) -> io::Result<()> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let mut stream = accept_qemu(listener, pid).await?;
+    stream.write_all(b"info usernet\n").await?;
+    let mut lines = BufReader::new(stream).lines();
+    let port = loop {
+        let Some(line) = lines.next_line().await? else {
+            return Err(io::Error::other("Missing QEMU SDB port"));
+        };
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if let ["TCP[HOST_FORWARD]", _, "127.0.0.1", port, _, "26101", ..] = fields[..] {
+            break port.parse::<u16>().map_err(io::Error::other)?;
+        }
+    };
+    let serial = format!("127.0.0.1:{port}");
+    eprintln!("Ornn SDB: {serial} (sdb -s {serial} shell)");
+    loop {
+        match std::fs::read(&status) {
+            Ok(bytes) if bytes.contains(&b'R') => break,
+            Ok(bytes) if bytes.contains(&b'!') => return Ok(()),
+            Ok(_) => (),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+            Err(error) => return Err(error),
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    for _ in 0..90 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        for args in [vec!["connect", &serial], vec!["-s", &serial, "get-state"]] {
+            let mut command = tokio::process::Command::new("sdb.exe");
+            command
+                .args(&args)
+                .creation_flags(0x08000000)
+                .kill_on_drop(true)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null());
+            match tokio::time::timeout(Duration::from_secs(5), command.output()).await {
+                Ok(Ok(output))
+                    if args[0] == "-s"
+                        && String::from_utf8_lossy(&output.stdout).trim() == "device" =>
+                {
+                    return Ok(())
+                }
+                Ok(Err(error)) => {
+                    return Err(io::Error::new(
+                        error.kind(),
+                        format!("{error}; run sdb connect {serial}"),
+                    ))
+                }
+                _ => {}
+            }
+        }
+    }
+    Err(io::Error::other(format!("Retry with sdb connect {serial}")))
+}
+
 async fn control(
     stream: TcpStream,
     stop: &std::path::Path,
@@ -216,6 +278,7 @@ pub(super) fn run(
     stop: &std::path::Path,
     image: &std::path::Path,
     arm: bool,
+    boot_status: Option<&std::path::Path>,
 ) -> io::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -251,6 +314,16 @@ pub(super) fn run(
             "virtserialport,bus=guestbus.0,chardev=control,name=org.tizen.vm.packages",
         ]);
     }
+    let sdb_monitor = if arm {
+        None
+    } else {
+        let listener = rt.block_on(TcpListener::bind(("127.0.0.1", 0)))?;
+        cmd.args(["-chardev", &format!(
+            "socket,id=sdbmon,host=127.0.0.1,port={},server=off",
+            listener.local_addr()?.port()
+        ), "-mon", "chardev=sdbmon,mode=readline"]);
+        Some(listener)
+    };
     let listener = {
         let _guard = rt.enter();
         super::session::Listener::new(image)?
@@ -259,6 +332,14 @@ pub(super) fn run(
     let mut child = cmd.spawn()?;
     let result=rt.block_on(async {
         let pid=child.id();
+        if let (Some(monitor), Some(status)) = (sdb_monitor, boot_status) {
+            let status = status.to_owned();
+            tokio::spawn(async move {
+                if let Err(error) = register_sdb(monitor, pid, status).await {
+                    eprintln!("Ornn SDB: {error}");
+                }
+            });
+        }
         let connect=async {
             let guest=async { match power {
                 Some(listener) => accept_qemu(listener,pid).await.map(Some),

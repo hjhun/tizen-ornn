@@ -183,10 +183,12 @@ if (( gui )) || [[ -n $share_mode || -n $network_data ]]; then
     # A failed export must not open a shell over an ordinary guest directory.
     init_args=' -- -c "mount -t sysfs -o nosuid,nodev,noexec sysfs /sys && /bin/sh /sys/firmware/qemu_fw_cfg/by_name/opt/tizen-ornn/boot/raw && exec /usr/lib/systemd/systemd; echo tizen-ornn: guest setup failed, powering off >&2; printf ! >/dev/ttyS1; sync; exec /usr/bin/systemctl --force --force poweroff"'
 fi
+sdb_options=(--sdb)
+if [[ $init == /bin/sh ]]; then sdb_options+=(--wait-sdb-ready); fi
 if (( host_browser )); then
-    runner=("$project/scripts/qemu-boot-status" --host-browser "${runner[@]}")
-elif [[ $init == /bin/sh ]]; then
-    runner=("$project/scripts/qemu-boot-status" "${runner[@]}")
+    runner=("$project/scripts/qemu-boot-status" "${sdb_options[@]}" --host-browser "${runner[@]}")
+else
+    runner=("$project/scripts/qemu-boot-status" "${sdb_options[@]}" "${runner[@]}")
 fi
 if [[ -n ${TIZEN_QMP:-} ]]; then
     args+=(-qmp "unix:${TIZEN_QMP//,/,,},server=on,wait=off")
@@ -231,5 +233,5 @@ exec "${runner[@]}" "$qemu" "${args[@]}" -machine pc -smp "${TIZEN_CPUS:-2}" -m 
     -blockdev "driver=file,node-name=file,filename=${disk//,/,,}" \
     -blockdev "driver=$format,node-name=root,file=file" \
     -device virtio-blk-pci,drive=root \
-    -netdev user,id=net -device virtio-net-pci,netdev=net,romfile= \
+    -netdev user,id=net,hostfwd=tcp:127.0.0.1:0-:26101 -device virtio-net-pci,netdev=net,romfile= \
     -device virtio-rng-pci
