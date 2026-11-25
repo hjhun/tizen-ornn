@@ -14,12 +14,12 @@ Windows의 Ubuntu WSL2와 x86_64 Ubuntu에서 같은 Linux ARM/v7 OCI 이미지�
 ```bash
 runner="$PWD/container/armv7l/run-isolated"
 cd tests/cross-rpm
-"$runner" /usr/local/bin/ornn build
-ls RPMS/armv7l/
+"$runner" /usr/local/bin/ornn build --target armv7l --no-install
+ls Build/RPMS/armv7l/
 ```
 
 현재 디렉터리는 컨테이너의 `/workspace`에 읽기·쓰기로 연결된다. 결과는
-호스트 사용자의 `RPMS/<arch>/`에 남는다. spec은 현재 디렉터리 또는
+호스트 사용자의 `Build/RPMS/<arch>/`에 남는다. spec은 현재 디렉터리 또는
 `packaging/`에서 하나를 찾으며, 여러 개면 `--spec FILE`로 선택한다.
 `Source` 파일은 spec과 같은 디렉터리에 준비한다. 출력 위치는 `--out DIR`로
 지정한다. 처음 실행할 때만 Ubuntu의 APT 저장소에서 QEMU와 PRoot 패키지를

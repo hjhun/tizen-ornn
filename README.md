@@ -200,7 +200,15 @@ Fresh x86_64 images include the terminfo-aware `clear` command. For an existing 
 
 ## Build RPMs inside the x86_64 guest
 
-Run `ornn build` for a native RPM, `ornn build --target armv7l` for an ARMv7 RPM, or `ornn build --target aarch64` for an AArch64 RPM, in a checkout containing the spec and its sources. Cross builds use the selected architecture’s C/C++ compiler and Tizen sysroot.
+Run `ornn build` for an x86_64 RPM, `ornn build --target armv7l` for an ARMv7 RPM, or `ornn build --target aarch64` for an AArch64 RPM, in a checkout containing the spec and its sources. Cross builds use the selected architecture’s C/C++ compiler and Tizen sysroot.
+
+For a tracked spec in a Git checkout, run from the checkout root. If the local `Source0: %{name}-%{version}.tar.gz` is missing, Ornn creates it from the current contents of Git-tracked files. Use `git add` for new source files you want to include. Existing archives and other declared sources are used as supplied.
+
+For native builds, Ornn installs missing build dependencies system-wide from the guest’s configured Zypper repositories. Find the resulting packages in `Build/RPMS/<arch>/`. Run `ornn clean` to remove the project’s `Build/` directory. Installed dependencies stay available for subsequent builds.
+
+A successful native build installs its RPMs in the guest so dependent projects see the new headers and libraries immediately. Use `ornn build --no-install` to produce RPMs only. From the project root, run `ornn restore` to reinstall its last installed package set from the configured HTTP(S) repositories, or name packages explicitly, for example `ornn restore bundle bundle-devel`. The per-project list in `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<key>/.installed-rpms` survives `ornn clean`. RPM checks installed build dependencies against the guest package database.
+
+Run `ornn status` from the project root to compare the last build with the installed RPM identities. A different ID indicates a different build. After an interrupted install, retry the same package set or run `ornn restore`. Clean removes only a `Build/` created and marked by Ornn. Pre-existing directories are preserved.
 
 ## Choose the snapshot source
 

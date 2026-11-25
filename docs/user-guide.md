@@ -159,6 +159,14 @@ ctest --test-dir "$HOME/build-arm" --output-on-failure
 
 RPM spec과 소스가 있는 디렉터리에서 x86_64 게스트의 `ornn build --target armv7l` 또는 `ornn build --target aarch64`로 해당 아키텍처의 RPM을 생성할 수 있습니다.
 
+Git 체크아웃 루트에서 `ornn build`를 실행하면 기본으로 x86_64 RPM을 빌드합니다. Git이 추적하는 spec에서 로컬 `Source0: %{name}-%{version}.tar.gz`를 선언하고 해당 파일이 없으면, Ornn이 추적 중인 파일의 현재 내용으로 임시 압축 파일을 만듭니다. 새 소스 파일은 `git add`로 포함하세요. 기존 압축 파일과 추가 manifest는 그대로 사용합니다.
+
+네이티브 빌드에 필요한 패키지가 없으면 Ornn이 게스트의 Zypper 저장소에서 찾아 시스템 전체에 설치합니다. 결과 RPM은 프로젝트의 `Build/RPMS/<arch>/`에 생성됩니다. `ornn clean`은 프로젝트의 `Build/`를 삭제하며 설치된 의존성은 다음 빌드에서 재사용됩니다.
+
+기본 네이티브 빌드는 생성한 RPM을 게스트에 즉시 설치합니다. 예를 들어 `bundle`에서 `ornn build`를 실행하고 `rpc-port`에서 빌드하면 새 헤더와 라이브러리를 사용합니다. 패키지만 만들려면 `ornn build --no-install`을 사용하세요. 프로젝트 루트에서 `ornn restore`를 실행하면 마지막으로 설치한 패키지를 서버 버전으로 복원합니다. 목록은 `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<키>/.installed-rpms`에 저장되므로 `Build/`를 삭제한 뒤에도 복원할 수 있습니다. 특정 패키지만 복원하려면 `ornn restore bundle bundle-devel`을 사용하세요.
+
+프로젝트 루트에서 `ornn status`를 실행하면 마지막 빌드와 게스트 설치본의 RPM 식별값을 비교합니다. `different`는 두 파일이 다르다는 뜻입니다. 설치가 중단되면 같은 패키지 세트를 다시 빌드하거나 `ornn restore`로 복구하세요. `ornn clean`은 Ornn이 직접 만들고 표시한 `Build/`만 삭제합니다. 기존 디렉터리는 보존합니다.
+
 ## 6. 호스트에서 재연결하거나 종료하기
 
 터미널 창을 닫아도 VM과 빌드는 계속 실행됩니다. 같은 콘솔에 돌아가려면 **Open terminal**을 누르세요. CLI에서는 `IMAGE_DIR`을 `tizen-ornn images`에 표시된 경로로 바꿔 실행하세요.

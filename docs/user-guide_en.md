@@ -159,6 +159,14 @@ ctest --test-dir "$HOME/build-arm" --output-on-failure
 
 In a checkout containing an RPM spec and its sources, run `ornn build --target armv7l` or `ornn build --target aarch64` to build an ARM RPM inside the x86_64 guest.
 
+Run `ornn build` at the Git checkout root to build an x86_64 RPM by default. If a tracked spec declares a missing local `Source0: %{name}-%{version}.tar.gz`, Ornn creates it from the current contents of tracked files. Use `git add` to include new source files. Existing archives and additional manifests are used as supplied.
+
+For native builds, Ornn installs missing build dependencies system-wide from the guest’s configured Zypper repositories. Find the resulting packages in `Build/RPMS/<arch>/`. Run `ornn clean` to remove the project’s `Build/` directory. Installed dependencies stay available for subsequent builds.
+
+A successful native build installs its RPMs in the guest so dependent projects see the new headers and libraries immediately. Use `ornn build --no-install` to produce RPMs only. From the project root, run `ornn restore` to reinstall its last installed package set from the configured HTTP(S) repositories, or name packages explicitly, for example `ornn restore bundle bundle-devel`. The per-project list in `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<key>/.installed-rpms` survives `ornn clean`. RPM checks installed build dependencies against the guest package database.
+
+Run `ornn status` from the project root to compare the last build with the installed RPM identities. A different ID indicates a different build. After an interrupted install, retry the same package set or run `ornn restore`. Clean removes only a `Build/` created and marked by Ornn. Pre-existing directories are preserved.
+
 ## 6. Reconnect or shut down from the host
 
 Closing the terminal leaves the VM and its builds running. Choose **Open terminal** to rejoin the console. For the CLI, replace `IMAGE_DIR` with the path from `tizen-ornn images`.

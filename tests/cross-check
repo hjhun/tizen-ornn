@@ -14,7 +14,9 @@ samples=/usr/share/tizen-dev/examples/cross-rpm
 for arch in x86_64 armv7l aarch64; do
     top="$work/$arch"
     mkdir -p "$top/payload"
-    if ! (cd "$samples" && ornn build --target "$arch" --out "$top/RPMS") >"$top/build.log" 2>&1; then
+    args=(--no-install --out "$top/RPMS")
+    if [[ $arch != x86_64 ]]; then args+=(--target "$arch"); fi
+    if ! (cd "$samples" && ornn build "${args[@]}") >"$top/build.log" 2>&1; then
         cat "$top/build.log" >&2
         exit 1
     fi

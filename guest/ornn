@@ -1,29 +1,288 @@
 #!/bin/bash
-# RPM build for projects providing a spec and its declared sources.
+# Build binary RPMs from a project spec.
 set -euo pipefail
-usage() { echo 'Usage: ornn build [--target x86_64|armv7l|aarch64] [--spec FILE] [--out DIR]'; }
+usage() {
+    cat <<'HELP'
+Usage: ornn COMMAND [OPTIONS]
+
+  build       Build RPMs from the project spec. Install native results system-wide.
+  clean       Remove the current project's Build/ directory.
+  status      Compare the last build with packages installed in the guest.
+  restore     Download and reinstall server RPMs in place of local builds.
+
+Run ornn COMMAND --help for options and examples.
+HELP
+}
+
+build_help() {
+    cat <<'HELP'
+Usage: ornn build [--spec FILE] [--target ARCH] [--out DIR] [--no-install]
+
+Run from the project root. Ornn finds a spec here or in packaging/, installs
+missing native BuildRequires from the configured repositories, and runs rpmbuild.
+The spec controls testing: CTest/gtests run when invoked by %check. A failing
+%check stops the build before the resulting packages can be installed.
+After a successful native build, it installs all newly built subpackages together,
+including replacements with the same version. Cross builds only produce RPMs.
+
+  --spec FILE     Select a spec when the project contains more than one.
+  --target ARCH   x86_64, armv7l, or aarch64. Defaults to x86_64.
+  --out DIR       Output RPMs to DIR/<arch>/ (default: Build/RPMS/<arch>/).
+  --no-install    Build the RPMs without installing the resulting packages.
+  -h, --help      Show this help.
+
+Examples:
+  ornn build
+  ornn build --spec packaging/example.spec --no-install
+  ornn build --target aarch64 --out Build/cross
+
+Run ornn clean to clear default project outputs. Installed packages stay in the guest.
+HELP
+}
+
+clean_project() {
+    case "${1:-}" in
+        -h|--help)
+            cat <<'HELP'
+Usage: ornn clean
+
+Run from the project root to delete an Ornn-created Build/, including RPMs and intermediate
+files. Installed RPMs and the per-user restore list remain available.
+Output written outside Build/ with --out is left in its chosen location.
+HELP
+            return ;;
+    esac
+    (( $# == 0 )) || { echo 'Usage: ornn clean' >&2; return 2; }
+    exec 8< .
+    flock -xn 8 || { echo 'A project build or clean is in progress.' >&2; return 1; }
+    if [[ -L Build ]]; then
+        echo 'Build is a symbolic link. Refusing to remove it.' >&2
+        return 1
+    fi
+    [[ -e Build ]] || { echo 'Build/ is already clean.'; return; }
+    if [[ ! -d Build ]] || mountpoint -q Build; then
+        echo 'Expected a project Build/ directory on the project filesystem.' >&2
+        return 1
+    fi
+    if [[ ! -f Build/.ornn-build-dir || -L Build/.ornn-build-dir ]] ||
+       ! cmp -s Build/.ornn-build-dir <(pwd -P); then
+        echo 'Build/ has no matching Ornn ownership marker. Leaving it in place.' >&2
+        return 1
+    fi
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        local tracked
+        tracked=$(git ls-files -- Build)
+        [[ -z $tracked ]] || { echo 'Build/ contains tracked files. Clean stopped.' >&2; return 1; }
+    fi
+    rm -rf --one-file-system -- Build
+    echo 'Removed Build/.'
+}
+
+restore_help() {
+    cat <<'HELP'
+Usage: ornn restore [PACKAGE ...]
+
+With no package arguments, restore the packages from this project's last native
+install. With explicit package names, the build directory is not required.
+Ornn downloads matching packages for their installed architecture from enabled
+HTTP(S) repositories, then reinstalls them together, even at the same version.
+If a server package is missing, the installed set is left intact.
+
+Project install lists live under ~/.local/share/ornn (or XDG_DATA_HOME/ornn).
+
+  -h, --help  Show this help.
+
+Examples:
+  ornn restore
+  ornn restore bundle bundle-devel
+HELP
+}
+
+as_root() {
+    if (( EUID == 0 )); then
+        "$@"
+    else
+        su - root -c 'exec "$@"' -- sh "$@"
+    fi
+}
+
+install_rpms() {
+    as_root /usr/bin/zypper --non-interactive install --no-recommends \
+        --allow-unsigned-rpm --force -- "$@"
+    local file package expected installed
+    for file do
+        package=$(rpm -qp --qf '%{NAME}.%{ARCH}' "$file")
+        expected=$(rpm -qp --qf '%{SIGMD5}' "$file")
+        installed=$(rpm -q --qf '%{SIGMD5}' "$package")
+        if [[ -z $expected || $expected == '(none)' || $expected != "$installed" ]]; then
+            echo "Installed package differs from $file: $package" >&2
+            return 1
+        fi
+    done
+}
+
+project_state_dir() {
+    local key
+    key=$(pwd -P | sha256sum)
+    printf '%s/ornn/projects/%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}" "${key%% *}"
+}
+
+# Serialize package publication, install receipts and recovery in this project.
+lock_state() {
+    state=$(project_state_dir)
+    mkdir -p -- "$state"
+    exec 9< "$state"
+    flock -x 9
+}
+
+installed_digest() {
+    rpm -q --qf '%{SIGMD5}' "$1" 2>/dev/null
+}
+
+recover_install() {
+    [[ -f $state/.install-pending ]] || return 0
+    local name digest actual
+    while read -r name digest; do
+        actual=$(installed_digest "$name") && [[ $actual == "$digest" ]] || return 0
+    done < "$state/.install-pending"
+    mv -fT -- "$state/.install-pending" "$state/.installed-rpms"
+}
+
+status_project() {
+    case ${1:-} in
+        -h|--help)
+            cat <<'HELP'
+Usage: ornn status
+
+Compare this project's last successful build (including --no-install) against
+the guest RPM database. The local record survives ornn clean.
+  local       Installed and local RPM identities match.
+  different   A different build of the package is installed.
+  missing     The package is absent from the guest.
+  unknown     An older install list recorded the name without an RPM identity.
+HELP
+            return ;;
+    esac
+    (( $# == 0 )) || { echo 'Usage: ornn status' >&2; return 2; }
+    lock_state
+    recover_install
+    if [[ -e $state/.install-pending ]]; then
+        echo 'Unfinished install. Retry the build or run ornn restore.' >&2
+    fi
+    local record name digest actual result
+    record=$state/.last-build
+    [[ -f $record ]] || record=$state/.installed-rpms
+    [[ -f $record ]] || { echo 'No recorded build for this project.'; return; }
+    printf 'PACKAGE\tSTATUS\tLOCAL RPM ID\tINSTALLED RPM ID\n'
+    while read -r name digest; do
+        if ! actual=$(installed_digest "$name"); then
+            result=missing
+            actual=-
+        elif [[ -z $digest ]]; then result=unknown
+        elif [[ $actual == "$digest" ]]; then result=local
+        else result=different
+        fi
+        printf '%s\t%s\t%s\t%s\n' "$name" "$result" "${digest:--}" "$actual"
+    done < "$record"
+}
+
+restore() {
+    local state name
+    local -a packages=() repos=() files=()
+    while (( $# )); do
+        case $1 in
+            -h|--help) restore_help; return ;;
+            -*) restore_help >&2; return 2 ;;
+            *) packages+=("$1"); shift ;;
+        esac
+    done
+    lock_state
+    recover_install
+    local recover_set=false
+    if (( ! ${#packages[@]} )); then
+        if [[ ! -s $state/.installed-rpms && ! -s $state/.install-pending ]]; then
+            echo "No install list for this project. Supply the installed package names." >&2
+            return 2
+        fi
+        local record digest
+        if [[ -e $state/.install-pending ]]; then recover_set=true; fi
+        for record in "$state/.installed-rpms" "$state/.install-pending"; do
+            [[ -f $record ]] || continue
+            while read -r name digest; do
+                if [[ $recover_set == true ]] && ! rpm -q "$name" >/dev/null; then
+                    continue
+                fi
+                packages+=("$name")
+            done < "$record"
+        done
+        if (( ! ${#packages[@]} )); then
+            rm -f -- "$state/.install-pending"
+            echo 'No installed packages to restore.'
+            return
+        fi
+    fi
+    work=$(mktemp -d /var/tmp/ornn-restore.XXXXXXXX)
+    trap 'rm -rf -- "$work"' EXIT
+    for name in "${packages[@]}"; do
+        [[ $name =~ ^[[:alnum:]][[:alnum:]+._-]*$ ]] || { echo "Invalid package: $name" >&2; return 2; }
+        rpm -q --qf '%{NAME}.%{ARCH}\n' "$name" || { echo "Package is not installed: $name" >&2; return 1; }
+    done > "$work/requested"
+    sort -u -o "$work/requested" "$work/requested"
+    packages=()
+    while IFS= read -r name; do packages+=("$name"); done < "$work/requested"
+    zypper --xmlout repos --uri | python3 -c '
+import sys
+import xml.etree.ElementTree as ET
+for repo in ET.parse(sys.stdin).iter("repo"):
+    urls = [u.text or "" for u in repo.findall("url")]
+    if repo.get("enabled") == "1" and urls and all(u.startswith(("http://", "https://")) for u in urls):
+        print(repo.attrib["alias"])
+' > "$work/repos"
+    while IFS= read -r name; do repos+=(--repo "$name"); done < "$work/repos"
+    (( ${#repos[@]} )) || { echo 'No enabled HTTP(S) RPM repository.' >&2; return 1; }
+    zypper --non-interactive --pkg-cache-dir "$work/cache" download "${repos[@]}" -- "${packages[@]}"
+    find "$work/cache" -type f -name '*.rpm' -print0 > "$work/files"
+    while IFS= read -r -d '' name; do files+=("$name"); done < "$work/files"
+    (( ${#files[@]} )) || { echo 'No matching server RPMs downloaded.' >&2; return 1; }
+    rpm -qp --qf '%{NAME}.%{ARCH}\n' "${files[@]}" | sort > "$work/downloaded"
+    diff -u "$work/requested" "$work/downloaded" || { echo 'Incomplete server RPM set.' >&2; return 1; }
+    install_rpms "${files[@]}"
+    if [[ $recover_set == true ]]; then
+        list=$(mktemp -- "$state/.restore.XXXXXXXX")
+        cp -- "$work/requested" "$list"
+        mv -fT -- "$list" "$state/.installed-rpms"
+        rm -- "$state/.install-pending"
+    fi
+}
+
 case ${1:-} in
     -h|--help) usage; exit 0 ;;
     build) shift ;;
+    status) shift; status_project "$@"; exit ;;
+    clean) shift; clean_project "$@"; exit ;;
+    restore) shift; restore "$@"; exit ;;
     *) usage >&2; exit 2 ;;
 esac
 root=$PWD
-out=$root/RPMS
+builddir=$root/Build
+out=$builddir/RPMS
 spec=
-target=
+target=x86_64
+install_result=true
 while (( $# )); do
     case $1 in
         --spec|--out|--target)
-            [[ -n ${2:-} ]] || { usage >&2; exit 2; }
+            [[ -n ${2:-} ]] || { build_help >&2; exit 2; }
             case $1 in
                 --spec) spec=$2 ;;
-                --out) out=$2 ;;
+                --out) out=$2; builddir=$out ;;
                 --target)
-                    case $2 in x86_64|armv7l|aarch64) target=$2 ;; *) usage >&2; exit 2 ;; esac ;;
+                    case $2 in x86_64|armv7l|aarch64) target=$2 ;; *) build_help >&2; exit 2 ;; esac ;;
             esac
             shift 2 ;;
-        -h|--help) usage; exit 0 ;;
-        *) usage >&2; exit 2 ;;
+        --no-install) install_result=false; shift ;;
+        -h|--help) build_help; exit 0 ;;
+        *) build_help >&2; exit 2 ;;
     esac
 done
 if [[ -z $spec ]]; then
@@ -36,25 +295,76 @@ if [[ -z $spec ]]; then
     spec=${candidates[0]}
 fi
 spec=$(readlink -e -- "$spec")
+# Keep clean from racing with RPM preparation or publication.
+exec 8< .
+flock -s 8
+case "$out/" in
+    "$root/Build/"*|Build/*|./Build/*)
+        if mkdir -- "$root/Build" 2>/dev/null; then
+            pwd -P > "$root/Build/.ornn-build-dir"
+        fi ;;
+esac
 mkdir -p -- "$out"
 out=$(readlink -e -- "$out")
-work=$(mktemp -d)
+# RPM expands build paths in shell commands. Shared mounts may also lack
+# executable files or native symlink semantics. Keep their scratch space local.
+builddir=$(readlink -e -- "$builddir")
+mount_options=$(findmnt -n -o OPTIONS -T "$builddir")
+if [[ $builddir =~ ^/[a-zA-Z0-9_./-]+$ && ,$mount_options, != *,noexec,* &&
+      $(findmnt -n -o FSTYPE -T "$builddir") != 9p ]]; then
+    work=$(mktemp -d "$builddir/.ornn-build.XXXXXXXX")
+else
+    work=$(mktemp -d /var/tmp/ornn-build.XXXXXXXX)
+fi
 trap 'rm -rf -- "$work"' EXIT
 arch=$(rpm -q --qf '%{ARCH}' filesystem)
-builder=(rpmbuild --target "$arch")
-if [[ -n $target && $target != "$arch" ]]; then
+builder=(rpmbuild --target "$target")
+if [[ $target != "$arch" ]]; then
     if [[ $arch != x86_64 ]]; then
         echo "Cannot cross-compile from $arch to $target." >&2
         exit 2
     fi
     builder=(tizen-rpmbuild "$target")
 fi
-options=(--define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")")
+sourcedir=$(dirname -- "$spec")
+mkdir "$work/tmp"
+options=(--define "_topdir $work" --define "_tmppath $work/tmp")
+# Native Tizen checkouts commonly declare a release tarball generated from Git.
+# Keep supplied sources authoritative and stage the generated archive privately.
+if [[ $root -ef $(git rev-parse --show-toplevel 2>/dev/null) ]] &&
+   git ls-files --error-unmatch -- "$spec" >/dev/null 2>&1; then
+    parser=(rpmspec --target "$target" "${options[@]}" --define "_sourcedir $sourcedir")
+    base=$("${parser[@]}" -q --srpm --qf '%{NAME}-%{VERSION}' "$spec")
+    archive=$base.tar.gz
+    if [[ ! -e $sourcedir/$archive && ! -L $sourcedir/$archive ]]; then
+        source0=$("${parser[@]}" -P "$spec" |
+            awk 'tolower($1) ~ /^source0?:$/ { source=$2 } END { print source }')
+        if [[ $source0 == "$archive" ]]; then
+            mkdir "$work/SOURCES"
+            find "$sourcedir" -mindepth 1 -maxdepth 1 -exec ln -s -t "$work/SOURCES" -- {} +
+            sourcedir=$work/SOURCES
+            git ls-files -z > "$work/tracked"
+            python3 - "$sourcedir/$archive" "$base" "$work/tracked" <<'PYTHON'
+import os
+import sys
+import tarfile
+
+archive, prefix, file_list = sys.argv[1:]
+with open(file_list, "rb") as paths, tarfile.open(archive, "w:gz") as output:
+    for raw in paths.read().split(b"\0"):
+        path = os.fsdecode(raw)
+        if os.path.isfile(path) or os.path.islink(path):
+            output.add(path, arcname=f"{prefix}/{path}", recursive=False)
+PYTHON
+        fi
+    fi
+fi
+options+=(--define "_sourcedir $sourcedir")
 # Let RPM evaluate versioned/virtual dependencies and architecture conditionals.
 if ! LC_ALL=C "${builder[@]}" "${options[@]}" --nobuild -bp "$spec" >"$work/check" 2>&1; then
     cat "$work/check" >&2
     # Zypper manages native packages. Cross-target libraries belong in the sysroot.
-    if [[ -n $target && $target != "$arch" ]]; then exit 1; fi
+    if [[ $target != "$arch" ]]; then exit 1; fi
     grep -qx 'error: Failed build dependencies:' "$work/check" || exit 1
     rpmspec --target "$arch" "${options[@]}" -q --buildrequires "$spec" >"$work/requires"
     requires=()
@@ -64,17 +374,20 @@ if ! LC_ALL=C "${builder[@]}" "${options[@]}" --nobuild -bp "$spec" >"$work/chec
     (( ${#requires[@]} )) || exit 1
     # Only the package transaction needs root. Parse and build the spec as the caller.
     resolver=(/usr/bin/zypper --non-interactive install --no-recommends --capability --)
-    if (( EUID == 0 )); then
-        "${resolver[@]}" "${requires[@]}"
-    else
-        su - root -c 'exec "$@"' -- sh "${resolver[@]}" "${requires[@]}"
-    fi
+    as_root "${resolver[@]}" "${requires[@]}"
 fi
 "${builder[@]}" "${options[@]}" -bb "$spec"
 # Publish only packages from this successful invocation, retaining subpackages.
 shopt -s nullglob
 artifacts=("$work"/RPMS/*/*.rpm)
 (( ${#artifacts[@]} )) || { echo 'The spec produced no binary RPMs.' >&2; exit 1; }
+lock_state
+recover_install
+rpm -qp --qf '%{NAME}.%{ARCH} %{SIGMD5}\n' "${artifacts[@]}" > "$work/built"
+if ! awk 'NF != 2 || length($2) != 32 || $2 ~ /[^[:xdigit:]]/ {exit 1}' "$work/built"; then
+    echo 'Could not identify all built RPMs.' >&2
+    exit 1
+fi
 for rpm in "${artifacts[@]}"; do
     destination=$out/${rpm##*/RPMS/}
     mkdir -p -- "$(dirname -- "$destination")"
@@ -90,3 +403,20 @@ for rpm in "${artifacts[@]}"; do
     fi
     printf '%s\n' "$destination"
 done
+
+list=$(mktemp -- "$state/.last-build.XXXXXXXX")
+cp -- "$work/built" "$list"
+mv -fT -- "$list" "$state/.last-build"
+if [[ $install_result == true && $target == "$arch" ]]; then
+    if [[ -e $state/.install-pending ]] &&
+       ! awk 'NR==FNR {built[$1]=1; next} !($1 in built) {exit 1}' \
+            "$work/built" "$state/.install-pending"; then
+        echo 'Run ornn restore to resolve the unfinished install before changing its package set.' >&2
+        exit 1
+    fi
+    list=$(mktemp -- "$state/.install-pending.XXXXXXXX")
+    cp -- "$work/built" "$list"
+    mv -fT -- "$list" "$state/.install-pending"
+    install_rpms "${artifacts[@]}"
+    mv -fT -- "$state/.install-pending" "$state/.installed-rpms"
+fi

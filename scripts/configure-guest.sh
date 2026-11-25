@@ -37,6 +37,12 @@ for account in root tizen owner; do
         install -d -o "$uid" -g "$gid" "$dest/workspace" "$dest/dev-setup"
         cp -R "$project/guest/dev-setup/." "$dest/dev-setup/"
         chown -R "$uid:$gid" "$dest/dev-setup"
+        install -d -o "$uid" -g "$gid" "$dest/.agents" "$dest/.agents/skills"
+        skill="$dest/.agents/skills/ornn"
+        if [[ ! -e "$skill" && ! -L "$skill" ]]; then
+            ln -s ../../dev-setup/skills/ornn "$skill"
+            chown -h "$uid:$gid" "$skill"
+        fi
         # Keep image defaults in the user's editable setup kit.
         for f in bashrc bash_profile vimrc; do
             if [[ ! -e "$dest/.$f" && ! -L "$dest/.$f" ]]; then

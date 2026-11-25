@@ -7,7 +7,7 @@ trap 'rm -rf -- "$tmp"' EXIT
 grep -E '^ID="?tizen"?$' /etc/os-release
 test "$(id -u)" != 0
 test "$(gcc -dumpmachine)" = armv7l-tizen-linux-gnueabi
-ornn build --out "$tmp/out"
+ornn build --target armv7l --no-install --out "$tmp/out"
 package="$tmp/out/armv7l/tizen-cross-probe-1.0-1.armv7l.rpm"
 test "$(rpm -qp --qf '%{ARCH}' "$package")" = armv7l
 rpm -K "$package"
