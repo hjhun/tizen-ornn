@@ -78,10 +78,6 @@ fi
 case "$(readlink -f /home/tizen)" in
     /opt/usr/home/tizen|/home/tizen)
         if [ -d /home/tizen ] && [ ! -L /home/tizen ]; then
-            # Keep files on the root disk reachable without importing private
-            # keys or overwriting an existing host workspace.
-            mkdir -p /run/ornn-image-home
-            mount --bind /home/tizen /run/ornn-image-home
-            mount --bind "$target" /home/tizen
+            mount_preserving_files --bind "$target" /home/tizen/share
         fi ;;
 esac

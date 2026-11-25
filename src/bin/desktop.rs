@@ -490,7 +490,7 @@ impl Launcher {
             }
             ui.separator();
             ui.label(design::heading(lang.text("Shared folder (x86_64)", "공유 폴더 (x86_64)"), 20.0));
-            ui.label(lang.text("Available at /home/tizen and /mnt/host when the image starts.", "부팅하면 /home/tizen과 /mnt/host에서 이 폴더를 사용할 수 있습니다."));
+            ui.label(lang.text("Available at /home/tizen/share and /mnt/host when the image starts.", "부팅하면 /home/tizen/share 및 /mnt/host에서 이 폴더를 사용할 수 있습니다."));
             ui.add(
                 egui::TextEdit::singleline(&mut self.share)
                     .desired_width(f32::INFINITY)

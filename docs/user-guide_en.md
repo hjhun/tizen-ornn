@@ -73,7 +73,7 @@ tizen-ornn build --name dev-x86
 tizen-ornn images
 ```
 
-Select a stopped x86_64 image and click **Update image** to check the latest snapshot. Both disks use the same host folder as `/home/tizen`. Boot the older disk to copy any files kept only in its original home from `/run/ornn-image-home`.
+Select a stopped x86_64 image and click **Update image** to check the latest snapshot. Both disks use the same host folder at `/home/tizen/share`. Files previously kept in the shared home are now under `~/share`. Copy any projects or settings you need into your guest home.
 
 ## 3. Set up the shared folder and boot Tizen
 

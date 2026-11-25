@@ -55,7 +55,7 @@ In a second host terminal, run `tizen-ornn install ed` to install a Tizen RPM or
 
 ## Share a host directory
 
-Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen` with the same read/write or read-only access. Changes through either path are visible on the host.
+Windows and Ubuntu mount a host folder at `/mnt/host` on every x86_64 development guest boot. The default is `share` under the launcher work directory (or `TIZEN_ORNN_HOME` when set). The launcher creates this default directory. The same folder is available at `/home/tizen/share` with the same read/write or read-only access. Changes through either path are visible on the host.
 
 Use **Add image…** to connect an existing image directory. The launcher selects it immediately and remembers it in the current work directory’s image library. Use **Disconnect image…** to remove an external folder from the library while keeping its files. For an image built in the managed store, stop the guest and choose **Delete image…** to review its path and delete its guest disk.
 
@@ -74,7 +74,9 @@ tizen-ornn share-dir --reset      # restore the default for future boots
 
 Use `run --share PATH` or `run --share-ro PATH` for a single boot. A running VM keeps its existing mount until shutdown. On Ubuntu, saved and one-boot shares map the host user to the guest developer account `tizen`. Start QEMU as your ordinary host user. WSL paths such as `/mnt/c/Users/me/My Project` work with the Ubuntu launcher. Native Windows uses a local NTFS folder and a 9P-capable QCW UCRT64 QEMU runtime.
 
-Before mounting, the launcher’s guest startup script renames a populated guest `/mnt/host` directory to `/mnt/host.before-host` on the same guest disk. Hidden files and permissions are preserved. If that name already exists, the script selects `.1`, `.2`, and so on. Later boots leave those backups in place. While the host home is mounted, the original on-disk home is accessible at `/run/ornn-image-home`. Copy any older projects you want into `$HOME` as the `tizen` user. On login, Ornn copies the development kit into a writable shared home, including an existing `~/dev-setup`. Files shipped with the image are refreshed when their contents differ. Additional files, installed tools and existing home-level dotfiles are preserved. Use a dedicated host folder: shell profiles, credentials you create and tools installed under this home are shared by the images that use it.
+The guest keeps `/home/tizen` on its own disk, so tools, shell settings and caches remain writable even with a read-only share. If an earlier Ornn version shared your whole home, its host files are now visible under `~/share`. Copy the projects and settings you need into your guest home.
+
+If a guest mount point such as `~/share` or `/mnt/host` already contains files, Ornn preserves it beside the mount point as `share.before-host` or `host.before-host`. A numeric suffix protects existing backups.
 
 ## Host networking
 

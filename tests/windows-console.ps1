@@ -46,9 +46,9 @@ try {
         Wait-Console 'tizen@[^\r\n]*\$ '
         Send-Console 'id; test "$(id -un)" = tizen && test "$(id -u)" != 0 && id -G | tr " " "\n" | grep -qx 0 && rpm -q git >/dev/null && printf "ORNN_%s_OK\n" ROOTGROUP'
         Wait-Console '(?m)^ORNN_ROOTGROUP_OK\r?$'
-        Send-Console 'test "$(cat /mnt/host/host.txt)" = from-host && echo guest-write > /home/tizen/fixture-check && test "$(cat /mnt/host/fixture-check)" = guest-write && printf "ORNN_%s_OK\n" SHARE'
+        Send-Console 'test "$(cat /mnt/host/host.txt)" = from-host && echo guest-write > /home/tizen/share/fixture-check && test "$(cat /mnt/host/fixture-check)" = guest-write && printf "ORNN_%s_OK\n" SHARE'
         Wait-Console '(?m)^ORNN_SHARE_OK\r?$'
-        Send-Console 'f=$(mktemp "$HOME/.private.XXXXXX") && test "$(stat -c %u "$f")" = "$(id -u)" && echo private > "$f" && rm "$f" && test -x ~/dev-setup/install.sh && test -d ~/workspace && cmp /usr/share/tizen-dev/dev-setup/install.sh ~/dev-setup/install.sh && printf "ORNN_%s_OK\n" DEVHOME'
+        Send-Console 'test "$(findmnt -nr -o FSTYPE -T "$HOME")" = ext4 && f=$(mktemp "$HOME/.private.XXXXXX") && test "$(stat -c %u "$f")" = "$(id -u)" && echo private > "$f" && rm "$f" && test -x ~/dev-setup/install.sh && test -d ~/workspace && cmp /usr/share/tizen-dev/dev-setup/install.sh ~/dev-setup/install.sh && printf "ORNN_%s_OK\n" DEVHOME'
         Wait-Console '(?m)^ORNN_DEVHOME_OK\r?$'
         Send-Console 'su -c "sync; systemctl --force poweroff"'
     } else {

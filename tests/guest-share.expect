@@ -52,12 +52,15 @@ set failed [catch {
         spawn -noecho $root/scripts/run-vm.sh --foreground --no-host-network $option $share
         root_login
         send -- "stty -echo\r"
+        guest {findmnt -nr -o FSTYPE -T /home/tizen | grep -x ext4}
+        guest {findmnt -nr -o FSTYPE -T /home/tizen/share | grep -x 9p}
         guest {findmnt -nr -o FSTYPE -T /mnt/host | grep -x 9p}
         if {$option eq "--share"} {
-            guest {su - tizen -c 'set -e; cmp /usr/share/tizen-dev/dev-setup/bin/install-ai-clis ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/install.sh; test "$(cat ~/dev-setup/personal.txt)" = keep'}
+            guest {su - tizen -c 'set -e; cmp /usr/share/tizen-dev/dev-setup/bin/install-ai-clis ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/bin/install-ai-clis; test -x ~/dev-setup/install.sh; test ! -e ~/dev-setup/personal.txt'}
             guest {su - tizen -c 'set -e; cd /mnt/host; test "$(id -u)" = 10000; test "$(cat host.txt)" = from-host; echo from-guest > guest.txt'}
-            guest {su - tizen -c 'set -e; cd /home/tizen; test "$(cat host.txt)" = from-host; echo legacy > owner.txt'}
-            if {[contents [file join $share owner.txt]] ne "legacy"} {error "Shared home failed"}
+            guest {su - tizen -c 'set -e; cd /home/tizen/share; test "$(cat host.txt)" = from-host; echo legacy > owner.txt'}
+            if {[contents [file join $share dev-setup bin install-ai-clis]] ne "outdated"} {error "Login modified host tools"}
+            if {[contents [file join $share owner.txt]] ne "legacy"} {error "Shared folder failed"}
             if {[contents [file join $share guest.txt]] ne "from-guest"} {error "Host missed guest write"}
             write_file [file join $share host.txt] changed-on-host
             guest {su - tizen -c 'test "$(cat /mnt/host/host.txt)" = changed-on-host'}
@@ -65,11 +68,12 @@ set failed [catch {
             guest {su - tizen -c 'set -e; cd /mnt/host; test "$(cat host.txt)" = changed-on-host; LC_ALL=C touch denied 2>&1 | grep -F "Read-only file system"'}
             # Also exercise the host export's readonly flag against guest root.
             guest {mount -o remount,rw /mnt/host 2>/dev/null || :; LC_ALL=C touch /mnt/host/root-denied 2>&1 | grep -F 'Read-only file system'}
-            guest {LC_ALL=C touch /home/tizen/home-denied 2>&1 | grep -F 'Read-only file system'}
+            guest {LC_ALL=C touch /home/tizen/share/home-denied 2>&1 | grep -F 'Read-only file system'}
             foreach denied {denied root-denied home-denied} {
                 if {[file exists [file join $share $denied]]} {error "Guest modified read-only export"}
             }
-            guest {test -d /run/ornn-image-home && echo original > /run/ornn-image-home/.home-test && test ! -e /home/tizen/.home-test}
+            guest {su - tizen -c 'echo original > ~/.home-test && ln -s .home-test ~/.home-link && test ! -e ~/share/.home-test'}
+            guest {umount /home/tizen/share && echo local > /home/tizen/share/.ornn-share-test}
             guest {umount /home/owner/host && umount /mnt/host && echo existing > /mnt/host/.keep && mkdir -p /mnt/host.before-host && echo previous > /mnt/host.before-host/untouched}
         }
         send -- "sync; systemctl --force poweroff\r"
@@ -93,15 +97,18 @@ set failed [catch {
         spawn -noecho bash -o pipefail -c {"$@" | cat} bash $launcher run --headless --no-host-network
         root_login
         send -- "stty -echo\r"
+        guest {findmnt -nr -o FSTYPE -T /home/tizen | grep -x ext4}
+        guest {findmnt -nr -o FSTYPE -T /home/tizen/share | grep -x 9p}
         guest {findmnt -nr -o FSTYPE -T /mnt/host | grep -x 9p}
         guest {test "$(cat /mnt/host.before-host/untouched)" = previous && test -z "$(find /mnt/host -name .keep)"}
         guest {test "$(cat /mnt/host.before-host.1/.keep)" = existing && test ! -e /mnt/host.before-host.2}
-        guest {test "$(cat /run/ornn-image-home/.home-test)" = original && test ! -e /home/tizen/.home-test}
+        guest {test "$(cat /home/tizen/.home-link)" = original && test ! -e /home/tizen/share/.home-test}
+        guest {grep -x local /home/tizen/share.before-host*/.ornn-share-test}
         if {$configured eq "yes"} {
-            guest {su - tizen -c 'test "$(cat /mnt/host/host.txt)" = changed-on-host && echo configured > ~/configured && test "$(cat /mnt/host/configured)" = configured'}
+            guest {su - tizen -c 'test "$(cat /mnt/host/host.txt)" = changed-on-host && echo configured > ~/share/configured && test "$(cat /mnt/host/configured)" = configured'}
             if {[contents [file join $share configured]] ne "configured"} {error "Configured export failed"}
         } else {
-            guest {su - tizen -c 'echo default > ~/probe'}
+            guest {su - tizen -c 'echo default > ~/share/probe'}
             if {[contents [file join $env(TIZEN_ORNN_HOME) share probe]] ne "default"} {error "Default export failed"}
         }
         send -- "sync; systemctl --force poweroff\r"
