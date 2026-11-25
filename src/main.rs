@@ -9,7 +9,7 @@ mod ubuntu;
 mod windows;
 
 #[derive(Parser)]
-#[command(name = "tizen-ornn", version = VERSION, about = "Build and run Tizen development images")]
+#[command(name = "tizen-ornn", version = VERSION, about = "Build and run x86_64 Tizen development images")]
 struct Cli {
     /// Open the graphical guest display.
     #[arg(long, global = true, conflicts_with = "headless")]
@@ -17,7 +17,7 @@ struct Cli {
     /// Use the guest serial console only.
     #[arg(long, global = true)]
     headless: bool,
-    #[arg(long, global = true, value_parser = ["x86_64", "armv7l", "aarch64"])]
+    #[arg(long, global = true, value_parser = ["x86_64"])]
     arch: Option<String>,
     #[command(subcommand)]
     command: Option<Action>,

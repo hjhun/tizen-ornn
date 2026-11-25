@@ -53,7 +53,7 @@ def disk_at(image):
             if (image / '.root-work').exists() and not (image / '.image-ready').is_file():
                 raise ValueError(f'Image build is incomplete at {image}.')
             return disk
-    raise ValueError(f'Missing Tizen kernel or disk in {image}.')
+    raise ValueError(f'Missing x86_64 Tizen kernel or disk in {image}.')
 
 
 def selection_link(home):
@@ -104,22 +104,6 @@ def launch_choices(home):
         if disk not in seen:
             choices.append(('x86_64', path.resolve()))
             seen.add(disk)
-    for arch, kernel in ARM_KERNELS.items():
-        arm = home / f'{arch}-headed'
-        files = [arm / kernel, *(arm / 'disk' / (name + '.img') for name in ARM_PARTITIONS)]
-        if all(path.is_file() and path.stat().st_size for path in files):
-            choices.append((arch, arm))
-    return choices
-
-
-def update_choices(home):
-    choices = [item for item in launch_choices(home) if item[0] == 'x86_64']
-    for arch in ARM_KERNELS:
-        if not (home / f'{arch}-headed' / 'disk').is_dir():
-            continue
-        if not choices:
-            raise ValueError(f'{arch} image and package updates are not supported yet.')
-        print(f'{arch}-headed: image and package updates are not supported yet.')
     return choices
 
 
@@ -494,34 +478,16 @@ def execute(args):
             if choice is None:
                 return
             args.arch, picked = choice
+    if args.arch not in (None, 'x86_64'):
+        raise ValueError('Only x86_64 guest images are supported.')
     if picked and args.command in (None, 'run', 'start'):
-        arch = next((arch for arch, kernel in ARM_KERNELS.items() if (picked / kernel).is_file()), 'x86_64')
-        if args.arch and args.arch != arch:
-            raise ValueError(f'Expected a {args.arch} image at {picked}, found {arch}.')
-        args.arch = arch
+        disk_at(picked)
     if args.command == 'console':
         lock = picked / 'build.lock' if any((picked / k).is_file() for k in ARM_KERNELS.values()) else disk_at(picked)
         prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
         os.environ.pop('TMUX', None)
         os.environ.pop('TMUX_PANE', None)
         os.execvp('tmux', ['tmux', '-S', prefix + '.sock', 'attach-session', '-t', '=vm'])
-    if args.arch in ARM_KERNELS and args.command != 'delete':
-        if getattr(args, 'name', None) or getattr(args, 'build_config', None):
-            raise ValueError('Building a named repository image requires x86_64')
-        if headless or args.command not in (None, 'run', 'start', 'build'):
-            raise ValueError('ARM currently supports build and graphical run/start')
-        if any(getattr(args, key, False) for key in ('share', 'share_ro', 'host_browser', 'no_host_network')):
-            raise ValueError('these host integration options currently require x86_64')
-        os.environ['TIZEN_ARM_ARCH'] = args.arch
-        arm_home = data_home() / f'{args.arch}-headed'
-        tool = SCRIPTS / 'armv7l' / ('build-image' if args.command == 'build' else 'run')
-        image = picked or arm_home
-        if args.command != 'build' and sys.stdin.isatty() and sys.stdout.isatty():
-            lock = image / 'build.lock'
-            lock.touch(exist_ok=True)
-            session = SCRIPTS / 'console-session'
-            os.execv(session, [session, lock, '', '0', '0', tool, image])
-        os.execv(tool, [str(tool), str(image)])
     if args.command == 'config':
         configure(args.repository, args.snapshot)
         return
@@ -607,7 +573,7 @@ def execute(args):
     if args.command in ('install', 'update') and args.packages:
         active = active_image(home)
         if args.command == 'update' and interactive:
-            choices = update_choices(home)
+            choices = launch_choices(home)
             if choices:
                 choice = choose_image(choices, 'update packages in', any((home / f'{arch}-headed/disk').is_dir() for arch in ARM_KERNELS))
                 if choice is None:
@@ -665,7 +631,7 @@ def execute(args):
             if picked:
                 return update_selected(home, picked, args.snapshot or 'latest')
             if interactive:
-                choices = update_choices(home)
+                choices = launch_choices(home)
                 if choices:
                     choice = choose_image(choices, 'update', any((home / f'{arch}-headed/disk').is_dir() for arch in ARM_KERNELS))
                     if choice is None:

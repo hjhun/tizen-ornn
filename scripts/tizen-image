@@ -47,7 +47,7 @@ def package_index(url):
     for pkg in entries:
         arch = pkg.findtext("{*}arch")
         pkgname = pkg.findtext("{*}name")
-        if arch != "armv7l" and (arch, pkgname) != ("x86_64", "rust"):
+        if arch not in ("armv7l", "aarch64") and (arch, pkgname) != ("x86_64", "rust"):
             continue
         href = pkg.find("{*}location").get("href")
         sha = pkg.findtext("{*}checksum[@type='sha256']")
@@ -118,21 +118,24 @@ def make_lock(source, release):
         except KeyError:
             raise ValueError(f"{release} lacks {name}.{arch} in {alias}; review the required sysroot packages") from None
 
-    cross = set()
+    cross = {"armv7l": set(), "aarch64": set()}
     for manifest in ["cross/sysroot.sha256", "cross/efl.sha256"]:
         for line in (PROJECT / manifest).read_text().splitlines():
             old_url = line.split()[1]
             alias = "tizen-base" if "/Tizen-10.1-Base/" in old_url else "tizen-standard"
             name = old_url.rsplit("/", 1)[1].rsplit("-", 2)[0]
-            sha, new_url, _ = package(alias, "armv7l", name)
-            cross.add((sha, new_url))
+            for arch, inputs in cross.items():
+                sha, new_url, _ = package(alias, arch, name)
+                inputs.add((sha, new_url))
     sha, rust_url, version = package("tizen-standard", "armv7l", "rust-std-static")
     native = next((indexes[r]["x86_64", "rust"] for r in ("tizen-emulator", "tizen-base")
                    if ("x86_64", "rust") in indexes[r]), None)
     if native is None or native[2] != version:
         raise ValueError("ARM rust-std-static and the native Rust compiler must have matching versions")
     return {"format": 1, "recipe": recipe, "release": release, "archive": {"url": url, "sha256": sums[archive]},
-            "partitions_sha256": sums[image_xml], "build_xml_sha256": checksum(build_xml), "repos": repos, "cross": [list(row) for row in sorted(cross)],
+            "partitions_sha256": sums[image_xml], "build_xml_sha256": checksum(build_xml), "repos": repos,
+            "cross": [list(row) for row in sorted(cross["armv7l"])],
+            "cross_aarch64": [list(row) for row in sorted(cross["aarch64"])],
             "rust": {"url": rust_url, "sha256": sha, "version": version}}
 
 

@@ -40,7 +40,7 @@ fn guest_arch(path: &std::path::Path) -> Option<&'static str> {
     {
         return Some("x86_64");
     }
-    tizen_ornn::arm_arch(path)
+    None
 }
 
 fn connected_directories(store: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
@@ -119,7 +119,6 @@ struct Launcher {
     name: String,
     repository: String,
     build_open: bool,
-    build_arch: Option<&'static str>,
     workdir: String,
     share: String,
     active_workdir: String,
@@ -238,7 +237,7 @@ impl Launcher {
         let arch = guest_arch(&path).ok_or_else(|| {
             std::io::Error::other(lang.text(
                 "Choose an image directory containing a guest kernel and disk.",
-                "게스트 커널과 디스크가 있는 이미지 폴더를 선택하세요.",
+                "x86_64 게스트 커널과 디스크가 있는 이미지 폴더를 선택하세요.",
             ))
         })?;
         if !self.images.iter().any(|image| image.path == path) {
@@ -300,60 +299,31 @@ impl Launcher {
 
     fn build_form(&mut self, ui: &mut egui::Ui) {
         let lang = self.language;
-        ui.label(lang.text("Guest architecture", "게스트 아키텍처"));
-        self.build_arch.get_or_insert("x86_64");
-        ui.horizontal_wrapped(|ui| {
-            for arch in ["x86_64", "armv7l", "aarch64"] {
-                ui.selectable_value(&mut self.build_arch, Some(arch), arch);
-            }
-        });
-        let arch = self.build_arch.unwrap_or("x86_64");
-        let arm = arch != "x86_64";
-        if arm {
-            ui.label(format!(
-                "{} {arch} + generic HAL · tizen-10.1-unified_20261119.053314",
-                lang.text(
-                    "Official Tizen 10.1 headed",
-                    "공식 Tizen 10.1 그래픽 이미지"
-                )
-            ));
-            ui.label(lang.text("Graphical boot with a serial terminal. The kernel version comes from the matching ARM boot image’s .packages file. This build uses the configured snapshot and the image name shown above. Custom RPM repositories, local archives, host folders and package updates are unsupported.", "시리얼 터미널과 그래픽 화면으로 부팅합니다. 커널 버전은 해당 ARM 부팅 이미지의 .packages 파일에서 가져옵니다. 위의 스냅샷과 이미지 이름을 사용하며 사용자 지정 RPM 저장소, 로컬 아카이브, 호스트 폴더 및 패키지 업데이트는 지원하지 않습니다."));
-            if cfg!(windows) {
-                ui.label(
-                    lang.text("Windows uses a disposable Ubuntu builder VM and native QEMU for the guest.", "Windows에서는 임시 Ubuntu VM으로 빌드하고 Windows용 QEMU로 게스트를 실행합니다."),
-                );
-            } else {
-                ui.label(lang.text(
-                    "Install qemu-system-arm and the matching cross compiler before building.",
-                    "빌드하기 전에 qemu-system-arm과 대상에 맞는 크로스 컴파일러를 설치하세요.",
-                ));
-            }
-        } else {
-            ui.label(lang.text("The builder downloads the official source archive and development RPMs. Use an HTTPS snapshot or compatible mirror. Additional RPM repository URLs are unsupported. For a local archive, use scripts/tizen-image --archive on Ubuntu.", "공식 이미지 아카이브와 개발용 RPM을 다운로드합니다. HTTPS 스냅샷 또는 호환 미러 주소를 입력하세요. 추가 RPM 저장소는 지원하지 않습니다. 로컬 아카이브는 Ubuntu에서 scripts/tizen-image --archive로 빌드할 수 있습니다."));
-            ui.label(lang.text("Snapshot repository URL", "스냅샷 저장소 URL"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.repository)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"),
-            );
-            ui.label(lang.text("Image name", "이미지 이름"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.name)
-                    .desired_width(f32::INFINITY)
-                    .hint_text(lang.text(
-                        "Leave blank to use the snapshot ID, including dots",
-                        "비워 두면 점을 포함한 스냅샷 ID를 사용합니다",
-                    )),
-            );
-        }
+        ui.label(lang.text("Guest architecture: x86_64", "게스트 아키텍처: x86_64"));
+        ui.label(lang.text("The builder downloads the official source archive and development RPMs. Use an HTTPS snapshot or compatible mirror. Additional RPM repository URLs are unsupported. For a local archive, use scripts/tizen-image --archive on Ubuntu.", "공식 이미지 아카이브와 개발용 RPM을 다운로드합니다. HTTPS 스냅샷 또는 호환 미러 주소를 입력하세요. 추가 RPM 저장소는 지원하지 않습니다. 로컬 아카이브는 Ubuntu에서 scripts/tizen-image --archive로 빌드할 수 있습니다."));
+        ui.label(lang.text("Snapshot repository URL", "스냅샷 저장소 URL"));
+        ui.add(
+            egui::TextEdit::singleline(&mut self.repository)
+                .desired_width(f32::INFINITY)
+                .hint_text("https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/"),
+        );
+        ui.label(lang.text("Image name", "이미지 이름"));
+        ui.add(
+            egui::TextEdit::singleline(&mut self.name)
+                .desired_width(f32::INFINITY)
+                .hint_text(lang.text(
+                    "Leave blank to use the snapshot ID, including dots",
+                    "비워 두면 점을 포함한 스냅샷 ID를 사용합니다",
+                )),
+        );
         if ui.add(design::action(lang.text("Build", "빌드"))).clicked() {
             let repository = self.repository.trim().to_owned();
             let name = self.name.trim().to_owned();
-            let mut args = vec!["build", "--arch", arch];
-            if !arm && !repository.is_empty() {
+            let mut args = vec!["build"];
+            if !repository.is_empty() {
                 args.extend(["--repository", &repository]);
             }
-            if !arm && !name.is_empty() {
+            if !name.is_empty() {
                 args.extend(["--name", &name]);
             }
             match self.terminal(&args) {
@@ -668,7 +638,6 @@ impl Launcher {
         };
         let arch = guest_arch(&dir)
             .ok_or(lang.text("Image files are missing.", "이미지 파일이 없습니다."))?;
-        let arm = arch != "x86_64";
         let running = tray::running(&dir).map_err(|e| e.to_string())?;
         let stopping = self.stopping.as_ref().is_some_and(|(path, _)| path == &dir);
         let path = dir.to_str().ok_or(lang.text(
@@ -711,16 +680,11 @@ impl Launcher {
                             .add_enabled(!stopping, design::action(lang.text("Start with display", "그래픽 화면으로 시작")))
                             .clicked()
                         {
-                            let mut args = vec!["run", "--gui", "--image-dir", path];
-                            if arm {
-                                args.extend(["--arch", arch]);
-                            }
-                            self.terminal(&args)?;
+                            self.terminal(&["run", "--gui", "--image-dir", path])?;
                             self.attach_tray(&dir);
                             self.status.clear();
                         }
-                        if !arm
-                            && ui
+                        if ui
                                 .add_enabled(!stopping, design::secondary(lang.text("Start terminal only", "터미널로 시작")))
                                 .clicked()
                         {
@@ -729,7 +693,7 @@ impl Launcher {
                             self.status.clear();
                         }
                     }
-                    if !arm && !running && ui
+                    if !running && ui
                         .add_enabled(!stopping && self.update_process.is_none(), design::secondary(lang.text("Update image", "이미지 업데이트")))
                         .on_hover_text(lang.text("Build the latest x86_64 snapshot and keep the previous disk.", "최신 x86_64 스냅샷을 빌드하고 이전 디스크도 보관합니다."))
                         .clicked()
@@ -763,16 +727,11 @@ impl Launcher {
                 ui.label(arch);
                 let store = PathBuf::from(&self.active_workdir);
                 let external = self.external.contains(&dir);
-                let expected_parent = if arm && cfg!(target_os = "linux") {
-                    store.clone()
-                } else {
-                    store.join("images")
-                };
+                let expected_parent = store.join("images");
                 let managed = dir
                     .parent()
                     .and_then(|p| p.canonicalize().ok())
-                    .is_some_and(|parent| Some(parent) == expected_parent.canonicalize().ok())
-                    && (!arm || dir.ends_with(format!("{arch}-headed")));
+                    .is_some_and(|parent| Some(parent) == expected_parent.canonicalize().ok());
                 if (external || managed)
                     && ui
                         .add_enabled(

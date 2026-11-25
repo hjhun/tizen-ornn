@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the same UI application for either image-supported Tizen ABI.
+# Build the same UI application for a supported Tizen RPM target.
 set -euo pipefail
 arch=${1:?usage: build-rpm.sh ARCH OUTPUT_DIR}
 out=${2:?usage: build-rpm.sh ARCH OUTPUT_DIR}
-case "$arch" in x86_64|armv7l) ;; *) exit 2 ;; esac
+case "$arch" in x86_64|armv7l|aarch64) ;; *) exit 2 ;; esac
 sample=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$out"
 out=$(cd "$out" && pwd -P)
@@ -22,6 +22,7 @@ case "$arch" in
         readelf -h "$elf" | grep -E 'Machine:.*ARM'
         readelf -A "$elf" | grep -E 'Tag_CPU_arch: v7$'
         ;;
+    aarch64) readelf -h "$elf" | grep -E 'Machine:.*AArch64' ;;
     x86_64) readelf -h "$elf" | grep -E 'Machine:.*X86-64' ;;
 esac
 readelf -d "$elf" | grep -F '[libelementary.so.1]'

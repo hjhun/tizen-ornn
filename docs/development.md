@@ -125,6 +125,8 @@ cmake --build "$HOME/build-arm"
 ctest --test-dir "$HOME/build-arm" --output-on-failure
 ```
 
+C/C++ 프로젝트는 같은 x86_64 게스트에서 `ornn build --target armv7l` 또는 `ornn build --target aarch64`로 RPM을 만들 수 있습니다. AArch64용 CMake 프로젝트는 `--toolchain /usr/share/tizen-dev/cmake/aarch64.cmake`로 구성하세요. `tizen-cross-check`는 세 아키텍처의 RPM에서 C/C++ 실행 파일을 추출하고 네이티브 또는 QEMU 사용자 모드로 실행합니다.
+
 Rust도 동일한 Tizen ARM 런타임에 링크합니다. Tizen RPM 아키텍처 이름은 `armv7l`, 이 스냅샷의 Rust 표준 라이브러리 타깃 이름은 `arm-unknown-linux-gnueabi`입니다. 일반 로그인 셸에는 해당 링커와 QEMU user-mode 실행기가 설정됩니다.
 
 ```sh
@@ -135,7 +137,7 @@ cargo run --release --offline --target arm-unknown-linux-gnueabi
 readelf -A target/arm-unknown-linux-gnueabi/release/hello
 ```
 
-`--offline` 예제는 외부 crate가 없는 프로젝트 기준입니다. `tizen-cross-check "$HOME/cross-results"`는 빈 출력 경로에 C/GLib·C++ 샘플의 두 RPM을 만들고 각각 포장된 ELF의 아키텍처와 실행 결과를 검사합니다.
+`--offline` 예제는 외부 crate가 없는 프로젝트 기준입니다. `tizen-cross-check "$HOME/cross-results"`는 빈 출력 경로에 C/GLib·C++ 샘플의 세 RPM을 만들고 각각 포장된 ELF의 아키텍처와 실행 결과를 검사합니다.
 
 ## Cargo 결과물을 TPK로 패키징
 

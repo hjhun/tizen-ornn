@@ -17,7 +17,7 @@ binary_dir=${CARGO_TARGET_DIR:-$project/target}/release
 root=$stage/package
 app=$root/usr/lib/tizen-ornn
 mkdir -p "$root"/{DEBIAN,usr/bin,etc/tizen-ornn} "$app"
-(cd "$project" && tar --exclude=__pycache__ --exclude='*.pyc' -cf - \
+(cd "$project" && tar --exclude=scripts/armv7l --exclude=guest/packages --exclude=__pycache__ --exclude='*.pyc' -cf - \
     LICENSE README.md config cross docs guest kernel packaging scripts sdk tests) |
     tar -xf - -C "$app"
 install -m755 "$binary_dir/tizen-ornn" "$app/tizen-ornn"

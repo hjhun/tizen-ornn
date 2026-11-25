@@ -63,7 +63,7 @@ The first build needs internet access. The guest defaults to a 16 GiB disk with 
 Choose English or 한국어 under **Settings → Language**. The launcher remembers your choice.
 
 1. Choose the storage location with **Settings → Work directory → Browse…** and click **Save work directory**. On Ubuntu and WSL2, use a Linux filesystem such as your home directory.
-2. Open **Build image…**. Choose **x86_64** and the default snapshot. Name the image `dev-x86` and click **Build**.
+2. Open **Build image…**. Use the default snapshot. Name the image `dev-x86` and click **Build**.
 3. When the build finishes, select `dev-x86` in the library. To use an existing image, open its directory with **Add image…**.
 
 From the CLI, build the image and list its path.
@@ -157,7 +157,7 @@ cmake --build "$HOME/build-arm"
 ctest --test-dir "$HOME/build-arm" --output-on-failure
 ```
 
-To boot an ARM guest, choose `armv7l` or `aarch64` in the image builder. On R26, Enlightenment can crash when an ARM guest reboots or shuts down.
+In a checkout containing an RPM spec and its sources, run `ornn build --target armv7l` or `ornn build --target aarch64` to build an ARM RPM inside the x86_64 guest.
 
 ## 6. Reconnect or shut down from the host
 

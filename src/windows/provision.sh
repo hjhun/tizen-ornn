@@ -24,28 +24,10 @@ fi
 apt-get -o Acquire::Retries=3 update
 apt-get -o Acquire::Retries=3 install -y /var/tmp/tizen-ornn.deb
 if [[ -f /mnt/ornn-seed/image.toml ]]; then export TIZEN_IMAGE_CONFIG=/mnt/ornn-seed/image.toml; fi
-arch=$(cat /mnt/ornn-seed/guestarch)
-case $arch in
-armv7l|aarch64)
-    if [[ $arch == aarch64 ]]; then compiler=gcc-aarch64-linux-gnu; kernel=Image
-    else compiler=gcc-arm-linux-gnueabihf; kernel=zImage; fi
-    apt-get -o Acquire::Retries=3 install -y "$compiler" build-essential bc bison flex libelf-dev libssl-dev patch
-    TIZEN_ARM_ARCH=$arch /usr/lib/tizen-ornn/scripts/armv7l/build-image "$work"
-    mkdir -p /mnt/ornn-output
-    mount -t 9p -o trans=virtio,version=9p2000.L ornn-arm-output /mnt/ornn-output
-    mkdir /mnt/ornn-output/disk
-    cp --sparse=always "$work"/disk/*.img /mnt/ornn-output/disk/
-    cp "$work/$kernel" /mnt/ornn-output/
-    umount /mnt/ornn-output
-    ;;
-x86_64)
-    test -b "$disk"
-    /usr/lib/tizen-ornn/scripts/tizen-image --out "$work"
-    test -f "$work/.image-ready" && test -f "$work/.tizen-virtio-console"
-    test "$(stat -c %s "$work/tizen-rootfs.ext4")" = "$(blockdev --getsize64 "$disk")"
-    dd if="$work/tizen-rootfs.ext4" of="$disk" bs=4M conv=sparse,fsync status=progress
-    blockdev --flushbufs "$disk"
-    ;;
-*) exit 2 ;;
-esac
+test -b "$disk"
+/usr/lib/tizen-ornn/scripts/tizen-image --out "$work"
+test -f "$work/.image-ready" && test -f "$work/.tizen-virtio-console"
+test "$(stat -c %s "$work/tizen-rootfs.ext4")" = "$(blockdev --getsize64 "$disk")"
+dd if="$work/tizen-rootfs.ext4" of="$disk" bs=4M conv=sparse,fsync status=progress
+blockdev --flushbufs "$disk"
 printf 'TIZEN_ORNN_IMAGE_READY\n' | dd of="$status" conv=fsync,notrunc status=none

@@ -7,9 +7,14 @@ root=$(realpath "${1:?mounted Tizen root required}")
 mountpoint -q "$root"
 cache=${CROSS_RPM_CACHE:-"${TIZEN_OUT:-$project/out}/cache/cross"}
 mkdir -p "$cache" "$root/opt/tizen/sysroots"
-stage=$(mktemp -d "$root/opt/tizen/sysroots/.armv7l.XXXXXX")
+stage_sysroot() (
+arch=$1
+lib=$2
+loader=$3
+section=$4
+stage=$(mktemp -d "$root/opt/tizen/sysroots/.$arch.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
-python3 "$project/scripts/snapshot_lock.py" cross > "$stage/packages.sha256"
+python3 "$project/scripts/snapshot_lock.py" "$section" > "$stage/packages.sha256"
 while read -r sha url; do
     name=${url##*/}
     rpmfile=$cache/$name
@@ -22,10 +27,11 @@ while read -r sha url; do
     # GCC's ARM runtime RPM also contains ARM-hosted compiler executables.
     # Select only start objects, compiler support headers and linker inputs.
     if [[ "$name" == gcc-[0-9]* ]]; then
-        inputs=('./usr/lib/gcc/*/*/crt*.o' './usr/lib/gcc/*/*/include/*'
-                './usr/lib/libgcc_s.so' './usr/lib/libstdc++.so')
+        inputs=("./usr/$lib/gcc/*/*/crt*.o" "./usr/$lib/gcc/*/*/include/*"
+                "./usr/$lib/libgcc_s.so" "./usr/$lib/libstdc++.so")
     else
         inputs=('./lib/*' './usr/include/*' './usr/lib/*' './usr/share/pkgconfig/*')
+        if [[ $arch == aarch64 ]]; then inputs+=('./lib64/*' './usr/lib64/*'); fi
     fi
     (cd "$stage"; rpm2cpio "$rpmfile" | cpio --quiet -idmu --no-absolute-filenames "${inputs[@]}")
 done < "$stage/packages.sha256"
@@ -43,9 +49,9 @@ for path in root.rglob('*'):
             path.unlink()
             path.symlink_to(relative)
 PY
-test -s "$stage/lib/ld-linux.so.3"
+test -s "$stage/$loader"
 test -f "$stage/usr/include/glib-2.0/glib.h"
-sysroot="$root/opt/tizen/sysroots/armv7l"
+sysroot="$root/opt/tizen/sysroots/$arch"
 chmod 755 "$stage"
 if [[ -d "$sysroot" ]]; then
     test -f "$sysroot/packages.sha256" || {
@@ -67,29 +73,36 @@ PYTHON
 else
     mv "$stage" "$sysroot"
 fi
+)
+stage_sysroot armv7l lib lib/ld-linux.so.3 cross
+stage_sysroot aarch64 lib64 lib/ld-linux-aarch64.so.1 cross_aarch64
 unshare --mount --propagation private -- bash -se "$root" <<'INSTALL'
 set -eu
 root=$1
 mount -t proc proc "$root/proc"
 mount --bind /etc/resolv.conf "$root/etc/resolv.conf"
 chroot "$root" /usr/bin/zypper --non-interactive --no-refresh install \
-    --no-recommends gcc-armv7l binutils-armv7l qemu-linux-user cpio
+    --no-recommends gcc-armv7l binutils-armv7l gcc-aarch64 binutils-aarch64 qemu-linux-user cpio
 INSTALL
-install -m 755 "$project/cross/armv7l-tool" "$root/usr/bin/tizen-armv7l-gcc"
-for tool in g++ pkg-config; do
-    ln -sfn tizen-armv7l-gcc "$root/usr/bin/tizen-armv7l-$tool"
-done
-bin="$root/opt/tizen/toolchains/armv7l/bin"
-install -d "$bin"
-for tool in gcc g++ cc c++ pkg-config; do
-    ln -sfn /usr/bin/tizen-armv7l-gcc "$bin/$tool"
-done
-for tool in as ld ar nm ranlib strip objcopy objdump readelf; do
-    ln -sfn "/usr/bin/armv7l-tizen-linux-gnueabi-$tool" "$bin/$tool"
+for arch in armv7l aarch64; do
+    if [[ $arch == armv7l ]]; then triple=armv7l-tizen-linux-gnueabi
+    else triple=aarch64-tizen-linux-gnu; fi
+    install -m 755 "$project/cross/target-tool" "$root/usr/bin/tizen-$arch-gcc"
+    for tool in g++ pkg-config; do
+        ln -sfn "tizen-$arch-gcc" "$root/usr/bin/tizen-$arch-$tool"
+    done
+    bin="$root/opt/tizen/toolchains/$arch/bin"
+    install -d "$bin"
+    for tool in gcc g++ cc c++ pkg-config; do
+        ln -sfn /usr/bin/tizen-$arch-gcc "$bin/$tool"
+    done
+    for tool in as ld ar nm ranlib strip objcopy objdump readelf; do
+        ln -sfn "/usr/bin/$triple-$tool" "$bin/$tool"
+    done
+    install -Dm644 "$project/cross/$arch.cmake" "$root/usr/share/tizen-dev/cmake/$arch.cmake"
 done
 install -m 755 "$project/cross/tizen-rpmbuild" "$root/usr/bin/tizen-rpmbuild"
 example="$root/usr/share/tizen-dev/examples/cross-rpm"
-install -Dm644 "$project/cross/armv7l.cmake" "$root/usr/share/tizen-dev/cmake/armv7l.cmake"
 install -d "$example"
 install -m 644 "$project/tests/cross-rpm/"* "$example/"
 install -m 755 "$project/tests/cross-check" "$root/usr/local/bin/tizen-cross-check"

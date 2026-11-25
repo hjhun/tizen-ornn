@@ -24,3 +24,5 @@ The interactive Bash commands `claude` and `codex` use their permission-bypass f
 The installer links the coding-style and development-style skills from `~/dev-setup/skills` into `~/.agents/skills`, `~/.agent/skills`, and `~/.claude/skills`. The distributed copies contain reusable engineering rules.
 
 Graphify is installed in a dedicated Python environment under `/usr/local/lib/tizen-ornn` so Tizen can load its native parsers. Its skill comes from the matching graphifyy distribution, and the Herdr skill comes from the installed Herdr binary. Both are linked alongside the two development skills. Setup leaves graph builds and project hooks under the developer's control.
+
+For ARM RPMs, use `ornn build --target armv7l` or `ornn build --target aarch64` inside the x86_64 guest. The build uses the selected target’s C/C++ toolchain and sysroot. Supply any additional target libraries in that sysroot.

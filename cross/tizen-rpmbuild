@@ -4,23 +4,26 @@ arch=${1:?usage: tizen-rpmbuild ARCH [rpmbuild options]}
 shift
 case "$arch" in
     x86_64) exec /usr/bin/rpmbuild --target x86_64 "$@" ;;
-    armv7l)
-        triple=armv7l-tizen-linux-gnueabi
-        export PATH=/opt/tizen/toolchains/armv7l/bin:$PATH
-        export CC=/usr/bin/tizen-armv7l-gcc CXX=/usr/bin/tizen-armv7l-g++
-        export PKG_CONFIG=/usr/bin/tizen-armv7l-pkg-config
+    armv7l|aarch64)
+        case "$arch" in
+            armv7l) triple=armv7l-tizen-linux-gnueabi ;;
+            aarch64) triple=aarch64-tizen-linux-gnu ;;
+        esac
+        export PATH=/opt/tizen/toolchains/$arch/bin:$PATH
+        export CC=/usr/bin/tizen-$arch-gcc CXX=/usr/bin/tizen-$arch-g++
+        export PKG_CONFIG=/usr/bin/tizen-$arch-pkg-config
         export AR=/usr/bin/$triple-ar RANLIB=/usr/bin/$triple-ranlib
         export STRIP=/usr/bin/$triple-strip LD=/usr/bin/$triple-ld
         # Autoconf names the machine that runs the resulting program "host".
         # Tizen's default RPM macros derive _build from _host.
-        exec /usr/bin/rpmbuild --target armv7l \
+        exec /usr/bin/rpmbuild --target "$arch" \
             --define "_host $triple" --define "_host_alias $triple" \
-            --define "_host_cpu armv7l" --define "_build_cpu x86_64" \
+            --define "_host_cpu $arch" --define "_build_cpu x86_64" \
             --define "_build x86_64-tizen-linux-gnu" \
             --define "_build_alias x86_64-tizen-linux-gnu" \
             --define "__cc $CC" --define "__cxx $CXX" \
             --define "__strip $STRIP" --define "__ar $AR" \
             --define "__ranlib $RANLIB" --define "__ld $LD" "$@"
         ;;
-    *) echo "Supported RPM architectures: x86_64 armv7l" >&2; exit 2 ;;
+    *) echo "Supported RPM architectures: x86_64 armv7l aarch64" >&2; exit 2 ;;
 esac

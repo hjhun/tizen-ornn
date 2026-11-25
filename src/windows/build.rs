@@ -82,7 +82,6 @@ fn builder_file(
 fn make_seed(
     path: &Path,
     deb: &Path,
-    arch: &str,
     source: Option<&crate::build_source::BuildSource>,
     ca: Option<&Path>,
     proxy: &tizen_ornn::proxy::BuildProxy,
@@ -102,7 +101,6 @@ fn make_seed(
         let root = volume.root_dir();
         root.create_file("meta-data")?
             .write_all(b"instance-id: ornn-builder\nlocal-hostname: ornn-builder\n")?;
-        root.create_file("guestarch")?.write_all(arch.as_bytes())?;
         if let Some(source) = source {
             root.create_file("image.toml")?
                 .write_all(source.config().as_bytes())?;
@@ -171,7 +169,7 @@ pub(super) fn update(home: &Path, image: &Path, snapshot: Option<&str>) -> io::R
         }
         println!("Already up to date: {}", dest.display());
     } else {
-        create(home, &name, "x86_64", Some(&source), &proxy)?;
+        create(home, &name, Some(&source), &proxy)?;
     }
     let mut selected = tempfile::NamedTempFile::new_in(home)?;
     serde_json::to_writer(&mut selected, &name)?;
@@ -183,7 +181,6 @@ pub(super) fn update(home: &Path, image: &Path, snapshot: Option<&str>) -> io::R
 pub(super) fn create(
     home: &Path,
     name: &str,
-    arch: &str,
     source: Option<&crate::build_source::BuildSource>,
     proxy: &tizen_ornn::proxy::BuildProxy,
 ) -> io::Result<()> {
@@ -197,13 +194,7 @@ pub(super) fn create(
                 format!("Image already exists: {}", dest.display()),
             ));
         }
-        if arch == "x86_64" {
-            disk(&dest)?;
-        } else if tizen_ornn::arm_arch(&dest) != Some(arch) {
-            return Err(io::Error::other(
-                "Destination exists with a different image layout.",
-            ));
-        }
+        disk(&dest)?;
         println!("Existing image ready: {}", dest.display());
         return Ok(());
     }
@@ -233,7 +224,6 @@ pub(super) fn create(
     make_seed(
         &work.path().join("seed.img"),
         &deb,
-        arch,
         source,
         ca.as_deref(),
         proxy,
@@ -269,18 +259,16 @@ pub(super) fn create(
             .args(["work.qcow2", "64G"]),
         "Create builder overlay",
     )?;
-    if arch == "x86_64" {
-        checked(
-            qemu("qemu-img")?.current_dir(work.path()).args([
-                "create",
-                "-f",
-                "qcow2",
-                "output/tizen-rootfs.qcow2",
-                "16G",
-            ]),
-            "Create Tizen disk",
-        )?;
-    }
+    checked(
+        qemu("qemu-img")?.current_dir(work.path()).args([
+            "create",
+            "-f",
+            "qcow2",
+            "output/tizen-rootfs.qcow2",
+            "16G",
+        ]),
+        "Create Tizen disk",
+    )?;
     println!(
         "Building {name} from the configured Tizen snapshot. Keep this console open until the builder powers off."
     );
@@ -325,21 +313,12 @@ pub(super) fn create(
             "-device",
             "virtio-net-pci,netdev=net,romfile=",
         ]);
-    if arch == "x86_64" {
-        builder.args([
-            "-drive",
-            "file=output/tizen-rootfs.qcow2,if=none,id=out,format=qcow2",
-            "-device",
-            "virtio-blk-pci,drive=out,serial=ornn-output",
-        ]);
-    } else {
-        builder.args([
-            "-fsdev",
-            "local,id=armout,path=output,security_model=mapped-xattr",
-            "-device",
-            "virtio-9p-pci,fsdev=armout,mount_tag=ornn-arm-output",
-        ]);
-    }
+    builder.args([
+        "-drive",
+        "file=output/tizen-rootfs.qcow2,if=none,id=out,format=qcow2",
+        "-device",
+        "virtio-blk-pci,drive=out,serial=ornn-output",
+    ]);
     checked(&mut builder, "Build Tizen image")?;
     let mut marker = [0u8; 23];
     File::open(work.path().join("status.raw"))?.read_exact(&mut marker)?;
@@ -347,15 +326,6 @@ pub(super) fn create(
         return Err(io::Error::other(
             "The builder stopped before finishing the image. See the guest console output.",
         ));
-    }
-    if arch != "x86_64" {
-        if tizen_ornn::arm_arch(&output) != Some(arch) {
-            return Err(io::Error::other("Incomplete ARM image output."));
-        }
-        fs::rename(output, &dest)?;
-        work.close()?;
-        println!("Image ready: {}", dest.display());
-        return Ok(());
     }
     fs::copy(kernel, output.join("bzImage"))?;
     File::create(output.join(".tizen-virtio-console"))?;

@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+# The short aliases (cc, c++, pkg-config) point to the target-specific driver.
+driver=$(basename "$(readlink -f "$0")")
+arch=${driver#tizen-}
+arch=${arch%-gcc}
+case "$arch" in
+    armv7l) triple=armv7l-tizen-linux-gnueabi; lib=lib ;;
+    aarch64) triple=aarch64-tizen-linux-gnu; lib=lib64 ;;
+    *) echo "Unsupported cross driver: $driver" >&2; exit 2 ;;
+esac
+sysroot=/opt/tizen/sysroots/$arch
+gccdir="$sysroot/usr/$lib/gcc/$triple/$(/usr/bin/$triple-gcc -dumpfullversion)"
+tool=${0##*/}
+tool=${tool#tizen-$arch-}
+case "$tool" in
+    pkg-config)
+        export PKG_CONFIG_SYSROOT_DIR="$sysroot"
+        export PKG_CONFIG_LIBDIR="$sysroot/usr/$lib/pkgconfig:$sysroot/usr/share/pkgconfig"
+        unset PKG_CONFIG_PATH
+        exec /usr/bin/pkg-config "$@"
+        ;;
+    g++|c++)
+        set -- -nostdinc++ -isystem "$gccdir/include/c++" \
+            -isystem "$gccdir/include/c++/$triple" \
+            -isystem "$gccdir/include/c++/backward" "$@"
+        tool=g++
+        ;;
+    cc|gcc) tool=gcc ;;
+    *) echo "Unsupported ARM tool $tool" >&2; exit 2 ;;
+esac
+if [ "$arch" = armv7l ]; then
+    set -- -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp "$@"
+fi
+exec "/usr/bin/$triple-$tool" --sysroot="$sysroot" \
+    -B"$gccdir/" \
+    -Wl,-rpath-link,"$sysroot/usr/$lib:$sysroot/usr/$lib/hal:$sysroot/$lib" "$@"

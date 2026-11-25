@@ -26,6 +26,23 @@ def cli_binary():
 
 
 class WorkDirectory(unittest.TestCase):
+    def test_only_x86_guests_are_discoverable_and_launchable(self):
+        with TemporaryDirectory() as tmp:
+            store = Path(tmp)
+            env = {**os.environ, 'TIZEN_ORNN_HOME': tmp}
+            cli = cli_binary()
+            for arch, kernel in [('armv7l', 'zImage'), ('aarch64', 'Image')]:
+                image = store / f'{arch}-headed'
+                (image / 'disk').mkdir(parents=True)
+                (image / kernel).write_bytes(b'kernel')
+                for part in manager.ARM_PARTITIONS:
+                    (image / 'disk' / f'{part}.img').write_bytes(b'disk')
+                for args in [('build', '--arch', arch), ('run', '--image-dir', image)]:
+                    result = subprocess.run([cli, *args], env=env, capture_output=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(b'x86_64', result.stderr)
+            self.assertEqual(json.loads(subprocess.check_output([cli, 'images'], env=env)), [])
+
     def test_cli_uses_gui_store_and_preserves_overrides(self):
         with TemporaryDirectory() as tmp:
             home = Path(tmp)

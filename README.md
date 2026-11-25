@@ -2,7 +2,7 @@
 
 # Tizen Ornn
 
-Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. Both launchers have headed ARMv7l and AArch64 build recipes. Both hosts support x86_64 image updates. Ubuntu also supports guest package management.
+Tizen Ornn is a Rust CLI and optional desktop launcher for writable Tizen development VMs. Windows runs native QEMU. Both hosts can share a folder with x86_64 guests. The supported guest architecture is x86_64. Inside the guest, the Ornn CLI can cross-compile ARMv7 and AArch64 RPMs. Both hosts support x86_64 image updates. Ubuntu also supports guest package management.
 
 Install Ornn, build a Tizen image, and run your first app inside the guest. [한국어 가이드](docs/user-guide.md) · [English guide](docs/user-guide_en.md)
 
@@ -119,13 +119,12 @@ directory to `~/.config/tizen-ornn/` (per user) or `/etc/tizen-ornn/`
 (system-wide). For an existing disk with a `.tizen-vm-image-revision` file,
 copy that file to `.tizen-ornn-image-revision` alongside the disk to retain
 its build revision.
-The guest's native RPM builder is still called `ornn`.
+The guest's RPM builder is still called `ornn`.
 
 ### Find the VM disk
 
 On Linux, the GUI and CLI use the same work directory. The default is
-`~/.local/tizen-ornn`. Managed x86_64 disks are under `images/<name>/`;
-ARM images use `armv7l-headed/disk/` or `aarch64-headed/disk/`. A work directory
+`~/.local/tizen-ornn`. Managed x86_64 disks are under `images/<name>/`. A work directory
 saved in **Settings** takes effect for both tools. Portable installations keep
 their settings beside the launcher. The CLI also honors explicit
 `TIZEN_ORNN_HOME` and legacy `TIZEN_OUT` overrides.
@@ -135,7 +134,7 @@ directory and no images in the default store, both tools can reuse an older
 XDG image store. To use a previous checkout's `out/` directory, select it in
 **Settings** or set `TIZEN_OUT` for the CLI.
 
-In an Ubuntu or WSL terminal, run `tizen-ornn delete` to pick a managed disk. At the selection menu, Enter picks the first entry and `q` cancels. At the deletion prompt, type `y`, `yes`, or the exact image name to delete it. Press Enter at this prompt to cancel. With redirected input or output, this command lists the disks. For automation, use `tizen-ornn delete IMAGE_DIRECTORY_NAME --yes`. The ARMv7 headed disk entry covers its four guest partitions. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
+In an Ubuntu or WSL terminal, run `tizen-ornn delete` to pick a managed disk. At the selection menu, Enter picks the first entry and `q` cancels. At the deletion prompt, type `y`, `yes`, or the exact image name to delete it. Press Enter at this prompt to cancel. With redirected input or output, this command lists the disks. For automation, use `tizen-ornn delete IMAGE_DIRECTORY_NAME --yes`. The CLI can also delete legacy ARM disks on explicit confirmation. This permanently removes the guest disk and its contents. The host cache, image metadata, and other disks are retained. When deleting the selected image, the recorded previous image becomes active if available.
 
 In WSL, `wslpath -w /path/from/the/image/list` prints the Windows Explorer path.
 
@@ -175,7 +174,7 @@ cd hello
 cargo run --offline
 ```
 
-In a Tizen CMake project such as `aul-1`, run `tizen-build test` in the source directory. It reads CMake options from the RPM spec, builds incrementally and runs CTest. The image also supports x86_64 and ARMv7 ELF/RPM builds, TPK packaging and SDB connections. Guest root can use `zypper` directly. [Native, cross and app build examples (Korean)](docs/development.md)
+In a Tizen CMake project such as `aul-1`, run `tizen-build test` in the source directory. It reads CMake options from the RPM spec, builds incrementally and runs CTest. The image also supports x86_64, ARMv7 and AArch64 C/C++ ELF/RPM builds, TPK packaging and SDB connections. Guest root can use `zypper` directly. [Native, cross and app build examples (Korean)](docs/development.md)
 For a standalone ARMv7 RPM builder on Ubuntu or Windows with WSL2, see [Build with ornn in an ARMv7 container (Korean)](docs/armv7l-container.md).
 
 For a coding assistant, use `tizen-ornn install agy`, `gemini`, `claude` or `codex` on the host. Then run `tizen-ai-shell` inside the VM and launch the installed CLI from your project. The image includes Node.js, npm, ripgrep, bubblewrap and socat. Sign in with your own provider account. [AI tool setup and verification](docs/ai-tools.md)
@@ -199,27 +198,13 @@ Allow space for both images and build downloads. Migrating a QCOW2 disk or recov
 
 Fresh x86_64 images include the terminfo-aware `clear` command. For an existing running Ubuntu-managed guest, use `tizen-ornn install ncurses-utils`. Inside a guest with the pinned repositories, root can also run `zypper install ncurses-utils`.
 
-## Build a headed ARM guest
+## Build RPMs inside the x86_64 guest
 
-Open **Build image…**, select **armv7l** or **aarch64**, and click **Build**. The recipe downloads the official headed and generic HAL archives from the configured dated snapshot, verifies both checksums and builds a QEMU virt kernel. The matching `tizen-boot-<arch>-rpi.packages` inventory supplies the kernel version and source revision. Ornn verifies the source RPM against repository metadata before applying its patches. After building, select the image and choose **Start with display**. The CLI equivalents are `tizen-ornn build --arch aarch64` and `tizen-ornn run --arch aarch64 --gui`; substitute `armv7l` for 32-bit ARM. The headed launcher defaults to a 1024×768 virtio GPU with OpenGL and 3 GiB of RAM. Windows uses the Mesa runtime bundled with Ornn. On first boot the guest installs the snapshot’s GBM display backend and configures the stock Flutter Home app for the virtual GPU.
-
-An ARM guest can reboot in the same display window. **Shut down** requests poweroff through a dedicated guest port and the virtual board’s power button so the guest can unmount its disks before the next launch. Rebuild older ARM images in a separate working directory to pick up the kernel drivers and guest configuration. The ARM kernel limits the virgl uniform-buffer count to the 32 slots supported by the guest Mesa driver on hosts advertising more. The builder supplies PulseAudio with the missing math-library dependency in affected generic audio HALs so the stock Volume app can query the media volume.
-
-The public x86_64 emulator continues to use the packaged kernel by default. Source builds for other emulator repositories use the AArch64 boot inventory from the same snapshot. A missing or ambiguous kernel entry stops the build.
-
-| Build option | x86_64 | armv7l / aarch64 |
-|---|---|---|
-| Source | Configured snapshot or compatible HTTPS snapshot URL | Fixed official headed image and matching generic HAL |
-| Image name | Editable; a URL defaults to its dated ID including dots | `armv7l-headed` or `aarch64-headed` |
-| Local source archive | Ubuntu script with `--archive` | Unsupported |
-| Developer RPMs | Resolved from the snapshot repositories | Original image contents; no Ornn development RPM provisioning |
-| Guest access | Graphical or terminal-only boot; host folder sharing | Graphical boot with serial terminal |
-
-All recipes need network access for a fresh build. The GUI does not accept extra RPM repository URLs. Ubuntu ARM builds require the kernel build dependencies, `e2fsprogs`, `patchelf`, `qemu-system-arm`, and either `gcc-arm-linux-gnueabihf` or `gcc-aarch64-linux-gnu`. Windows uses the packaged Ubuntu builder VM and the matching native ARM QEMU executable. Allow space for the downloaded archives, kernel build and four writable guest partitions.
+Run `ornn build` for a native RPM, `ornn build --target armv7l` for an ARMv7 RPM, or `ornn build --target aarch64` for an AArch64 RPM, in a checkout containing the spec and its sources. Cross builds use the selected architecture’s C/C++ compiler and Tizen sysroot.
 
 ## Choose the snapshot source
 
-On Windows or Ubuntu, open **Build image…**, select **x86_64**, and paste the HTTPS snapshot repository, Unified snapshot directory, its `build.xml`, an emulator profile directory, or its dated `.ks`, `.packages`, or archive URL into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata including its dots (for example, `tizen-10.1-unified_20261119.053314`). Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
+On Windows or Ubuntu, open **Build image…** and paste the HTTPS snapshot repository, Unified snapshot directory, its `build.xml`, an emulator profile directory, or its dated `.ks`, `.packages`, or archive URL into **Snapshot repository URL**. A repository root resolves the latest dated snapshot. An empty **Image name** uses the ID from the repository metadata including its dots (for example, `tizen-10.1-unified_20261119.053314`). Enter your own name to keep multiple builds of one release. A URL build refuses an existing destination name.
 
 ```sh
 tizen-ornn build --repository https://download.tizen.org/snapshots/TIZEN/Tizen-10.1/

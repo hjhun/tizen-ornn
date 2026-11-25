@@ -54,9 +54,7 @@ impl BuildSource {
                 let (Some("images"), Some("emulator"), Some(name)) =
                     (parts.next(), parts.next(), parts.next())
                 else {
-                    return Err(invalid(
-                        "For x86_64, choose an emulator image profile. For a pinned ARM headed image, select armv7l or aarch64 in Build image.",
-                    ));
+                    return Err(invalid("Choose an x86_64 emulator image profile."));
                 };
                 if name.is_empty()
                     || name.len() > 100

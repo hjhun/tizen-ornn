@@ -103,17 +103,14 @@ pub mod workdir {
         {
             return true;
         }
-        ["armv7l-headed", "aarch64-headed"]
-            .iter()
-            .any(|name| super::arm_arch(&store.join(name)).is_some())
-            || fs::read_dir(store.join("images")).is_ok_and(|mut images| {
-                images.any(|item| {
-                    item.is_ok_and(|item| {
-                        !item.file_name().to_string_lossy().starts_with('.')
-                            && is_x86_image(item.path())
-                    })
+        fs::read_dir(store.join("images")).is_ok_and(|mut images| {
+            images.any(|item| {
+                item.is_ok_and(|item| {
+                    !item.file_name().to_string_lossy().starts_with('.')
+                        && is_x86_image(item.path())
                 })
             })
+        })
     }
 
     pub fn save(value: &str) -> io::Result<()> {

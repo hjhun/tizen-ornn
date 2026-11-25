@@ -1,7 +1,7 @@
 #!/bin/bash
-# Native RPM build for projects providing a spec and its declared sources.
+# RPM build for projects providing a spec and its declared sources.
 set -euo pipefail
-usage() { echo 'Usage: ornn build [--spec FILE] [--out DIR]'; }
+usage() { echo 'Usage: ornn build [--target x86_64|armv7l|aarch64] [--spec FILE] [--out DIR]'; }
 case ${1:-} in
     -h|--help) usage; exit 0 ;;
     build) shift ;;
@@ -10,11 +10,17 @@ esac
 root=$PWD
 out=$root/RPMS
 spec=
+target=
 while (( $# )); do
     case $1 in
-        --spec|--out)
+        --spec|--out|--target)
             [[ -n ${2:-} ]] || { usage >&2; exit 2; }
-            if [[ $1 == --spec ]]; then spec=$2; else out=$2; fi
+            case $1 in
+                --spec) spec=$2 ;;
+                --out) out=$2 ;;
+                --target)
+                    case $2 in x86_64|armv7l|aarch64) target=$2 ;; *) usage >&2; exit 2 ;; esac ;;
+            esac
             shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; exit 2 ;;
@@ -35,12 +41,22 @@ out=$(readlink -e -- "$out")
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 arch=$(rpm -q --qf '%{ARCH}' filesystem)
-options=(--target "$arch" --define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")")
+builder=(rpmbuild --target "$arch")
+if [[ -n $target && $target != "$arch" ]]; then
+    if [[ $arch != x86_64 ]]; then
+        echo "Cannot cross-compile from $arch to $target." >&2
+        exit 2
+    fi
+    builder=(tizen-rpmbuild "$target")
+fi
+options=(--define "_topdir $work" --define "_sourcedir $(dirname -- "$spec")")
 # Let RPM evaluate versioned/virtual dependencies and architecture conditionals.
-if ! LC_ALL=C rpmbuild "${options[@]}" --nobuild -bp "$spec" >"$work/check" 2>&1; then
+if ! LC_ALL=C "${builder[@]}" "${options[@]}" --nobuild -bp "$spec" >"$work/check" 2>&1; then
     cat "$work/check" >&2
+    # Zypper manages native packages. Cross-target libraries belong in the sysroot.
+    if [[ -n $target && $target != "$arch" ]]; then exit 1; fi
     grep -qx 'error: Failed build dependencies:' "$work/check" || exit 1
-    rpmspec "${options[@]}" -q --buildrequires "$spec" >"$work/requires"
+    rpmspec --target "$arch" "${options[@]}" -q --buildrequires "$spec" >"$work/requires"
     requires=()
     while IFS= read -r capability; do
         [[ -z $capability ]] || requires+=("$capability")
@@ -54,7 +70,7 @@ if ! LC_ALL=C rpmbuild "${options[@]}" --nobuild -bp "$spec" >"$work/check" 2>&1
         su - root -c 'exec "$@"' -- sh "${resolver[@]}" "${requires[@]}"
     fi
 fi
-rpmbuild "${options[@]}" -bb "$spec"
+"${builder[@]}" "${options[@]}" -bb "$spec"
 # Publish only packages from this successful invocation, retaining subpackages.
 shopt -s nullglob
 artifacts=("$work"/RPMS/*/*.rpm)

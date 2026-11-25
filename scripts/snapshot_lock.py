@@ -30,7 +30,7 @@ if __name__ == "__main__":
         print(base + "/")
     elif section == "release":
         print(lock["release"])
-    elif section == "cross":
+    elif section in ("cross", "cross_aarch64"):
         for sha, url in lock[section]:
             print(sha, url)
     else:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# With a path argument, retain both RPMs, extracted executables, and build logs.
+# With a path argument, retain all three RPMs, extracted executables, and build logs.
 set -euo pipefail
 if [[ $# == 0 ]]; then
     builddir=$(rpm --eval '%{_topdir}')
@@ -11,13 +11,10 @@ else
     work=$(cd -- "$1" && pwd -P)
 fi
 samples=/usr/share/tizen-dev/examples/cross-rpm
-for arch in x86_64 armv7l; do
+for arch in x86_64 armv7l aarch64; do
     top="$work/$arch"
-    mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,payload}
-    cp "$samples"/probe.* "$top/SOURCES/"
-    cp "$samples"/tizen-cross-probe.spec "$top/SPECS/"
-    if ! tizen-rpmbuild "$arch" --define "_topdir $top" \
-            -bb "$top/SPECS/tizen-cross-probe.spec" > "$top/build.log" 2>&1; then
+    mkdir -p "$top/payload"
+    if ! (cd "$samples" && ornn build --target "$arch" --out "$top/RPMS") >"$top/build.log" 2>&1; then
         cat "$top/build.log" >&2
         exit 1
     fi
@@ -33,6 +30,11 @@ for arch in x86_64 armv7l; do
             readelf -A "$executable" | grep -E 'Tag_CPU_arch: v7$'
             result=$(qemu-arm -L /opt/tizen/sysroots/armv7l "$executable")
             [[ $result == *'pointer bits 32' ]]
+        elif [[ $arch == aarch64 ]]; then
+            readelf -h "$executable" | grep -E 'Machine:.*AArch64'
+            readelf -l "$executable" | grep -F '/lib/ld-linux-aarch64.so.1'
+            result=$(qemu-aarch64 -L /opt/tizen/sysroots/aarch64 "$executable")
+            [[ $result == *'pointer bits 64' ]]
         else
             readelf -h "$executable" | grep -E 'Machine:.*X86-64'
             result=$("$executable")

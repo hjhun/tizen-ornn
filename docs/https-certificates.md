@@ -34,8 +34,7 @@ $env:TIZEN_BUILD_CA_CERT = 'C:\Certificates\company-root.crt'
 tizen-ornn.exe build --name company-dev
 ```
 
-Ornn adds the CA to the Tizen system bundle for new x86_64, armv7l and
-aarch64 images. Windows also installs it in the temporary Ubuntu builder.
+Ornn adds the CA to the Tizen system bundle for new x86_64 images. Windows also installs it in the temporary Ubuntu builder.
 Downloads made directly by the host still use the host trust store. An
 existing image returned by `build` keeps its current trust settings.
 For an existing guest, use the manual instructions below.

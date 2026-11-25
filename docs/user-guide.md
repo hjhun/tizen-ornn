@@ -63,7 +63,7 @@ chmod +x tizen-ornn-ubuntu-amd64-portable.run
 **Settings → Language → 한국어**를 선택하면 메뉴와 경로 탐색기가 한국어로 표시됩니다. 다음 실행에도 선택한 언어를 사용합니다.
 
 1. **설정 → 작업 폴더 → 찾아보기…**에서 저장 위치를 선택하고 **작업 폴더 저장**을 누르세요. Ubuntu와 WSL2에서는 홈 디렉터리 등 Linux 파일시스템을 사용하세요.
-2. **Build image…**에서 **x86_64**와 기본 스냅샷을 선택하세요. 이름에 `dev-x86`을 입력하고 **Build**를 누르세요.
+2. **Build image…**에서 기본 스냅샷을 사용하세요. 이름에 `dev-x86`을 입력하고 **Build**를 누르세요.
 3. 빌드가 끝나면 이미지 목록에서 `dev-x86`을 선택하세요. 기존 이미지가 있다면 **Add image…**에서 해당 디렉터리를 열 수 있습니다.
 
 CLI를 사용한다면 다음 명령으로 이미지를 만들고 경로를 확인하세요.
@@ -157,7 +157,7 @@ cmake --build "$HOME/build-arm"
 ctest --test-dir "$HOME/build-arm" --output-on-failure
 ```
 
-ARM 게스트 자체를 부팅하려면 이미지 빌드에서 `armv7l` 또는 `aarch64`를 선택하세요. R26에서는 ARM 게스트를 재부팅하거나 종료할 때 Enlightenment가 충돌할 수 있습니다.
+RPM spec과 소스가 있는 디렉터리에서 x86_64 게스트의 `ornn build --target armv7l` 또는 `ornn build --target aarch64`로 해당 아키텍처의 RPM을 생성할 수 있습니다.
 
 ## 6. 호스트에서 재연결하거나 종료하기
 

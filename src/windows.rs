@@ -50,7 +50,7 @@ fn checked(cmd: &mut Command, label: &str) -> io::Result<()> {
 fn disk(image: &Path) -> io::Result<(&'static str, &'static str)> {
     if !image.join("bzImage").is_file() {
         return Err(io::Error::other(format!(
-            "Missing bzImage in {}",
+            "Expected an x86_64 guest image (missing bzImage) in {}",
             image.display()
         )));
     }
@@ -78,11 +78,9 @@ fn images() -> io::Result<Vec<Image>> {
                 continue;
             }
             let path = item.path();
-            if let Some(arch) =
-                tizen_ornn::arm_arch(&path).or_else(|| disk(&path).ok().map(|_| "x86_64"))
-            {
+            if disk(&path).is_ok() {
                 result.push(Image {
-                    arch: arch.into(),
+                    arch: "x86_64".into(),
                     path,
                 });
             }
@@ -202,6 +200,7 @@ fn boot(
     read_only: bool,
 ) -> io::Result<()> {
     let image = select_image(image)?;
+    let (name, format) = disk(&image)?;
     let lock = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -215,50 +214,6 @@ fn boot(
     if stop.exists() {
         fs::remove_file(&stop)?;
     }
-    if let Some(arch) = tizen_ornn::arm_arch(&image) {
-        if !graphics || share.is_some() {
-            return Err(io::Error::other(
-                "ARM guests require graphical mode and do not support host folder sharing.",
-            ));
-        }
-        let (tool, cpu, kernel, accelerator) = if arch == "aarch64" {
-            ("qemu-system-aarch64", "cortex-a72", "Image", "tcg")
-        } else {
-            // Serialize the two emulated vCPUs on Windows ARMv7.
-            (
-                "qemu-system-arm",
-                "cortex-a15",
-                "zImage",
-                "tcg,thread=single",
-            )
-        };
-        let mut cmd = qemu(tool)?;
-        cmd.env("GALLIUM_DRIVER", "llvmpipe");
-        cmd.current_dir(&image).args(["-machine","virt","-global","virtio-mmio.force-legacy=false","-cpu",cpu,"-accel",accelerator,"-m","3072","-smp","2","-kernel",kernel,
-            "-append","root=/dev/vda rootfstype=ext4 rootwait rw console=ttyAMA0,115200 systemd.unit=graphical.target",
-            "-display","sdl,gl=on,show-cursor=on","-device","virtio-gpu-gl-device,xres=1024,yres=768","-device","virtio-keyboard-device","-device","virtio-tablet-device","-device","virtio-rng-device",
-            "-netdev","user,id=net","-device","virtio-net-device,netdev=net","-serial","chardev:console","-monitor","none"]);
-        cmd.args([
-            "-device",
-            "virtio-serial-device,id=armserial",
-            "-device",
-            "virtserialport,bus=armserial.0,chardev=ornnpower,name=org.tizen.ornn.power",
-        ]);
-        // Linux enumerates the virtio-mmio transports by slot. Keep rootfs on vda.
-        for (slot, part) in ["rootfs", "system-data", "user", "hal"]
-            .into_iter()
-            .enumerate()
-        {
-            cmd.args([
-                "-drive",
-                &format!("if=none,format=raw,id={part},file=disk/{part}.img"),
-                "-device",
-                &format!("virtio-blk-device,drive={part},bus=virtio-mmio-bus.{slot}"),
-            ]);
-        }
-        return console::run(&mut cmd, &stop, &image, true);
-    }
-    let (name, format) = disk(&image)?;
     let mut cmd = qemu("qemu-system-x86_64")?;
     cmd.current_dir(&image).args([
         "-name",
@@ -444,20 +399,7 @@ fn launch(
 ) -> io::Result<()> {
     use std::os::windows::process::CommandExt;
     let image = select_image(image)?;
-    if let Some(arch) = tizen_ornn::arm_arch(&image) {
-        qemu(if arch == "armv7l" {
-            "qemu-system-arm"
-        } else {
-            "qemu-system-aarch64"
-        })?;
-        if !graphics || share.is_some() {
-            return Err(io::Error::other(
-                "ARM guests support graphical boot without host folder sharing.",
-            ));
-        }
-    } else {
-        disk(&image)?;
-    }
+    disk(&image)?;
     let mut command = Command::new(env::current_exe()?);
     command.args(["run", "--worker", "--image-dir"]).arg(&image);
     if let Some((rows, cols)) = console::size() {
@@ -529,15 +471,6 @@ pub fn execute(cli: Cli) -> io::Result<()> {
         }
         Some(Action::Build { name, repository }) => {
             let proxy = tizen_ornn::proxy::BuildProxy::load()?;
-            let arch = cli.arch.as_deref().unwrap_or("x86_64");
-            if arch != "x86_64" {
-                if name.is_some() || repository.is_some() {
-                    return Err(io::Error::other(
-                        "ARM builds use the pinned headed snapshot and its generic HAL.",
-                    ));
-                }
-                return build::create(&home()?, &format!("{arch}-headed"), arch, None, &proxy);
-            }
             if let Some(name) = &name {
                 crate::build_source::validate_name(name)?;
             }
@@ -548,7 +481,7 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             let name = name
                 .or_else(|| source.as_ref().map(|s| s.release.clone()))
                 .unwrap_or_else(|| "default".into());
-            build::create(&home()?, &name, arch, source.as_ref(), &proxy)
+            build::create(&home()?, &name, source.as_ref(), &proxy)
         }
         Some(Action::Update {
             image_dir,
@@ -572,43 +505,14 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))
         }
         Some(Action::Console { image_dir }) => session::attach(&image_dir, None),
-        None => {
-            let image = cli
-                .arch
-                .as_deref()
-                .filter(|arch| *arch != "x86_64")
-                .map(|arch| home().map(|h| h.join("images").join(format!("{arch}-headed"))))
-                .transpose()?;
-            launch(
-                image,
-                !cli.headless
-                    && (cli.gui || cli.arch.as_deref().is_some_and(|arch| arch != "x86_64")),
-                None,
-                false,
-            )
-        }
+        None => launch(None, cli.gui, None, false),
         Some(Action::Run {
             worker,
             image_dir,
             share,
             share_ro,
         }) => {
-            let image_dir = match (image_dir, cli.arch.as_deref()) {
-                (None, Some(arch @ ("armv7l" | "aarch64"))) => {
-                    Some(home()?.join("images").join(format!("{arch}-headed")))
-                }
-                (image, _) => image,
-            };
-            let detected = image_dir.as_deref().and_then(tizen_ornn::arm_arch);
-            if let (Some(requested), Some(path)) = (cli.arch.as_deref(), image_dir.as_deref())
-                && requested != detected.unwrap_or("x86_64")
-            {
-                return Err(io::Error::other(format!(
-                    "Expected a {requested} image at {}",
-                    path.display()
-                )));
-            }
-            let graphics = cli.gui || (!cli.headless && detected.is_some());
+            let graphics = cli.gui;
             let read_only = share_ro.is_some();
             if worker {
                 boot(image_dir, graphics, share.or(share_ro), read_only)
