@@ -15,6 +15,14 @@ printf '[Unit]\nAfter=tizen-dev-setup.service\n' > "$dropin/tizen-ornn-policy.co
 # Tell the host when SDB can accept a connection on this boot.
 if [ -f /usr/lib/systemd/system/sdbd_tcp.socket ]; then
     units=/run/systemd/system
+    # Advertise the VM name. A negative forward port leaves registration
+    # to the Ornn host, which knows QEMU's dynamically assigned port.
+    mkdir -p "$units/sdbd.service.d"
+    cat > "$units/sdbd.service.d/tizen-ornn-name.conf" <<'UNIT'
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/sdbd --emulator=tizen-ornn:-1
+UNIT
     cat > "$units/ornn-sdb-ready.service" <<'UNIT'
 [Unit]
 Description=Notify the Ornn host when SDB is ready
