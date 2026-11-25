@@ -41,6 +41,6 @@ podman run --rm --platform linux/arm/v7 --network none "$base" \
     /bin/rpm -qa --qf '%{NAME}\n' > "$work/installed"
 "$here/stage-rpms" "$cache" "$work/installed" "$work/packages"
 while IFS= read -r rpm; do ln "$cache/rpms/$rpm" "$work/rpms/$rpm"; done < "$work/packages"
-cp "$project/guest/ornn" "$here/Containerfile" "$work/context/"
+cp "$project/guest/"{ornn,ornn-packages.py} "$here/Containerfile" "$work/context/"
 podman build --platform linux/arm/v7 --format oci --pull=never --network none \
     --build-arg "BASE=$base" -v "$work/rpms:/mnt/rpms:ro" -t "$tag" "$work/context"

@@ -35,11 +35,14 @@ sync_kit() (
     done
 )
 sync_kit /usr/share/tizen-dev/dev-setup dev-setup
-# Expose the guest RPM workflow on first login, including a fresh developer home.
-if [ ! -L .agents ] && [ ! -L .agents/skills ] &&
-   [ ! -e .agents/skills/ornn ] && [ ! -L .agents/skills/ornn ]; then
+# Expose development workflows on first login, including a fresh developer home.
+if [ ! -L .agents ] && [ ! -L .agents/skills ]; then
     mkdir -p .agents/skills
-    ln -sT ../../dev-setup/skills/ornn .agents/skills/ornn || [ -L .agents/skills/ornn ]
+    for skill in ornn tizen-ornn-development; do
+        if [ ! -e ".agents/skills/$skill" ] && [ ! -L ".agents/skills/$skill" ]; then
+            ln -sT "../../dev-setup/skills/$skill" ".agents/skills/$skill" || [ -L ".agents/skills/$skill" ]
+        fi
+    done
 fi
 for file in bashrc bash_profile vimrc; do
     if [ -f "dev-setup/$file" ] && [ ! -e ".$file" ] && [ ! -L ".$file" ]; then

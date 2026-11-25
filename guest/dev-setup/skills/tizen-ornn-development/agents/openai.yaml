@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tizen Ornn Development"
+  short_description: "Build, deploy, and verify on a Tizen Ornn VM"
+  default_prompt: "Use $tizen-ornn-development to deploy my local build and verify its behavior on Ornn."

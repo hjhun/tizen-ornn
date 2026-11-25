@@ -204,11 +204,21 @@ Run `ornn build` for an x86_64 RPM, `ornn build --target armv7l` for an ARMv7 RP
 
 For a tracked spec in a Git checkout, run from the checkout root. If the local `Source0: %{name}-%{version}.tar.gz` is missing, Ornn creates it from the current contents of Git-tracked files. Use `git add` for new source files you want to include. Existing archives and other declared sources are used as supplied.
 
-For native builds, Ornn installs missing build dependencies system-wide from the guest’s configured Zypper repositories. Find the resulting packages in `Build/RPMS/<arch>/`. Run `ornn clean` to remove the project’s `Build/` directory. Installed dependencies stay available for subsequent builds.
+Ornn keeps every build under `/home/tizen/share/build/<project>/<target>/run.*/`. Open `build.log`, `BUILD/` (including CMakeCache.txt and CTest logs), `BUILDROOT/` or `RPMS/` from the host. A failed attempt keeps its files. If the share cannot run build tools, Ornn builds on the guest disk and copies the tree back. Files a share cannot represent are also preserved in `work.tar`. Run `ornn clean` in the original checkout to remove its attempts and RPMs.
+
+Run `ornn install NAME` in any directory to install a compatible RPM from the last successful build of its project. It also selects matching local subpackages required by NAME. A different RPM with the same version can replace an installed one. When no local candidate exists, Ornn uses Zypper's guest repositories. An already installed package satisfies the request. `ornn uninstall NAME` removes only the installed package and reports any dependencies preventing removal.
+
+To select the remote RPM-MD repositories for build dependencies, install and restore, put their base URLs in `~/.ornn.conf`. Earlier entries have higher priority. Use the URLs shown by `zypper repos --uri` for the image's pinned snapshot, or a signed repository trusted by the guest.
+
+```ini
+[repos]
+url = https://repository.example/team/
+url = https://repository.example/platform/
+```
 
 A successful native build installs its RPMs in the guest so dependent projects see the new headers and libraries immediately. Use `ornn build --no-install` to produce RPMs only. From the project root, run `ornn restore` to reinstall its last installed package set from the configured HTTP(S) repositories, or name packages explicitly, for example `ornn restore bundle bundle-devel`. The per-project list in `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<key>/.installed-rpms` survives `ornn clean`. RPM checks installed build dependencies against the guest package database.
 
-Run `ornn status` from the project root to compare the last build with the installed RPM identities. A different ID indicates a different build. After an interrupted install, retry the same package set or run `ornn restore`. Clean removes only a `Build/` created and marked by Ornn. Pre-existing directories are preserved.
+Run `ornn status` from the project root to compare the last build with the installed RPM identities. A different ID indicates a different build. After an interrupted install, retry the same package set or run `ornn restore`.
 
 ## Choose the snapshot source
 

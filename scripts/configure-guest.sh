@@ -13,6 +13,7 @@ install -m755 "$project/guest/tizen-dev-setup" "$root/usr/local/libexec/"
 install -m755 "$project/tests/smack.py" "$root/usr/local/libexec/tizen-dev-smack-check"
 install -m755 "$project/guest/dev-check" "$root/usr/local/bin/tizen-dev-check"
 install -m755 "$project/guest/ornn" "$root/usr/local/bin/ornn"
+install -m644 "$project/guest/ornn-packages.py" "$root/usr/local/libexec/"
 install -m644 "$project/guest/tizen-dev-path.sh" "$root/etc/profile.d/zz-tizen-dev-path.sh"
 install -m644 "$project/guest/tizen-prompt.sh" "$root/etc/profile.d/zz-tizen-prompt.sh"
 install -m755 "$project/guest/tizen-su" "$root/usr/local/bin/su"
@@ -38,11 +39,13 @@ for account in root tizen owner; do
         cp -R "$project/guest/dev-setup/." "$dest/dev-setup/"
         chown -R "$uid:$gid" "$dest/dev-setup"
         install -d -o "$uid" -g "$gid" "$dest/.agents" "$dest/.agents/skills"
-        skill="$dest/.agents/skills/ornn"
-        if [[ ! -e "$skill" && ! -L "$skill" ]]; then
-            ln -s ../../dev-setup/skills/ornn "$skill"
-            chown -h "$uid:$gid" "$skill"
-        fi
+        for name in ornn tizen-ornn-development; do
+            skill="$dest/.agents/skills/$name"
+            if [[ ! -e "$skill" && ! -L "$skill" ]]; then
+                ln -s "../../dev-setup/skills/$name" "$skill"
+                chown -h "$uid:$gid" "$skill"
+            fi
+        done
         # Keep image defaults in the user's editable setup kit.
         for f in bashrc bash_profile vimrc; do
             if [[ ! -e "$dest/.$f" && ! -L "$dest/.$f" ]]; then

@@ -172,11 +172,21 @@ RPM spec과 소스가 있는 디렉터리에서 x86_64 게스트의 `ornn build 
 
 Git 체크아웃 루트에서 `ornn build`를 실행하면 기본으로 x86_64 RPM을 빌드합니다. Git이 추적하는 spec에서 로컬 `Source0: %{name}-%{version}.tar.gz`를 선언하고 해당 파일이 없으면, Ornn이 추적 중인 파일의 현재 내용으로 임시 압축 파일을 만듭니다. 새 소스 파일은 `git add`로 포함하세요. 기존 압축 파일과 추가 manifest는 그대로 사용합니다.
 
-네이티브 빌드에 필요한 패키지가 없으면 Ornn이 게스트의 Zypper 저장소에서 찾아 시스템 전체에 설치합니다. 결과 RPM은 프로젝트의 `Build/RPMS/<arch>/`에 생성됩니다. `ornn clean`은 프로젝트의 `Build/`를 삭제하며 설치된 의존성은 다음 빌드에서 재사용됩니다.
+Ornn은 빌드할 때마다 `/home/tizen/share/build/<프로젝트>/<대상>/run.*/`에 결과를 보관합니다. 호스트에서 `build.log`, `BUILD/` 안의 CMakeCache.txt와 CTest 로그, `BUILDROOT/`, `RPMS/`를 열 수 있습니다. 실패한 빌드도 보존합니다. 공유 폴더에서 빌드 도구를 실행할 수 없으면 게스트 디스크에서 빌드한 뒤 공유 폴더로 복사하고, 공유 폴더가 표현할 수 없는 파일은 `work.tar`에도 보관합니다. 체크아웃에서 `ornn clean`을 실행하면 해당 프로젝트의 빌드 기록 디렉터리와 RPM을 삭제합니다.
 
-기본 네이티브 빌드는 생성한 RPM을 게스트에 즉시 설치합니다. 예를 들어 `bundle`에서 `ornn build`를 실행하고 `rpc-port`에서 빌드하면 새 헤더와 라이브러리를 사용합니다. 패키지만 만들려면 `ornn build --no-install`을 사용하세요. 프로젝트 루트에서 `ornn restore`를 실행하면 마지막으로 설치한 패키지를 서버 버전으로 복원합니다. 목록은 `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<키>/.installed-rpms`에 저장되므로 `Build/`를 삭제한 뒤에도 복원할 수 있습니다. 특정 패키지만 복원하려면 `ornn restore bundle bundle-devel`을 사용하세요.
+어느 디렉터리에서든 `ornn install 이름`을 실행하면 해당 프로젝트의 마지막 성공 빌드에서 호환되는 RPM과 필요한 로컬 서브패키지를 먼저 설치합니다. 버전이 같아도 내용이 달라졌으면 교체합니다. 로컬 후보가 없고 설치되지 않은 패키지는 게스트의 Zypper 저장소에서 가져옵니다. `ornn uninstall 이름`은 게스트에서 지정한 패키지만 제거하며, 다른 패키지가 의존하면 제거를 중단합니다.
 
-프로젝트 루트에서 `ornn status`를 실행하면 마지막 빌드와 게스트 설치본의 RPM 식별값을 비교합니다. `different`는 두 파일이 다르다는 뜻입니다. 설치가 중단되면 같은 패키지 세트를 다시 빌드하거나 `ornn restore`로 복구하세요. `ornn clean`은 Ornn이 직접 만들고 표시한 `Build/`만 삭제합니다. 기존 디렉터리는 보존합니다.
+빌드 의존성 설치, `install`, `restore`에서 사용할 원격 RPM-MD 저장소는 `~/.ornn.conf`에 URL 순서대로 적습니다. 위쪽 저장소의 우선순위가 높습니다. 이미지에 고정된 스냅샷 URL은 `zypper repos --uri`로 확인할 수 있고, 게스트가 신뢰하는 서명된 저장소도 지정할 수 있습니다.
+
+```ini
+[repos]
+url = https://repository.example/team/
+url = https://repository.example/platform/
+```
+
+기본 네이티브 빌드는 생성한 RPM을 게스트에 즉시 설치합니다. 예를 들어 `bundle`에서 `ornn build`를 실행하고 `rpc-port`에서 빌드하면 새 헤더와 라이브러리를 사용합니다. 패키지만 만들려면 `ornn build --no-install`을 사용하세요. 프로젝트 루트에서 `ornn restore`를 실행하면 마지막으로 설치한 패키지를 서버 버전으로 복원합니다. 목록은 `${XDG_DATA_HOME:-~/.local/share}/ornn/projects/<키>/.installed-rpms`에 저장되므로 `ornn clean` 뒤에도 복원할 수 있습니다. 특정 패키지만 복원하려면 `ornn restore bundle bundle-devel`을 사용하세요.
+
+프로젝트 루트에서 `ornn status`를 실행하면 마지막 빌드와 게스트 설치본의 RPM 식별값을 비교합니다. `different`는 두 파일이 다르다는 뜻입니다. 설치가 중단되면 같은 패키지 세트를 다시 빌드하거나 `ornn restore`로 복구하세요.
 
 ## 6. 호스트에서 재연결하거나 종료하기
 
