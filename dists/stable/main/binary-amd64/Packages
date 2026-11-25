@@ -96,6 +96,22 @@ Description: Graphical image launcher for Tizen Ornn
 
 Package: tizen-ornn-gui
 Architecture: amd64
+Version: 1:2.0.0
+Priority: optional
+Section: devel
+Maintainer: Tizen Ornn maintainers <36876573+hjhun@users.noreply.github.com>
+Depends: tizen-ornn (= 1:2.0.0), x-terminal-emulator, qemu-system-gui, fonts-noto-cjk, python3-gi, gir1.2-ayatanaappindicator3-0.1, gir1.2-gtk-3.0, libgl1, libegl1, libxkbcommon0, libx11-6
+Filename: pool/main/t/tizen-ornn/tizen-ornn-gui_2.0.0_amd64.deb
+Size: 3513238
+MD5sum: ea42b19978f8f850e68a88f89560e927
+SHA1: a24c2fbe6d49e09c263533964433d294da5474ad
+SHA256: 40143a07b1501225a44567b7d2bed4761d51b6ba65c4a2d2f89be49511b53b47
+SHA512: be9ff24b5ed04e09bf01c1b4b400155776c23749a54ea375b4fba1b21b519f030715a34da353a9e0922376f2837b6f9a4169384ab5a66707629b468c19f1a815
+Description: Graphical image launcher for Tizen Ornn
+ Select a development image and open its guest console.
+
+Package: tizen-ornn-gui
+Architecture: amd64
 Version: 29
 Priority: optional
 Section: devel
@@ -225,6 +241,26 @@ MD5sum: 903be7c0ee4f22df6721294e2ba72702
 SHA1: 630878d948cc6e7301b2b2d57a9463619f0fa50f
 SHA256: 41134ff7ae6c733c51dc7e85b43b2655b346fcbf897604a34d546f2b089223c5
 SHA512: 67ee4d014c64ae973771dac763d9b7192d85da58cca9d06dc5ff9b0abd7466968556a15a318e503242e08704357df96400fc06dd6f1d122e845abff36d0380c5
+Homepage: https://github.com/hjhun/tizen-ornn
+Description: Tizen Ornn development VM for Ubuntu and WSL2
+ Build and run a writable x86_64 system with SMACK, systemd and a native
+ development toolchain from dated Tizen snapshots.
+
+Package: tizen-ornn
+Architecture: amd64
+Version: 1:2.0.0
+Priority: optional
+Section: devel
+Maintainer: tizen-ornn maintainers <36876573+hjhun@users.noreply.github.com>
+Depends: qemu-system-x86, qemu-utils, seabios, tmux, util-linux, python3 (>= 3.11), libglib2.0-bin, bubblewrap, rpm, rpm2cpio, createrepo-c, gnupg, cpio, curl, ca-certificates, rsync, attr, openssl, e2tools, e2fsprogs, patchelf, zstd, unzip, xz-utils, build-essential, bc, bison, flex, libelf-dev, libssl-dev, patch, pkg-config, dpkg-dev
+Conflicts: tizen-vm
+Replaces: tizen-vm
+Filename: pool/main/t/tizen-ornn/tizen-ornn_2.0.0_amd64.deb
+Size: 6436190
+MD5sum: a0efaa878383b7757b5c3f6d66dab73f
+SHA1: ae0201d2d219f7e3c7613e5c9474f430f65f9a80
+SHA256: 2aec304b79fa815dee124e16fce816bf5d74d44684bcb63d8fe39e5ce9b5b7b1
+SHA512: a64569418b782094e736761a22fb66eaa6f92ff3fd0bde9dce1cbde554371888916f526eeaf5ea2846be60cf79be496d865d014fe5d53ca2875266b12ff2e50c
 Homepage: https://github.com/hjhun/tizen-ornn
 Description: Tizen Ornn development VM for Ubuntu and WSL2
  Build and run a writable x86_64 system with SMACK, systemd and a native
