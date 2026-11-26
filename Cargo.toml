@@ -1,6 +1,6 @@
 [package]
 name = "tizen-ornn"
-version = "2.3.0"
+version = "2.4.0"
 license = "Apache-2.0"
 edition = "2024"
 default-run = "tizen-ornn"
@@ -34,4 +34,4 @@ eframe = { version = "0.31", optional = true, default-features = false, features
 wgpu = { version = "24", optional = true, default-features = false, features = ["dx12"] }
 fatfs = { version = "0.3", default-features = false, features = ["std","alloc"] }
 tokio = { version = "1", features = ["rt", "net", "time", "io-util", "sync", "macros", "process"] }
-windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Pipes", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Foundation"] }

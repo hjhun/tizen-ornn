@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / 'scripts'
 BUILDER = SCRIPTS / 'tizen-image'
 sys.path.insert(0, str(SCRIPTS))
+from console_picker import attach_console, choose_image, pick_running
 from image_source import ImageSource, config_path, user_config
 
 
@@ -105,27 +106,6 @@ def launch_choices(home):
             choices.append(('x86_64', path.resolve()))
             seen.add(disk)
     return choices
-
-
-def choose_image(choices, action, prompt_single=False):
-    if len(choices) == 1 and not prompt_single:
-        return choices[0]
-    print(f'Select a Tizen Ornn VM image to {action}:')
-    for index, (arch, image) in enumerate(choices, 1):
-        print(f'  {index}. {arch}  {image.name}')
-    while True:
-        try:
-            answer = input('Image [1], q to cancel: ').strip()
-        except EOFError:
-            return None
-        if answer.lower() == 'q':
-            return None
-        if not answer:
-            return choices[0]
-        for index, choice in enumerate(choices, 1):
-            if answer == str(index):
-                return choice
-        print(f'Enter a number from 1 to {len(choices)}.')
 
 
 @contextmanager
@@ -472,6 +452,8 @@ def execute(args):
     picked = Path(args.directory).resolve(strict=True) if args.directory else None
     if (args.pick and sys.stdin.isatty() and sys.stdout.isatty()
             and not any(os.environ.get(key) for key in ('TIZEN_OUT', 'TIZEN_DISK', 'TIZEN_KERNEL'))):
+        if pick_running():
+            return
         choices = launch_choices(data_home().resolve())
         if choices:
             choice = choose_image(choices, 'launch')
@@ -485,9 +467,7 @@ def execute(args):
     if args.command == 'console':
         lock = picked / 'build.lock' if any((picked / k).is_file() for k in ARM_KERNELS.values()) else disk_at(picked)
         prefix = subprocess.check_output([SCRIPTS / 'vm-runtime', lock], text=True).strip()
-        os.environ.pop('TMUX', None)
-        os.environ.pop('TMUX_PANE', None)
-        os.execvp('tmux', ['tmux', '-S', prefix + '.sock', 'attach-session', '-t', '=vm'])
+        attach_console(prefix + '.sock')
     if args.command == 'config':
         configure(args.repository, args.snapshot)
         return

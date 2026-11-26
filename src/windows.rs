@@ -505,6 +505,7 @@ pub fn execute(cli: Cli) -> io::Result<()> {
             tizen_ornn::workdir::save_share(path.as_deref().unwrap_or(""))
         }
         Some(Action::Console { image_dir }) => session::attach(&image_dir, None),
+        None if env::args_os().len() == 1 && session::pick_running()? => Ok(()),
         None => launch(None, cli.gui, None, false),
         Some(Action::Run {
             worker,

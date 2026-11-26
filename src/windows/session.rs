@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::VecDeque,
     fs,
-    io::{self, Write},
+    io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     process::Child,
     time::{Duration, Instant},
@@ -28,6 +28,8 @@ fn descriptor(image: &Path) -> io::Result<PathBuf> {
 struct Endpoint {
     pid: u32,
     pipe: String,
+    #[serde(default)]
+    image: Option<PathBuf>,
 }
 
 pub struct Listener {
@@ -54,6 +56,7 @@ impl Listener {
             &Endpoint {
                 pid: std::process::id(),
                 pipe: name.clone(),
+                image: Some(image.to_owned()),
             },
         )?;
         tmp.into_temp_path().persist(&path).map_err(|e| e.error)?;
@@ -162,8 +165,77 @@ async fn viewer(
     tokio::select! { result=display=>result,result=keyboard=>result }
 }
 
-pub fn attach(image: &Path, mut worker: Option<&mut Child>) -> io::Result<()> {
-    let path = descriptor(image)?;
+pub fn pick_running() -> io::Result<bool> {
+    use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
+
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return Ok(false);
+    }
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(std::env::temp_dir())? {
+        let path = entry?.path();
+        if !path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|name| name.starts_with("ornn-console-") && name.ends_with(".json"))
+        {
+            continue;
+        }
+        let Some(endpoint) = fs::read(&path)
+            .ok()
+            .and_then(|data| serde_json::from_slice::<Endpoint>(&data).ok())
+        else {
+            continue;
+        };
+        if !endpoint.pipe.starts_with(r"\\.\pipe\ornn-view-") || endpoint.pipe.contains('\0') {
+            continue;
+        }
+        let pipe: Vec<u16> = endpoint.pipe.encode_utf16().chain(Some(0)).collect();
+        // Check availability without claiming a viewer connection.
+        if unsafe { WaitNamedPipeW(pipe.as_ptr(), 1) } != 0 {
+            let label = endpoint
+                .image
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| format!("Ornn worker PID {}", endpoint.pid));
+            entries.push((label, path));
+        }
+    }
+    if entries.len() < 2 {
+        return Ok(false);
+    }
+    entries.sort();
+    println!("Select a running Tizen Ornn console:");
+    for (i, (label, _)) in entries.iter().enumerate() {
+        println!("  {}. {label}", i + 1);
+    }
+    loop {
+        print!("Image [1], q to cancel: ");
+        io::stdout().flush()?;
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line)? == 0 || line.trim().eq_ignore_ascii_case("q") {
+            return Ok(true);
+        }
+        let n = if line.trim().is_empty() {
+            Some(1)
+        } else {
+            line.trim().parse::<usize>().ok()
+        };
+        if let Some((_, path)) = n
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|i| entries.get(i))
+        {
+            attach_descriptor(path, None)?;
+            return Ok(true);
+        }
+        println!("Enter a number from 1 to {}.", entries.len());
+    }
+}
+
+pub fn attach(image: &Path, worker: Option<&mut Child>) -> io::Result<()> {
+    attach_descriptor(&descriptor(image)?, worker)
+}
+
+fn attach_descriptor(path: &Path, mut worker: Option<&mut Child>) -> io::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -175,7 +247,7 @@ pub fn attach(image: &Path, mut worker: Option<&mut Child>) -> io::Result<()> {
             {
                 return Err(io::Error::other(format!("VM startup failed ({status}).")));
             }
-            if let Ok(data) = fs::read(&path)
+            if let Ok(data) = fs::read(path)
                 && let Ok(endpoint) = serde_json::from_slice::<Endpoint>(&data)
                 && worker
                     .as_ref()

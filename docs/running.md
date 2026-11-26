@@ -1,5 +1,7 @@
 # Running the VM and managing storage
 
+When two or more Ornn consoles are running, enter `tizen-ornn` in an interactive host terminal and select a number to attach. Enter `q` to cancel. The menu includes consoles from other work directories of the same host user.
+
 From the host terminal, run `tizen-ornn` to start the selected guest or return to its existing console. A new VM opens a graphical window on WSLg or a Linux desktop by default. Use `tizen-ornn --headless` for a console-only boot. Both options also work with `run` and `start`. To change the display mode of a running VM, use `tizen-ornn shutdown` first. On Windows, the x86_64 guest uses a GTK window with the bundled Mesa runtime, a visible pointer and a virtio tablet. Close the terminal window to disconnect. **Open terminal** in the launcher or `tizen-ornn console --image-dir PATH` reconnects to the same shell on both hosts. CPU, memory and display settings take effect when the VM boots.
 
 Ubuntu GUI boots use QEMU's virtio GPU with virgl and the guest's Mesa driver.
