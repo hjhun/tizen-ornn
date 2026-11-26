@@ -2,10 +2,10 @@ Acquire-By-Hash: yes
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Wed, 25 Nov 2026 23:56:35 +0000
+Date: Thu, 26 Nov 2026 00:24:02 +0000
 Label: Tizen Ornn
 Origin: Tizen Ornn
 Suite: stable
 SHA256:
- 9ef2fcfa0a106674cee7728ac830acf9bd34f439f1671d4d858f3a429a4fe65e            23859 main/binary-amd64/Packages
- c68aeed820185c1d0a126c6e61c79cc0b797c04f64434004fe5311a90e6c1cc4             5296 main/binary-amd64/Packages.gz
+ 626e46ad0fae3b32341383e9999002030f70764f42e5ff384998939fa7d38b6a            25853 main/binary-amd64/Packages
+ a378aa75e34b7255ccce1e4df7564d90c6ee328ee563d70ca24bdc10e86d71d5             5657 main/binary-amd64/Packages.gz
