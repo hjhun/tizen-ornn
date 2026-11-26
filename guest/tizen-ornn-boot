@@ -7,6 +7,12 @@ mount -t proc -o nosuid,nodev,noexec proc /proc
 mount -t tmpfs -o nosuid,nodev,noexec,mode=0755 tmpfs /run
 # Match systemd's native Tizen /run before udev creates its device records.
 chsmack -a System::Run -t /run
+# Ornn creates /run/systemd before the guest loads the transmute rules.
+# Restore inheritance for the logind user records read by the session bus.
+mkdir -p /run/tmpfiles.d
+cat > /run/tmpfiles.d/tizen-ornn-logind.conf <<'TMPFILES'
+t /run/systemd/users - - - - security.SMACK64=System::Run security.SMACK64TRANSMUTE=TRUE
+TMPFILES
 # udevadm runs as System and needs the guest policy to traverse System::Run.
 dropin=/run/systemd/system/systemd-udev-trigger.service.d
 mkdir -p "$dropin"
